@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArangoDB MCP Chatbot</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <!-- Prism.js for syntax highlighting -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+  <!-- Font for better typography -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <h3><i class="fas fa-database"></i> ArangoDB Assistant</h3>
+    </div>
+    <button id="new-chat" class="new-chat-btn">
+      <i class="fas fa-plus"></i> New Chat
+    </button>
+    <div class="chat-history-section">
+      <h4><i class="fas fa-history"></i> Chat History</h4>
+      <ul id="chat-list"></ul>
+    </div>
+  </div>
+  
+  <div id="main">
+    <div id="messages-container">
+      <div id="messages">
+        <div class="msg bot">
+          <div class="avatar bot-avatar">
+            <i class="fas fa-robot"></i>
+          </div>
+          <div class="message-content">
+            <div class="bubble">
+              <div class="message-text">
+                Hi! I'm your ArangoDB assistant. I can help you with database operations, queries, and more. What would you like to do today?
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div id="input-area">
+      <div id="input-container">
+        <textarea id="input" placeholder="Ask about ArangoDB (e.g., 'list all databases', 'show collections in _system')" rows="1"></textarea>
+        <button id="send" disabled>
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </div>
+      <div class="input-footer">
+        <small>Press Enter to send, Shift+Enter for new line</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading overlay REMOVED
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="loading-spinner">
+      <div class="spinner"></div>
+      <span>Processing your request...</span>
+    </div>
+  </div>
+  -->
+
+  <script>
+    // Pass URLs from Flask context
+    const API_CHAT_URL = "{{ api_chat_url }}";
+    const API_HISTORY_URL = "{{ api_history_url }}";
+    const API_CLEAR_URL = "{{ api_clear_url }}";
+  </script>
+  <!-- Prism.js for syntax highlighting -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+  <!-- Marked.js for markdown parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
