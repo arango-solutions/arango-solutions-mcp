@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "arangodb-mcp": {
+      "command": "poetry",
+      "args": ["run", "python", "main.py"],
+      "env": {
+        "ARANGO_HOSTS": "http://localhost:8529",
+        "ARANGO_ROOT_USERNAME": "root",
+        "ARANGO_ROOT_PASSWORD": "123",
+        "ARANGO_DEFAULT_DB_NAME": "_system"
+      }
+    }
+  }
+}

@@ -1,0 +1,92 @@
+import logging
+from typing import Any, Dict, List, Optional
+
+from arango.exceptions import GraphCreateError, GraphDeleteError, GraphListError, ArangoServerError
+
+from agents.agent_base import ArangoAgentBase
+from arango_connector import arango_connector
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+class GraphManagementAgent(ArangoAgentBase):
+    """Agent for managing ArangoDB named graphs."""
+
+    async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
+        operation: str = mcp_tool_inputs.get("operation", "")
+        database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
+        graph_name: Optional[str] = mcp_tool_inputs.get("graph_name")
+        
+        # For create_graph
+        edge_definitions: Optional[List[Dict[str, Any]]] = mcp_tool_inputs.get("edge_definitions")
+        orphan_collections: Optional[List[str]] = mcp_tool_inputs.get("orphan_collections")
+
+        # For create_edge
+        edge_collection_name: Optional[str] = mcp_tool_inputs.get("edge_collection_name")
+        from_vertex_id: Optional[str] = mcp_tool_inputs.get("from_vertex_id")
+        to_vertex_id: Optional[str] = mcp_tool_inputs.get("to_vertex_id")
+        edge_data: Optional[Dict[str, Any]] = mcp_tool_inputs.get("edge_data")
+
+
+        logger.info(f"GraphManagementAgent: Op='{operation}', DB='{database_name}', Graph='{graph_name}'")
+
+        try:
+            if not arango_connector.client:
+                return {"error": "ArangoDB client not initialized."}
+            
+            db = arango_connector.client.db(
+                database_name,
+                username=settings.arango.root_username,
+                password=settings.arango.root_password
+            )
+
+            if operation == "list_graphs":
+                graphs = db.graphs()
+                return {"graphs": graphs}
+
+            elif operation == "create_graph":
+                if not graph_name or not edge_definitions:
+                    return {"error": "Graph name and edge definitions are required for graph creation."}
+                if db.has_graph(graph_name):
+                     return {"status": f"Graph '{graph_name}' already exists in database '{database_name}'."}
+                
+                graph_obj = db.create_graph(graph_name, edge_definitions=edge_definitions, orphan_collections=orphan_collections or [])
+                return {"status": f"Graph '{graph_name}' created successfully.", "graph_info": graph_obj.properties()}
+
+            elif operation == "delete_graph":
+                if not graph_name:
+                    return {"error": "Graph name is required for deletion."}
+                if not db.has_graph(graph_name):
+                    return {"error": f"Graph '{graph_name}' not found in database '{database_name}'."}
+                
+                db.delete_graph(graph_name, ignore_missing=False, drop_collections=mcp_tool_inputs.get("drop_collections", False))
+                return {"status": f"Graph '{graph_name}' deleted successfully."}
+            
+            elif operation == "create_edge":
+                if not graph_name or not edge_collection_name or not from_vertex_id or not to_vertex_id:
+                    return {"error": "Graph name, edge collection name, from_vertex_id, and to_vertex_id are required to create an edge."}
+                if not db.has_graph(graph_name):
+                    return {"error": f"Graph '{graph_name}' not found."}
+                
+                graph_obj = db.graph(graph_name)
+                if not graph_obj.has_edge_definition(edge_collection_name):
+                     return {"error": f"Edge collection '{edge_collection_name}' not part of graph '{graph_name}' definitions."}
+
+                edge_collection = graph_obj.edge_collection(edge_collection_name)
+                
+                edge_document_to_insert = edge_data or {}
+                edge_document_to_insert["_from"] = from_vertex_id
+                edge_document_to_insert["_to"] = to_vertex_id
+
+                meta = edge_collection.insert(edge_document_to_insert)
+                return {"status": "Edge created successfully.", "edge_metadata": meta}
+
+            else:
+                return {"error": f"Unknown graph operation: {operation}"}
+
+        except (GraphListError, GraphCreateError, GraphDeleteError, ArangoServerError) as e:
+            logger.error(f"GraphManagementAgent: ArangoDB error - {e}")
+            return {"error": f"ArangoDB Graph Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"}
+        except Exception as e:
+            logger.error(f"GraphManagementAgent: Unexpected error - {e}", exc_info=True)
+            return {"error": f"An unexpected error occurred: {str(e)}"}
