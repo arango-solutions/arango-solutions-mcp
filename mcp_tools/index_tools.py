@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+
 from pydantic import Field
 
 from agents.index_management_agent import IndexManagementAgent
@@ -6,8 +7,9 @@ from server import mcp_app
 
 index_agent = IndexManagementAgent()
 
+
 @mcp_app.tool(
-    name="list-indexes", 
+    name="list-indexes",
     description="""Lists all indexes for a collection to understand query performance optimization.
     
     Indexes in ArangoDB accelerate query performance by:
@@ -30,7 +32,7 @@ index_agent = IndexManagementAgent()
     - Understand existing performance optimizations
     - Monitor index usage and effectiveness
     - Debug slow query performance
-    """
+    """,
 )
 async def list_indexes(
     collection_name: str = Field(
@@ -49,18 +51,20 @@ async def list_indexes(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await index_agent.arun({
-        "operation": "list_indexes",
-        "database_name": database_name,
-        "collection_name": collection_name
-    })
+    return await index_agent.arun(
+        {
+            "operation": "list_indexes",
+            "database_name": database_name,
+            "collection_name": collection_name,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="create-index", 
+    name="create-index",
     description="""Creates a new index to optimize query performance for specific access patterns.
     
     Index types and use cases:
@@ -88,7 +92,7 @@ async def list_indexes(
     - Use compound indexes for multi-field queries
     - Consider selectivity (unique values vs duplicates)
     - Test performance impact in production-like environments
-    """
+    """,
 )
 async def create_index(
     collection_name: str = Field(
@@ -159,19 +163,21 @@ async def create_index(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await index_agent.arun({
-        "operation": "create_index",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "index_definition": index_definition
-    })
+    return await index_agent.arun(
+        {
+            "operation": "create_index",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "index_definition": index_definition,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="delete-index", 
+    name="delete-index",
     description="""Removes an index to free up storage space and improve write performance.
     
     ⚠️  WARNING: Deleting an index will:
@@ -200,7 +206,7 @@ async def create_index(
     - Test performance impact in staging first
     - Remove indexes during low-traffic periods
     - Monitor query performance after deletion
-    """
+    """,
 )
 async def delete_index(
     collection_name: str = Field(
@@ -227,13 +233,14 @@ async def delete_index(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await index_agent.arun({
-        "operation": "delete_index",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "index_id_or_name": index_id_or_name
-    })
+    return await index_agent.arun(
+        {
+            "operation": "delete_index",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "index_id_or_name": index_id_or_name,
+        }
+    )

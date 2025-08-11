@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+
 from pydantic import Field
 
 from agents.graph_management_agent import GraphManagementAgent
@@ -6,8 +7,9 @@ from server import mcp_app
 
 graph_agent = GraphManagementAgent()
 
+
 @mcp_app.tool(
-    name="list-graphs", 
+    name="list-graphs",
     description="""Lists all named graphs configured for relationship modeling and traversal.
     
     Named graphs in ArangoDB provide:
@@ -30,11 +32,11 @@ graph_agent = GraphManagementAgent()
     - Transportation networks (locations connected by routes)
     
     Use this to explore available graph structures and relationship models.
-    """
+    """,
 )
 async def list_graphs(
     database_name: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="""Target database name. Uses default database if not specified.
         
         Examples:
@@ -43,16 +45,14 @@ async def list_graphs(
         - 'knowledge_base' - conceptual relationship graphs
         
         Graphs are database-specific configurations.
-        """
+        """,
     )
 ) -> Dict[str, Any]:
-    return await graph_agent.arun({
-        "operation": "list_graphs",
-        "database_name": database_name
-    })
+    return await graph_agent.arun({"operation": "list_graphs", "database_name": database_name})
+
 
 @mcp_app.tool(
-    name="create-graph", 
+    name="create-graph",
     description="""Creates a named graph structure for modeling complex relationships.
     
     Named graphs provide:
@@ -81,7 +81,7 @@ async def list_graphs(
     - Use descriptive names for collections and relationships
     - Consider query patterns when designing edge definitions
     - Start simple and evolve the graph structure
-    """
+    """,
 )
 async def create_graph(
     graph_name: str = Field(
@@ -135,7 +135,7 @@ async def create_graph(
         """
     ),
     orphan_collections: Optional[List[str]] = Field(
-        default=None, 
+        default=None,
         description="""Additional vertex collections included in the graph but not connected by edges.
         
         Examples:
@@ -145,23 +145,25 @@ async def create_graph(
         
         Orphan collections can be connected later by adding edge definitions.
         Optional - most graphs don't need orphan collections initially.
-        """
+        """,
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await graph_agent.arun({
-        "operation": "create_graph",
-        "database_name": database_name,
-        "graph_name": graph_name,
-        "edge_definitions": edge_definitions,
-        "orphan_collections": orphan_collections
-    })
+    return await graph_agent.arun(
+        {
+            "operation": "create_graph",
+            "database_name": database_name,
+            "graph_name": graph_name,
+            "edge_definitions": edge_definitions,
+            "orphan_collections": orphan_collections,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="delete-graph", 
+    name="delete-graph",
     description="""Removes a named graph definition and optionally its collections.
     
     Graph deletion options:
@@ -185,7 +187,7 @@ async def create_graph(
     - Removing obsolete graph models
     - Database cleanup and optimization
     - Migrating to new graph structures
-    """
+    """,
 )
 async def delete_graph(
     graph_name: str = Field(
@@ -198,7 +200,7 @@ async def delete_graph(
         """
     ),
     drop_collections: bool = Field(
-        default=False, 
+        default=False,
         description="""⚠️  DANGER: Whether to also delete all collections and data.
         
         - false (default): Delete only graph definition, preserve data
@@ -208,22 +210,24 @@ async def delete_graph(
         This includes all vertices, edges, and relationships - cannot be undone.
         
         Recommended: Use false to preserve data unless doing complete cleanup.
-        """
+        """,
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await graph_agent.arun({
-        "operation": "delete_graph",
-        "database_name": database_name,
-        "graph_name": graph_name,
-        "drop_collections": drop_collections
-    })
+    return await graph_agent.arun(
+        {
+            "operation": "delete_graph",
+            "database_name": database_name,
+            "graph_name": graph_name,
+            "drop_collections": drop_collections,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="create-edge", 
+    name="create-edge",
     description="""Creates a relationship (edge) between two entities in a graph.
     
     Edges represent relationships and connections:
@@ -249,7 +253,7 @@ async def delete_graph(
     - Use consistent data patterns
     - Consider bidirectional vs unidirectional relationships
     - Add timestamps for temporal analysis
-    """
+    """,
 )
 async def create_edge(
     graph_name: str = Field(
@@ -302,7 +306,7 @@ async def create_edge(
         """
     ),
     edge_data: Optional[Dict[str, Any]] = Field(
-        default=None, 
+        default=None,
         description="""Additional attributes and metadata for the relationship.
         
         Examples:
@@ -333,19 +337,20 @@ async def create_edge(
         }
         
         Leave empty for simple relationships without additional data.
-        """
+        """,
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await graph_agent.arun({
-        "operation": "create_edge",
-        "database_name": database_name,
-        "graph_name": graph_name,
-        "edge_collection_name": edge_collection_name,
-        "from_vertex_id": from_vertex_id,
-        "to_vertex_id": to_vertex_id,
-        "edge_data": edge_data
-    })
+    return await graph_agent.arun(
+        {
+            "operation": "create_edge",
+            "database_name": database_name,
+            "graph_name": graph_name,
+            "edge_collection_name": edge_collection_name,
+            "from_vertex_id": from_vertex_id,
+            "to_vertex_id": to_vertex_id,
+            "edge_data": edge_data,
+        }
+    )

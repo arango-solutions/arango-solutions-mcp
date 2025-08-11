@@ -1,10 +1,12 @@
-from typing import Any, Dict, Optional # List removed as it's not directly used for type hints here
+from typing import Any, Dict, Optional  # List removed as it's not directly used for type hints here
+
 from pydantic import Field
 
 from agents.collection_management_agent import CollectionManagementAgent
 from server import mcp_app
 
 collection_agent = CollectionManagementAgent()
+
 
 @mcp_app.tool(
     name="list-collections",
@@ -27,11 +29,11 @@ collection_agent = CollectionManagementAgent()
     - Collection name and type
     - Document count and status
     - Collection metadata
-    """
+    """,
 )
 async def list_collections(
     database_name: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="""Target database name to list collections from.
         
         Examples:
@@ -41,13 +43,13 @@ async def list_collections(
         
         If not specified, uses the server's default database.
         Use 'list-databases' tool to see available databases.
-        """
+        """,
     )
 ) -> Dict[str, Any]:
-    return await collection_agent.arun({
-        "operation": "list_collections",
-        "database_name": database_name
-    })
+    return await collection_agent.arun(
+        {"operation": "list_collections", "database_name": database_name}
+    )
+
 
 @mcp_app.tool(
     name="create-collection",
@@ -74,7 +76,7 @@ async def list_collections(
     - Use descriptive names (users, products, follows, purchases)
     - Plan your data model before creating collections
     - Consider indexing needs for frequently queried fields
-    """
+    """,
 )
 async def create_collection(
     collection_name: str = Field(
@@ -95,11 +97,10 @@ async def create_collection(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
+        default=None, description="Target database name. Uses default if not specified."
     ),
     collection_type: str = Field(
-        default="document", 
+        default="document",
         description="""Type of collection to create.
         
         Options:
@@ -112,15 +113,18 @@ async def create_collection(
         - Need to traverse connections between entities
         
         Edge collections require _from and _to fields pointing to document _id values.
-        """
-    )
+        """,
+    ),
 ) -> Dict[str, Any]:
-    return await collection_agent.arun({
-        "operation": "create_collection",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "collection_type": collection_type
-    })
+    return await collection_agent.arun(
+        {
+            "operation": "create_collection",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "collection_type": collection_type,
+        }
+    )
+
 
 @mcp_app.tool(
     name="delete-collection",
@@ -145,7 +149,7 @@ async def create_collection(
     - Removing test data
     - Database schema changes
     - Development environment cleanup
-    """
+    """,
 )
 async def delete_collection(
     collection_name: str = Field(
@@ -162,15 +166,17 @@ async def delete_collection(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await collection_agent.arun({
-        "operation": "delete_collection",
-        "database_name": database_name,
-        "collection_name": collection_name
-    })
+    return await collection_agent.arun(
+        {
+            "operation": "delete_collection",
+            "database_name": database_name,
+            "collection_name": collection_name,
+        }
+    )
+
 
 @mcp_app.tool(
     name="get-collection-properties",
@@ -195,7 +201,7 @@ async def delete_collection(
     - Storage planning and monitoring
     - Understanding data distribution
     - Collection health checks
-    """
+    """,
 )
 async def get_collection_properties(
     collection_name: str = Field(
@@ -211,12 +217,13 @@ async def get_collection_properties(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await collection_agent.arun({
-        "operation": "get_collection_properties",
-        "database_name": database_name,
-        "collection_name": collection_name
-    })
+    return await collection_agent.arun(
+        {
+            "operation": "get_collection_properties",
+            "database_name": database_name,
+            "collection_name": collection_name,
+        }
+    )

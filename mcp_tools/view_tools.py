@@ -1,5 +1,6 @@
 # mcp_server/mcp_tools/view_tools.py
 from typing import Any, Dict, List, Optional
+
 from pydantic import Field
 
 from agents.view_management_agent import ViewManagementAgent
@@ -41,8 +42,9 @@ Example for 'search-alias' view type (requires an existing inverted index on the
 }
 """
 
+
 @mcp_app.tool(
-    name="list-views", 
+    name="list-views",
     description="""Lists all search views for full-text search and aggregation capabilities.
     
     Views in ArangoDB provide advanced search and aggregation:
@@ -65,11 +67,11 @@ Example for 'search-alias' view type (requires an existing inverted index on the
     Common view types:
     - ArangoSearch: Comprehensive full-text search with custom analyzers
     - Search-alias: Lightweight views over existing inverted indexes
-    """
+    """,
 )
 async def list_views(
     database_name: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="""Target database name. Uses default database if not specified.
         
         Examples:
@@ -78,16 +80,14 @@ async def list_views(
         - 'knowledge_base' - documentation and articles
         
         Views are database-specific and tied to collections in that database.
-        """
+        """,
     )
 ) -> Dict[str, Any]:
-    return await view_agent.arun({
-        "operation": "list_views",
-        "database_name": database_name
-    })
+    return await view_agent.arun({"operation": "list_views", "database_name": database_name})
+
 
 @mcp_app.tool(
-    name="create-view", 
+    name="create-view",
     description="""Creates a new search view for full-text search and aggregation.
     
     View types and capabilities:
@@ -118,7 +118,7 @@ async def list_views(
     - Test with sample data before production
     - Monitor performance and optimize accordingly
     - Plan analyzer strategy for your content
-    """
+    """,
 )
 async def create_view(
     view_name: str = Field(
@@ -157,7 +157,7 @@ async def create_view(
         """
     ),
     properties: Optional[Dict[str, Any]] = Field(
-        default=None, 
+        default=None,
         description=f"""View configuration properties (optional for initial ArangoSearch creation).
         
         For ArangoSearch views, you can:
@@ -174,23 +174,25 @@ async def create_view(
         {SEARCHALIAS_PROPERTIES_EXAMPLE}
         
         Start minimal and iterate - you can always update configuration later.
-        """
+        """,
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await view_agent.arun({
-        "operation": "create_view",
-        "database_name": database_name,
-        "view_name": view_name,
-        "view_type": view_type,
-        "properties": properties # Pass None if user doesn't provide it
-    })
+    return await view_agent.arun(
+        {
+            "operation": "create_view",
+            "database_name": database_name,
+            "view_name": view_name,
+            "view_type": view_type,
+            "properties": properties,  # Pass None if user doesn't provide it
+        }
+    )
+
 
 @mcp_app.tool(
-    name="get-view-properties", 
+    name="get-view-properties",
     description="""Retrieves detailed configuration and status of a search view.
     
     Returns comprehensive view information:
@@ -212,7 +214,7 @@ async def create_view(
     - Performance analysis
     - Configuration verification
     - Index health monitoring
-    """
+    """,
 )
 async def get_view_properties(
     view_name: str = Field(
@@ -230,20 +232,16 @@ async def get_view_properties(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await view_agent.arun({
-        "operation": "get_view_properties",
-        "database_name": database_name,
-        "view_name": view_name
-    })
-
+    return await view_agent.arun(
+        {"operation": "get_view_properties", "database_name": database_name, "view_name": view_name}
+    )
 
 
 @mcp_app.tool(
-    name="update-view-properties", 
+    name="update-view-properties",
     description="""Incrementally updates search view configuration without replacing existing settings.
     
     Update behavior:
@@ -267,7 +265,7 @@ async def get_view_properties(
     - Performance optimization
     
     Note: Updates trigger index rebuilding which may impact performance temporarily.
-    """
+    """,
 )
 async def update_view_properties(
     view_name: str = Field(
@@ -315,19 +313,21 @@ async def update_view_properties(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await view_agent.arun({
-        "operation": "update_view_properties",
-        "database_name": database_name,
-        "view_name": view_name,
-        "properties": properties
-    })
+    return await view_agent.arun(
+        {
+            "operation": "update_view_properties",
+            "database_name": database_name,
+            "view_name": view_name,
+            "properties": properties,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="replace-view-properties", 
+    name="replace-view-properties",
     description="""Completely replaces the search view configuration with a new set of properties.
     
     ⚠️  WARNING: This operation:
@@ -350,7 +350,7 @@ async def update_view_properties(
     - Consider using update-view-properties for smaller changes
     
     This operation is more disruptive than update-view-properties.
-    """
+    """,
 )
 async def replace_view_properties(
     view_name: str = Field(
@@ -379,19 +379,21 @@ async def replace_view_properties(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await view_agent.arun({
-        "operation": "replace_view_properties",
-        "database_name": database_name,
-        "view_name": view_name,
-        "properties": properties
-    })
+    return await view_agent.arun(
+        {
+            "operation": "replace_view_properties",
+            "database_name": database_name,
+            "view_name": view_name,
+            "properties": properties,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="delete-view", 
+    name="delete-view",
     description="""Permanently removes a search view and all its indexes.
     
     ⚠️  WARNING: Deleting a view will:
@@ -416,7 +418,7 @@ async def replace_view_properties(
     - Cleaning up unused views
     - Database optimization and cleanup
     - Search infrastructure restructuring
-    """
+    """,
 )
 async def delete_view(
     view_name: str = Field(
@@ -433,12 +435,9 @@ async def delete_view(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await view_agent.arun({
-        "operation": "delete_view",
-        "database_name": database_name,
-        "view_name": view_name
-    })
+    return await view_agent.arun(
+        {"operation": "delete_view", "database_name": database_name, "view_name": view_name}
+    )

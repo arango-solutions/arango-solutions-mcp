@@ -4,13 +4,14 @@ from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
+
 class ArangoAgentBase(ABC):
     """Base class for ArangoDB operation agents.
-    
+
     Pure data connector - no LLM dependencies.
     The external LLM (Cursor/Claude) handles intelligence.
     """
-    
+
     def __init__(self):
         """Initialize the agent - no LLM needed."""
         pass

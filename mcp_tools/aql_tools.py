@@ -1,10 +1,12 @@
 from typing import Any, Dict, List, Optional
 
 from pydantic import Field
+
 from agents.aql_execution_agent import AQLExecutionAgent
 from server import mcp_app
 
 aql_agent = AQLExecutionAgent()
+
 
 @mcp_app.tool(
     name="execute-aql-query",
@@ -27,7 +29,7 @@ aql_agent = AQLExecutionAgent()
     
     Safety: Only read operations (FOR, RETURN, FILTER, SORT, LIMIT) are recommended.
     Write operations (INSERT, UPDATE, REMOVE, REPLACE) should be used with caution.
-    """
+    """,
 )
 async def execute_aql(
     aql_query: str = Field(
@@ -44,7 +46,7 @@ async def execute_aql(
         """
     ),
     bind_vars: Optional[Dict[str, Any]] = Field(
-        default=None, 
+        default=None,
         description="""Bind variables for parameterized queries (recommended for security).
         
         Use @variable_name in your AQL query and provide values here.
@@ -55,10 +57,10 @@ async def execute_aql(
         - {'startDate': '2023-01-01', 'endDate': '2023-12-31'} for date range queries
         
         Using bind variables prevents AQL injection and improves query caching.
-        """
+        """,
     ),
     database_name: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="""Target database name. If not specified, uses the server's default database.
         
         Examples:
@@ -67,11 +69,11 @@ async def execute_aql(
         - 'test' - for testing environment
         
         Leave empty to use the default database configured in server settings.
-        """
-    )
+        """,
+    ),
 ) -> Dict[str, Any]:
     """Executes an AQL query against ArangoDB.
-    
+
     Returns:
         Dictionary containing:
         - 'results': List of documents/objects returned by the query
@@ -79,13 +81,13 @@ async def execute_aql(
         - 'full_count': Total number of matching documents (if applicable)
         - 'extra_stats': Query execution statistics (time, scanned docs, etc.)
         - 'error': Error message if query failed
-        
+
     Use the statistics to optimize query performance and understand execution.
     """
     tool_input = {
         "aql_query": aql_query,
-        "bind_vars": bind_vars or {}, # Ensure it's a dict, not None
-        "database_name": database_name
+        "bind_vars": bind_vars or {},  # Ensure it's a dict, not None
+        "database_name": database_name,
     }
     result = await aql_agent.arun(tool_input)
     return result
