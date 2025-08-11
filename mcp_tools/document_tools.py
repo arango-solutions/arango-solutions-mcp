@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+
 from pydantic import Field
 
 from agents.document_crud_agent import DocumentCRUDAgent
@@ -6,8 +7,9 @@ from server import mcp_app
 
 doc_agent = DocumentCRUDAgent()
 
+
 @mcp_app.tool(
-    name="create-document", 
+    name="create-document",
     description="""Creates a new document in an ArangoDB collection.
     
     Documents in ArangoDB are JSON objects that can contain:
@@ -27,7 +29,7 @@ doc_agent = DocumentCRUDAgent()
     - Consider indexing frequently queried fields
     - Use consistent data schemas within collections
     - Validate required fields before insertion
-    """
+    """,
 )
 async def create_document(
     collection_name: str = Field(
@@ -59,25 +61,28 @@ async def create_document(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="""Target database name. Uses default database if not specified.
         
         Examples:
         - 'myapp' - application database
         - 'analytics' - analytics data
         - 'staging' - staging environment
-        """
-    )
+        """,
+    ),
 ) -> Dict[str, Any]:
-    return await doc_agent.arun({
-        "operation": "create_document",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "document_data": document_data
-    })
+    return await doc_agent.arun(
+        {
+            "operation": "create_document",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "document_data": document_data,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="create-documents-bulk", 
+    name="create-documents-bulk",
     description="""Efficiently inserts multiple documents into a collection in a single operation.
     
     Bulk operations provide:
@@ -96,7 +101,7 @@ async def create_document(
     - Use batches of 100-1000 documents for optimal performance
     - Ensure consistent document schemas
     - Pre-create indexes for frequently queried fields
-    """
+    """,
 )
 async def create_documents_bulk(
     collection_name: str = Field(
@@ -122,19 +127,21 @@ async def create_documents_bulk(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await doc_agent.arun({
-        "operation": "create_documents_bulk",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "documents_data": documents_data
-    })
+    return await doc_agent.arun(
+        {
+            "operation": "create_documents_bulk",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "documents_data": documents_data,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="read-document", 
+    name="read-document",
     description="""Retrieves a single document by its unique identifier.
     
     ArangoDB documents have unique identifiers:
@@ -148,7 +155,7 @@ async def create_documents_bulk(
     - Fetching individual records for editing
     
     Performance: Document lookups by key/ID are extremely fast (O(1)) due to indexing.
-    """
+    """,
 )
 async def read_document(
     collection_name: str = Field(
@@ -172,19 +179,21 @@ async def read_document(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await doc_agent.arun({
-        "operation": "read_document",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "document_key_or_id": document_key_or_id
-    })
+    return await doc_agent.arun(
+        {
+            "operation": "read_document",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "document_key_or_id": document_key_or_id,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="read-documents-with-filter", 
+    name="read-documents-with-filter",
     description="""Queries documents from a collection using simple filter conditions.
     
     This provides basic filtering capabilities similar to MongoDB's find() or SQL WHERE clauses.
@@ -202,7 +211,7 @@ async def read_document(
     - Quick data exploration
     
     For complex needs like sorting, joins, or aggregations, use AQL queries instead.
-    """
+    """,
 )
 async def read_documents_with_filter(
     collection_name: str = Field(
@@ -229,44 +238,45 @@ async def read_documents_with_filter(
         """
     ),
     limit: int = Field(
-        default=100, 
+        default=100,
         description="""Maximum number of documents to return (1-1000).
         
         Use for pagination and performance:
         - Small collections: 100-500
         - Large collections: 50-200
         - Real-time queries: 10-50
-        """
+        """,
     ),
     skip: int = Field(
-        default=0, 
+        default=0,
         description="""Number of documents to skip (for pagination).
         
         Examples:
         - Page 1: skip=0, limit=20
         - Page 2: skip=20, limit=20
         - Page 3: skip=40, limit=20
-        """
+        """,
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await doc_agent.arun({
-        "operation": "read_documents_filter",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "filters": filters,
-        # "sort_by": sort_by,
-        # "sort_order": sort_order,
-        "limit": limit,
-        "skip": skip
-    })
+    return await doc_agent.arun(
+        {
+            "operation": "read_documents_filter",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "filters": filters,
+            # "sort_by": sort_by,
+            # "sort_order": sort_order,
+            "limit": limit,
+            "skip": skip,
+        }
+    )
 
 
 @mcp_app.tool(
-    name="update-document", 
+    name="update-document",
     description="""Partially updates an existing document, merging new data with existing fields.
     
     Update behavior:
@@ -283,7 +293,7 @@ async def read_documents_with_filter(
     
     Safety: Document must exist or operation will fail.
     For upsert behavior (create if not exists), consider using AQL UPSERT.
-    """
+    """,
 )
 async def update_document(
     collection_name: str = Field(
@@ -311,14 +321,14 @@ async def update_document(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await doc_agent.arun({
-        "operation": "update_document",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "document_data": document_data
-    })
-
+    return await doc_agent.arun(
+        {
+            "operation": "update_document",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "document_data": document_data,
+        }
+    )

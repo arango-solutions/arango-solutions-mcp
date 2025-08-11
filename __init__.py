@@ -11,7 +11,7 @@ the standardized MCP protocol.
 __version__ = "1.0.0"
 __author__ = "ArangoDB MCP Team"
 
-from .server import mcp_app
 from .config import settings
+from .server import mcp_app
 
 __all__ = ["mcp_app", "settings"]

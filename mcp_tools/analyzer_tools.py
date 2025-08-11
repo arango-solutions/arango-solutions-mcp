@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Optional, Union # Union for properties
+from typing import Any, Dict, List, Optional, Union  # Union for properties
+
 from pydantic import Field
 
 from agents.analyzer_management_agent import AnalyzerManagementAgent
@@ -6,8 +7,9 @@ from server import mcp_app
 
 analyzer_agent = AnalyzerManagementAgent()
 
+
 @mcp_app.tool(
-    name="list-analyzers", 
+    name="list-analyzers",
     description="""Lists all text analyzers available for full-text search and text processing.
     
     Analyzers in ArangoDB process text for search operations by:
@@ -28,11 +30,11 @@ analyzer_agent = AnalyzerManagementAgent()
     - Plan full-text search implementations
     - Understand analyzer capabilities for ArangoSearch views
     - Debug text processing issues
-    """
+    """,
 )
 async def list_analyzers(
     database_name: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="""Target database name. Uses default database if not specified.
         
         Examples:
@@ -41,16 +43,16 @@ async def list_analyzers(
         - 'multilingual' - database with multiple languages
         
         Analyzers are database-specific configurations.
-        """
+        """,
     )
 ) -> Dict[str, Any]:
-    return await analyzer_agent.arun({
-        "operation": "list_analyzers",
-        "database_name": database_name
-    })
+    return await analyzer_agent.arun(
+        {"operation": "list_analyzers", "database_name": database_name}
+    )
+
 
 @mcp_app.tool(
-    name="create-analyzer", 
+    name="create-analyzer",
     description="""Creates a custom text analyzer for specialized text processing and search.
     
     Custom analyzers enable:
@@ -76,7 +78,7 @@ async def list_analyzers(
     - Test analyzer output with sample data
     - Consider performance impact of complex processing
     - Use appropriate features for your search needs
-    """
+    """,
 )
 async def create_analyzer(
     analyzer_name: str = Field(
@@ -111,7 +113,7 @@ async def create_analyzer(
         """
     ),
     properties: Optional[Union[Dict[str, Any], str]] = Field(
-        default=None, 
+        default=None,
         description="""Analyzer-specific configuration properties.
         
         For 'text' analyzer:
@@ -136,10 +138,10 @@ async def create_analyzer(
           "delimiter": "-",     // Split character
           "case": "upper"       // Case handling
         }
-        """
+        """,
     ),
     features: Optional[List[str]] = Field(
-        default=None, 
+        default=None,
         description="""Search features to enable for this analyzer.
         
         Available features:
@@ -153,24 +155,26 @@ async def create_analyzer(
         - [] - minimal features for exact matching
         
         More features = more storage and processing overhead.
-        """
+        """,
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await analyzer_agent.arun({
-        "operation": "create_analyzer",
-        "database_name": database_name,
-        "analyzer_name": analyzer_name,
-        "analyzer_type": analyzer_type,
-        "properties": properties,
-        "features": features
-    })
+    return await analyzer_agent.arun(
+        {
+            "operation": "create_analyzer",
+            "database_name": database_name,
+            "analyzer_name": analyzer_name,
+            "analyzer_type": analyzer_type,
+            "properties": properties,
+            "features": features,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="delete-analyzer", 
+    name="delete-analyzer",
     description="""Removes a custom analyzer from the database.
     
     ⚠️  WARNING: Deleting an analyzer will:
@@ -192,7 +196,7 @@ async def create_analyzer(
     - Cleaning up unused custom analyzers
     - Replacing old analyzer configurations
     - Database maintenance and optimization
-    """
+    """,
 )
 async def delete_analyzer(
     analyzer_name: str = Field(
@@ -210,18 +214,20 @@ async def delete_analyzer(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await analyzer_agent.arun({
-        "operation": "delete_analyzer",
-        "database_name": database_name,
-        "analyzer_name": analyzer_name
-    })
+    return await analyzer_agent.arun(
+        {
+            "operation": "delete_analyzer",
+            "database_name": database_name,
+            "analyzer_name": analyzer_name,
+        }
+    )
+
 
 @mcp_app.tool(
-    name="get-analyzer-properties", 
+    name="get-analyzer-properties",
     description="""Retrieves detailed configuration and capabilities of a text analyzer.
     
     Returns comprehensive analyzer information:
@@ -243,7 +249,7 @@ async def delete_analyzer(
     - Analyzer configuration review
     - Planning text processing strategies
     - Understanding built-in analyzer behavior
-    """
+    """,
 )
 async def get_analyzer_definition(
     analyzer_name: str = Field(
@@ -260,12 +266,13 @@ async def get_analyzer_definition(
         """
     ),
     database_name: Optional[str] = Field(
-        default=None, 
-        description="Target database name. Uses default if not specified."
-    )
+        default=None, description="Target database name. Uses default if not specified."
+    ),
 ) -> Dict[str, Any]:
-    return await analyzer_agent.arun({
-        "operation": "get_analyzer_properties", # Agent operation name remains the same
-        "database_name": database_name,
-        "analyzer_name": analyzer_name
-    })
+    return await analyzer_agent.arun(
+        {
+            "operation": "get_analyzer_properties",  # Agent operation name remains the same
+            "database_name": database_name,
+            "analyzer_name": analyzer_name,
+        }
+    )
