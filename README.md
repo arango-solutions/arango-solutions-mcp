@@ -81,7 +81,6 @@ Add to your `claude_desktop_config.json`:
 
 ## Project Structure
 
-```
 mcp_server/
 ├── pyproject.toml           # Poetry configuration (no hardcoding!)
 ├── poetry.lock             # Dependency lock file (auto-generated)
