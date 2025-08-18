@@ -10,65 +10,45 @@ aql_agent = AQLExecutionAgent()
 
 @mcp_app.tool(
     name="execute-aql-query",
-    description="""Executes an ArangoDB Query Language (AQL) query for complex data operations and retrieval.
+    description="""
+    **CRITICAL PREREQUISITE: You MUST use the 'get-aql-manual' tool FIRST before using this tool!**
     
-    AQL is ArangoDB's powerful query language that supports:
-    - Document queries with filtering, sorting, and aggregation
-    - Graph traversals and pattern matching  
-    - Joins across collections
-    - Mathematical and string operations
-    - Full-text search integration
-    - Geospatial queries
+    **Executes an AQL (ArangoDB Query Language) query.** This tool *directly executes*
+    a pre-formulated AQL query. The LLM is responsible for:
+    - **FIRST**: Consulting the AQL manual via 'get-aql-manual' tool to understand syntax
+    - **THEN**: Generating the AQL query using proper AQL syntax from the manual
+    - **FINALLY**: Ensuring the AQL query is syntactically correct before execution
     
-    Use this tool for:
-    - Complex data retrieval that simple CRUD can't handle
-    - Graph analysis and traversals
-    - Analytics and reporting queries
-    - Multi-collection operations
-    - Data transformation and aggregation
+    **WORKFLOW REQUIREMENT:**
+    1. **MANDATORY**: Call 'get-aql-manual' with manual_name="aql_ref" to get AQL syntax guide
+    2. **OPTIONAL**: If translating from Cypher, also call with manual_name="cyphertoaql"
+    3. **ONLY THEN**: Use this tool to execute your properly formed AQL query
     
-    Safety: Only read operations (FOR, RETURN, FILTER, SORT, LIMIT) are recommended.
-    Write operations (INSERT, UPDATE, REMOVE, REPLACE) should be used with caution.
+    This tool *does not* provide any assistance with writing or debugging AQL queries.
+    It only executes the query that you provide in the 'aql_query' parameter.
+    
+    **NEVER use this tool without first consulting the AQL reference manual!**
+    The manual contains essential syntax, functions, and examples needed for correct AQL.
     """,
 )
 async def execute_aql(
     aql_query: str = Field(
-        description="""The AQL query to execute. Should be well-formed AQL syntax.
-        
-        Examples:
-        - Simple query: "FOR doc IN users FILTER doc.age > 25 RETURN doc"
-        - With sorting: "FOR doc IN products FILTER doc.category == 'electronics' SORT doc.price DESC RETURN doc"
-        - Graph traversal: "FOR v, e, p IN 1..3 OUTBOUND 'users/john' GRAPH 'social' RETURN p"
-        - Aggregation: "FOR doc IN orders COLLECT category = doc.category AGGREGATE total = SUM(doc.amount) RETURN {category, total}"
-        - Join collections: "FOR user IN users FOR order IN orders FILTER user._key == order.user_key RETURN {user: user.name, order: order.total}"
-        
-        Always validate your AQL syntax. Use EXPLAIN to understand query performance.
-        """
+        description="""The AQL query to execute.  Provide the complete,
+        correctly-formed AQL query string.  Examples include:
+        - "FOR doc IN users FILTER doc.age > 25 RETURN doc"
+        - "FOR v, e, p IN 1..2 OUTBOUND 'users/123' GRAPH 'mygraph' RETURN p"
+        """,
     ),
     bind_vars: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="""Bind variables for parameterized queries (recommended for security).
+        description="""Bind variables for parameterized queries (optional).
         
-        Use @variable_name in your AQL query and provide values here.
-        
-        Examples:
-        - {'name': 'John', 'minAge': 25} for query "FOR doc IN users FILTER doc.name == @name AND doc.age > @minAge RETURN doc"
-        - {'categories': ['electronics', 'books']} for query "FOR doc IN products FILTER doc.category IN @categories RETURN doc"
-        - {'startDate': '2023-01-01', 'endDate': '2023-12-31'} for date range queries
-        
-        Using bind variables prevents AQL injection and improves query caching.
+        Example: {'name': 'John', 'minAge': 25}
         """,
     ),
     database_name: Optional[str] = Field(
         default=None,
-        description="""Target database name. If not specified, uses the server's default database.
-        
-        Examples:
-        - 'production' - for production data
-        - 'analytics' - for analytics database
-        - 'test' - for testing environment
-        
-        Leave empty to use the default database configured in server settings.
+        description="""Target database name. Uses default if not specified.
         """,
     ),
 ) -> Dict[str, Any]:
