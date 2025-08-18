@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class ViewManagementAgent(ArangoAgentBase):
-
     def _view_exists(self, db_instance, view_name: str) -> bool:
         """
         Helper function to check if a view exists.
