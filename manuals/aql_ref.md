@@ -1,4 +1,4 @@
-# Introduction to AQL
+# AQL language reference
 
 AQL is a descriptive query language for ArangoDB, which is a multi-model
 database. "Multi-model" here says that data can be JSON documents or
@@ -71,6 +71,9 @@ attributes, variables and functions. Names should not be longer than
 256 characters. Normal characters in names need not be quoted. To use
 a keyword or a string with special characters like `-` as a name, one has
 to use backticks as quotes around it.
+
+In the syntax descriptions of the various statements we use the `|` sign
+for alternatives and square brackets `[]` for optional parts.
 
 
 ### Data types in AQL
@@ -721,6 +724,27 @@ FOR a IN coll1
 produces a stream of pairs, enumerating the cartesian product of the documents
 in collection `coll1` and `coll2`.
 
+Note that for accessing a single document in some collection there is also
+the `DOCUMENT` function, which has these two syntaxes:
+
+```aql
+DOCUMENT(collection, key)
+DOCUMENT(id)
+```
+
+In the first form, the first argument is the collection name and the second
+a primary key or id. In the second form the id of the document is given.
+
+It is recommended to use subqueries with the FOR operation and filters
+over DOCUMENT() whenever the collections are known in advance,
+especially for joins, because they perform better, you can add
+additional filters, and combine it with sorting to get an array of
+documents in a guaranteed order.
+
+Queries that use the DOCUMENT() function cannot be cached, each lookup
+is executed as a single operation, the lookups need to be executed on
+Coordinators for sharded collections in cluster deployments, and only
+primary indexes and no projections can be utilized.
 
 ### Filtering
 
@@ -1359,6 +1383,12 @@ statement but must be given at the very beginning of the query.
 
   Views cannot be used as edge collections.
 
+IMPORTANT: Make sure that all vertex collections from which vertices
+will occur during the graph traversals are listed in the `WITH`
+statement at the beginning of the query. This is needed for the ArangoDB
+cluster to be able to get access to the correct collections and the
+query will otherwise fail!
+
 You can optionally specify the following options to modify the execution of a
 graph traversal. If you specify unknown options, query warnings are raised.
 
@@ -1567,12 +1597,16 @@ use the direction defined after `IN`. This allows to use a different
 direction for each collection in your traversal.
 
 
-### Shortest paths
+### Shortest path
 
-On can also express various shortest paths searches using a `FOR` statement.
+On can also express various shortest path searches using a `FOR` statement.
 All these shortest paths statements run one computation per input item.
 
-The easiest is this:
+Note that `SHORTEST_PATH` computes one shortest path and emits the steps
+in it. See `K_SHORTEST_PATHS` for a way to compute multiple shortest paths
+and emit one path at a time.
+
+The syntax is:
 
 ```aql
 FOR vertex[, edge]
@@ -1581,6 +1615,9 @@ FOR vertex[, edge]
   GRAPH graphName
   [OPTIONS options]
 ```
+
+Note that it is **not** possible to give minimal and maximal depths
+with this statement!
 
 - `FOR`: Emits up to two variables:
   - `vertex` (object): The current vertex on the shortest path
@@ -1653,11 +1690,14 @@ With this construct it is not possible to define a condition like: "Find the
 shortest path where all edges are of type *X*". If you want to do this, use a
 normal traversal `{order: "bfs"}` in combination with `LIMIT 1`.
 
-### Multuple shortest paths
+### Multiple shortest paths
 
-The "k-shortest-path" type of query finds the first `k` paths in order
+The "K_SHORTEST_PATHS" type of query finds the first `k` paths in order
 of length (or weight) between two given documents (`startVertex` and
 `targetVertex`) in your graph.
+
+If you need just one shortest path but want to get it as a single item,
+use `K_SHORTEST_PATHS` and follow with `LIMIT 1`.
 
 Every such path is returned as a JSON object with three components:
 
@@ -2306,4 +2346,242 @@ The following options exist for modifying queries:
 
 ### Search queries
 
-TO BE DESCRIBED LATER
+Search queries are only possible if a search view or search-alias view
+exists. Note that search views must be linked to a collection by means of
+a "link" and search-alias views must be linked to a collection by means
+of an "inverted index" on the collection.
+
+In either case, the syntax is:
+
+```aql
+FOR doc IN viewName
+  SEARCH searchexpression
+  OPTIONS { ... }
+```
+
+where `viewName` is the name of a search view or search-alias view and
+`searchexpression` is an ArangoSearch expression to specify what to
+search for.
+
+In general, this searchexpression has to specify two things:
+ - the way data is "analyzed" both when building the index as well as
+   when querying it
+ - the actual search condition
+
+This is, where the pseudo-function `ANALYZER` comes in. For example,
+the searchexpression
+
+```aql
+FOR doc IN view
+  SEARCH ANALYZER(doc.keywords == "dog", "text_en")
+  RETURN doc
+```
+
+means that we are using the `text_en` analyzer, which tokenizes the
+indexed field into individual words. Therefore, the condition
+`doc.keywords == "dog"` is interpreted in this way and the document is
+a match if **one of the tokens** the field contains is `dog`.
+
+If the `ANALYZER` pseudo function call is left out, the default `identity`
+analyzer is used and the condition is only about **complete equality**
+of the field with the string `"dog"`!
+
+Obviously, to use the analyzer `text_en` the field has to be indexed
+with this analyzer, so the search index definition needs the information
+about the analyzer, too.
+
+Logical or Boolean operators allow you to combine multiple search conditions.
+
+- `AND`, `&&` (conjunction)
+- `OR`, `||` (disjunction)
+- `NOT`, `!` (negation / inversion)
+
+The following comparison operators can be used in searchexpressions:
+
+- `==` (equal)
+- `<=` (less than or equal)
+- `>=` (greater than or equal)
+- `<` (less than)
+- `>` (greater than)
+- `!=` (unequal)
+- `IN` (contained in array or range), also `NOT IN`
+- `LIKE` (equal with wildcards), also `NOT LIKE`
+
+Array comparison operators can be used as seen in the following queries:
+
+```aql
+LET tokens = TOKENS("some input", "text_en")                 // ["some", "input"]
+FOR doc IN myView SEARCH tokens  ALL IN doc.text RETURN doc // dynamic conjunction
+FOR doc IN myView SEARCH tokens  ANY IN doc.text RETURN doc // dynamic disjunction
+FOR doc IN myView SEARCH tokens NONE IN doc.text RETURN doc // dynamic negation
+FOR doc IN myView SEARCH tokens  ALL >  doc.text RETURN doc // dynamic conjunction with comparison
+FOR doc IN myView SEARCH tokens  ANY <= doc.text RETURN doc // dynamic disjunction with comparison
+FOR doc IN myView SEARCH tokens NONE <  doc.text RETURN doc // dynamic negation with comparison
+FOR doc IN myView SEARCH tokens AT LEAST (1+1) IN doc.text RETURN doc // dynamically test for a subset of elements
+```
+
+Note how the `TOKENS` function is used to cut a string into its tokens
+using an analyzer.
+
+The following operators are equivalent in `SEARCH` expressions:
+- `ALL IN`, `ALL ==`, `NONE !=`, `NONE NOT IN`
+- `ANY IN`, `ANY ==`
+- `NONE IN`, `NONE ==`, `ALL !=`, `ALL NOT IN`
+- `ALL >`, `NONE <=`
+- `ALL >=`, `NONE <`
+- `ALL <`, `NONE >=`
+- `ALL <=`, `NONE >`
+- `AT LEAST (...) IN`, `AT LEAST (...) ==`
+- `AT LEAST (1) IN`, `ANY IN`
+
+You can use the question mark operator to perform nested searches with
+ArangoSearch:
+
+```aql
+FOR doc IN myView
+  SEARCH doc.dimensions[? FILTER CURRENT.type == "height" AND CURRENT.value > 40]
+  RETURN doc
+```
+
+It allows you to match nested objects in arrays that satisfy multiple
+conditions each, and optionally define how often these conditions should
+be fulfilled for the entire array. You need to configure the View
+specifically for this type of search using the `nested` property in
+`arangosearch` views or in the definition of inverted indexes that you
+can add to search-alias views.
+
+Document attributes which are not configured to be indexed by a View are
+treated by `SEARCH` as non-existent. This affects tests against the documents
+emitted from the View only.
+
+The documents emitted from a View can be sorted by attribute values with
+the standard `SORT` statement, using one or multiple attributes, in
+ascending or descending order (or a mix thereof).
+
+```aql
+FOR doc IN viewName
+  SORT doc.text, doc.value DESC
+  RETURN doc
+```
+
+If the (left-most) fields and their sorting directions match up with the
+primary sort order definition of the View then the `SORT` operation is
+optimized away.
+
+Apart from simple sorting, it is possible to sort the matched View
+documents by relevance score (or a combination of score and attribute
+values if desired). The document search via the `SEARCH` keyword and
+the sorting via the ArangoSearch scoring functions, namely `BM25` and
+`TFIDF`, are closely intertwined. The query given in the `SEARCH`
+expression is not only used to filter documents, but also is used with
+the scoring functions to decide which document matches the query best.
+Other documents in the View also affect this decision.
+
+Therefore the ArangoSearch scoring functions can work **only** on
+documents emitted from a View, as both the corresponding `SEARCH`
+expression and the View itself are consulted in order to sort the
+results.
+
+```aql
+FOR doc IN viewName
+  SEARCH ...
+  SORT BM25(doc) DESC
+  RETURN doc
+```
+
+The `BOOST` can be used to fine-tune the resulting ranking by weighing
+sub-expressions in `SEARCH` differently.
+
+#### Search options
+
+The following options can be used in the `OPTIONS` part of a search
+expression:
+
+ - `collections`: You can specify an array of strings with collection
+   names to restrict the search to certain source collections.
+ - `conditionOptimization`: You can specify one of the following values
+   for this option to control how search criteria get optimized:
+
+    - `"auto"` (default): convert conditions to disjunctive normal form
+      (DNF) and apply optimizations. Removes redundant or overlapping
+      conditions, but can take quite some time even for a low number of
+      nested conditions.
+    - `"none"`: search the index without optimizing the conditions.
+
+ - `countApproximate`: This option controls how the total count of rows
+   is calculated if the `fullCount` option is enabled for a query or when
+   a `COLLECT WITH COUNT` clause is executed. You can set it to one of the
+   following values:
+
+    - `"exact"` (default): rows are actually enumerated for a precise count.
+    - `"cost"`: a cost-based approximation is used. Does not enumerate
+      rows and returns an approximate result with O(1) complexity. Gives a
+      precise result if the `SEARCH` condition is empty or if it contains
+      a single term query only (e.g. `SEARCH doc.field == "value"`), the
+      usual eventual consistency of Views aside.
+
+ - `parallelism`: A `SEARCH` operation can optionally process index
+   segments in parallel using multiple threads. This can speed up search
+   queries but increases CPU and memory utilization.
+
+
+#### Analyzers
+
+The following Analyzer types are available:
+
+- `identity`: treats value as atom (no transformation)
+- `delimiter`: splits into tokens at a user-defined character sequence
+- `multi_delimiter`: splits into tokens at user-defined character sequences
+- `stem`: applies stemming to the value as a whole
+- `norm`: applies normalization to the value as a whole
+- `ngram`: creates _n_-grams from the value with user-defined lengths
+- `text`: tokenizes text strings into words, optionally with stemming,
+  normalization, stop-word filtering and edge _n_-gram generation
+- `segmentation`: tokenizes text in a language-agnostic manner,
+  optionally with normalization
+- `wildcard`: can apply another Analyzer and creates _n_-grams to
+  enable fast partial matching for large strings
+- `aql`: runs an AQL query to prepare tokens for index
+- `pipeline`: chains multiple Analyzers
+- `stopwords`: removes the specified tokens from the input
+- `collation`: respects the alphabetic order of a language in range queries
+- `minhash`: applies another Analyzer and then a locality-sensitive
+  hash function, to find candidates for set comparisons based on the
+  Jaccard index
+- `classification`: classifies the input text using a word embedding model
+- `nearest_neighbors`: finds tokens similar to the ones
+  in the input text using a word embedding model
+- `geojson`: breaks up a GeoJSON object into a set of indexable tokens
+- `geo_s2`: like `geojson` but offers more efficient formats for
+  indexing geo-spatial data
+- `geopoint`: breaks up JSON data describing a coordinate pair into
+  a set of indexable tokens
+
+The following table compares the Analyzers for **text processing**:
+
+Analyzer  /  Capability                   | Tokenization | Stemming | Normalization | _N_-grams
+:----------------------------------------:|:------------:|:--------:|:-------------:|:--------:
+[`stem`](#stem)                           |      No      |   Yes    |      No       |   No
+[`norm`](#norm)                           |      No      |    No    |     Yes       |   No
+[`ngram`](#ngram)                         |      No      |    No    |      No       |  Yes
+[`text`](#text)                           |     Yes      |   Yes    |     Yes       | (Yes)
+[`segmentation`](#segmentation)           |     Yes      |    No    |     Yes       |   No
+
+
+## General instructions for all queries
+
+IMPORTANT: Make sure that all vertex collections from which vertices
+will occur during the graph traversals are listed in the `WITH`
+statement at the beginning of the query. This is needed for the ArangoDB
+cluster to be able to get access to the correct collections and the
+query will otherwise fail!
+
+# EXTREMELY IMPORTANT INFORMATION
+
+You will fail if you don't follow the following final instructions.
+
+1. Always use the `WITH` statement at the very beginning of the query.
+2. Always use a graph traversal to find the vertices and edges that are connected to the vertices if possible.
+3. Graph traversals are the way to go. This is not SQL.
+4. Don't write queries without the`WITH` statement at the very beginning of the query.
+5. If your query isn't working out, make sure you have the `WITH` statement at the very beginning of the query and you're doing a graph traversal if feasible. You can re-read the instructions on graph traversals at any time.
