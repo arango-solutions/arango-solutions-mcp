@@ -130,7 +130,7 @@ async def create_collection(
     name="delete-collection",
     description="""Permanently deletes a collection and all its documents.
     
-    ⚠️  WARNING: This operation is irreversible and will:
+     WARNING: This operation is irreversible and will:
     - Delete ALL documents in the collection
     - Remove all indexes associated with the collection
     - Break any graph definitions using this collection
@@ -155,7 +155,7 @@ async def delete_collection(
     collection_name: str = Field(
         description="""Name of the collection to permanently delete.
         
-        ⚠️  DANGER: All data in this collection will be lost forever.
+         DANGER: All data in this collection will be lost forever.
         
         Examples:
         - 'test_users' - temporary test collection

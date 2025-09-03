@@ -330,7 +330,7 @@ async def update_view_properties(
     name="replace-view-properties",
     description="""Completely replaces the search view configuration with a new set of properties.
     
-    ⚠️  WARNING: This operation:
+     WARNING: This operation:
     - Replaces ALL existing configuration
     - Removes properties not specified in the new configuration
     - Triggers complete index rebuilding
@@ -356,7 +356,7 @@ async def replace_view_properties(
     view_name: str = Field(
         description="""Name of the search view whose configuration will be completely replaced.
         
-        ⚠️  CAUTION: All existing configuration will be lost and replaced.
+         CAUTION: All existing configuration will be lost and replaced.
         
         Examples:
         - 'product_search' - complete search restructuring
@@ -375,7 +375,7 @@ async def replace_view_properties(
         Complete Search-alias configuration:
         {SEARCHALIAS_PROPERTIES_EXAMPLE}
         
-        ⚠️  Include all desired properties - anything omitted will be reset to defaults.
+         Include all desired properties - anything omitted will be reset to defaults.
         """
     ),
     database_name: Optional[str] = Field(
@@ -396,7 +396,7 @@ async def replace_view_properties(
     name="delete-view",
     description="""Permanently removes a search view and all its indexes.
     
-    ⚠️  WARNING: Deleting a view will:
+     WARNING: Deleting a view will:
     - Remove all search indexes and data
     - Break applications using this view for search
     - Free up storage space used by indexes
@@ -424,7 +424,7 @@ async def delete_view(
     view_name: str = Field(
         description="""Name of the search view to permanently delete.
         
-        ⚠️  DANGER: All search indexes and configuration will be lost forever.
+         DANGER: All search indexes and configuration will be lost forever.
         
         Examples:
         - 'old_product_search' - obsolete product search

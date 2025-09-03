@@ -11,7 +11,7 @@ manual_agent = ManualManagementAgent()
 @mcp_app.tool(
     name="get-aql-manual",
     description="""
-    **🚨 CRITICAL: This tool MUST be used FIRST for ALL ArangoDB queries and operations! 🚨**
+    ** CRITICAL: This tool MUST be used FIRST for ALL ArangoDB queries and operations! **
     
     **MANDATORY WORKFLOW:**
     - **ALWAYS** start with this tool before ANY AQL query generation or execution
@@ -22,7 +22,8 @@ manual_agent = ManualManagementAgent()
     - Provides the complete AQL reference manual with syntax rules
     - Contains function definitions and usage examples  
     - Includes Cypher-to-AQL translation patterns
-    - Ensures queries are properly formatted and functional
+    - Provides critical optimization guidance for performant queries
+    - Ensures queries are properly formatted, functional, and optimized
     
     **Available manuals:**
     - **aql_ref**: Complete AQL reference manual. Use this for:
@@ -31,19 +32,26 @@ manual_agent = ManualManagementAgent()
         - Looking up operators, data types, and keywords
         - Learning query patterns and best practices
         
-    - **cyphertoaql**: Cypher-to-AQL translation guide. Use this when:
+    - **cypher2aql**: Cypher-to-AQL translation guide. Use this when:
         - Translating Neo4j Cypher queries to AQL
         - Converting graph patterns with labels and relationships
         - Understanding differences between Cypher and AQL syntax
+        
+    - **optimization**: AQL query optimization guide. Use this for:
+        - Learning how to write performant AQL queries
+        - Understanding index usage and optimization strategies
+        - Replacing vertex-centric patterns with edge-index filtering
+        - Best practices for query performance tuning
     
-    **⚠️ WARNING: Attempting to write AQL queries without consulting this manual first 
-    will likely result in syntax errors and failed executions! ⚠️**
+    **WARNING: Attempting to write AQL queries without consulting these manuals first 
+    will likely result in syntax errors, poor performance, and failed executions! **
     
     **PROPER WORKFLOW:**
     1. **FIRST**: Call this tool with manual_name="aql_ref"
-    2. **STUDY**: Read the returned manual content carefully
-    3. **THEN**: Write your AQL query based on the manual's syntax
-    4. **FINALLY**: Execute the query using 'execute-aql-query'
+    2. **SECOND**: Call this tool with manual_name="optimization" for performance guidance
+    3. **STUDY**: Read both manuals carefully - syntax AND optimization patterns
+    4. **THEN**: Write your optimized AQL query based on both manuals
+    5. **FINALLY**: Execute the query using 'execute-aql-query'
     """,
 )
 async def get_aql_manuals(
@@ -51,8 +59,9 @@ async def get_aql_manuals(
         description="""The name of the manual to retrieve.
 
         Options:
-        - aql_ref:  General AQL reference.
-        - cyphertoaql: Guide to translating Cypher.
+        - aql_ref: General AQL reference.
+        - cypher2aql: Guide to translating Cypher.
+        - optimization: AQL query optimization guide.
         """,
     )
 ) -> Dict[str, Any]:
