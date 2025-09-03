@@ -180,7 +180,7 @@ async def create_index(
     name="delete-index",
     description="""Removes an index to free up storage space and improve write performance.
     
-    ⚠️  WARNING: Deleting an index will:
+     WARNING: Deleting an index will:
     - Slow down queries that depend on this index
     - May cause query timeouts for large collections
     - Cannot be easily undone (requires recreation and rebuild time)
@@ -226,7 +226,7 @@ async def delete_index(
         - Index name: 'email_unique_idx' (custom name from creation)
         - Index name: 'product_search_idx' (compound index name)
         
-        ⚠️  CAUTION: Cannot delete the primary index (_key field).
+         CAUTION: Cannot delete the primary index (_key field).
         
         Use 'list-indexes' to see available indexes and their IDs/names.
         Prefer using custom names for better maintainability.

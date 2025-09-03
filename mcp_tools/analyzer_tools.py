@@ -177,7 +177,7 @@ async def create_analyzer(
     name="delete-analyzer",
     description="""Removes a custom analyzer from the database.
     
-    ⚠️  WARNING: Deleting an analyzer will:
+     WARNING: Deleting an analyzer will:
     - Break any ArangoSearch views using this analyzer
     - Invalidate existing search indexes
     - Require rebuilding views that reference it
@@ -202,7 +202,7 @@ async def delete_analyzer(
     analyzer_name: str = Field(
         description="""Name of the custom analyzer to delete.
         
-        ⚠️  CAUTION: Ensure this analyzer is not used by any ArangoSearch views.
+         CAUTION: Ensure this analyzer is not used by any ArangoSearch views.
         
         Examples:
         - 'old_product_analyzer' - obsolete product code analyzer

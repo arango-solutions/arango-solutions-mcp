@@ -170,7 +170,7 @@ async def create_graph(
     - Delete graph definition only (default): Preserves all data, removes graph structure
     - Delete graph and collections: Removes graph definition AND all associated data
     
-    ⚠️  WARNING: If drop_collections=true:
+     WARNING: If drop_collections=true:
     - ALL vertex and edge data will be permanently deleted
     - Applications using these collections will break
     - Graph traversal queries will fail
@@ -201,7 +201,7 @@ async def delete_graph(
     ),
     drop_collections: bool = Field(
         default=False,
-        description="""⚠️  DANGER: Whether to also delete all collections and data.
+        description=""" DANGER: Whether to also delete all collections and data.
         
         - false (default): Delete only graph definition, preserve data
         - true: Delete graph definition AND all vertex/edge collections

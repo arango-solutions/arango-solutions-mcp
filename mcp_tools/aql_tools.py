@@ -11,24 +11,26 @@ aql_agent = AQLExecutionAgent()
 @mcp_app.tool(
     name="execute-aql-query",
     description="""
-    **CRITICAL PREREQUISITE: You MUST use the 'get-aql-manual' tool FIRST before using this tool!**
+    ** CRITICAL PREREQUISITE: You MUST use the 'get-aql-manual' tool FIRST before using this tool! **
     
     **Executes an AQL (ArangoDB Query Language) query.** This tool *directly executes*
     a pre-formulated AQL query. The LLM is responsible for:
     - **FIRST**: Consulting the AQL manual via 'get-aql-manual' tool to understand syntax
-    - **THEN**: Generating the AQL query using proper AQL syntax from the manual
-    - **FINALLY**: Ensuring the AQL query is syntactically correct before execution
+    - **SECOND**: Consulting the optimization manual to understand performance patterns
+    - **THEN**: Generating the AQL query using proper AQL syntax and optimization patterns
+    - **FINALLY**: Ensuring the AQL query is syntactically correct and optimized before execution
     
-    **WORKFLOW REQUIREMENT:**
+    **MANDATORY WORKFLOW:**
     1. **MANDATORY**: Call 'get-aql-manual' with manual_name="aql_ref" to get AQL syntax guide
-    2. **OPTIONAL**: If translating from Cypher, also call with manual_name="cyphertoaql"
-    3. **ONLY THEN**: Use this tool to execute your properly formed AQL query
+    2. **MANDATORY**: Call 'get-aql-manual' with manual_name="optimization" for performance guidance
+    3. **OPTIONAL**: If translating from Cypher, also call with manual_name="cypher2aql"
+    4. **ONLY THEN**: Use this tool to execute your properly formed AQL query
     
     This tool *does not* provide any assistance with writing or debugging AQL queries.
     It only executes the query that you provide in the 'aql_query' parameter.
     
-    **NEVER use this tool without first consulting the AQL reference manual!**
-    The manual contains essential syntax, functions, and examples needed for correct AQL.
+    **WARNING: Attempting to write AQL queries without consulting both manuals first 
+    will likely result in syntax errors, poor performance, and failed executions! **
     """,
 )
 async def execute_aql(

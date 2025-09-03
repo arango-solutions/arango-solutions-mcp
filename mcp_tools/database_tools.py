@@ -91,7 +91,7 @@ async def create_database_tool_func(
     name="delete-database",
     description="""Permanently deletes a database and all its contents.
     
-    ⚠️  CRITICAL WARNING: This operation is irreversible and will:
+     CRITICAL WARNING: This operation is irreversible and will:
     - Delete ALL collections in the database
     - Remove ALL documents and data
     - Delete ALL indexes and views
@@ -118,7 +118,7 @@ async def delete_database_tool_func(
     database_name: str = Field(
         description="""Name of the database to permanently delete.
         
-        ⚠️  DANGER: All data in this database will be lost forever.
+         DANGER: All data in this database will be lost forever.
         
         Examples:
         - 'old_staging' - obsolete staging database

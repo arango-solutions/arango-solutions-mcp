@@ -26,9 +26,11 @@ class ManualManagementAgent(ArangoAgentBase):
                 file_path = os.path.join(manuals_dir, "aql_ref.md")
             elif manual_name == "cypher2aql":
                 file_path = os.path.join(manuals_dir, "cypher2aql.md")
+            elif manual_name == "optimization":
+                file_path = os.path.join(manuals_dir, "optimization.md")
             else:
                 return {
-                    "error": f"Unknown manual name: {manual_name}.  Available manuals: aql_ref, cypher2aql"
+                    "error": f"Unknown manual name: {manual_name}.  Available manuals: aql_ref, cypher2aql, optimization"
                 }
 
             with open(file_path, "r", encoding="utf-8") as f:
