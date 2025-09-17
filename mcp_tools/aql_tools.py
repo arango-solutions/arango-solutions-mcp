@@ -11,26 +11,44 @@ aql_agent = AQLExecutionAgent()
 @mcp_app.tool(
     name="execute-aql-query",
     description="""
-    ** CRITICAL PREREQUISITE: You MUST use the 'get-aql-manual' tool FIRST before using this tool! **
+    **INTELLIGENT AQL QUERY PROCESSOR AND EXECUTOR**
     
-    **Executes an AQL (ArangoDB Query Language) query.** This tool *directly executes*
-    a pre-formulated AQL query. The LLM is responsible for:
-    - **FIRST**: Consulting the AQL manual via 'get-aql-manual' tool to understand syntax
-    - **SECOND**: Consulting the optimization manual to understand performance patterns
-    - **THEN**: Generating the AQL query using proper AQL syntax and optimization patterns
-    - **FINALLY**: Ensuring the AQL query is syntactically correct and optimized before execution
+    **CRITICAL: This tool expects you to follow the proper workflow BEFORE calling it!**
     
-    **MANDATORY WORKFLOW:**
-    1. **MANDATORY**: Call 'get-aql-manual' with manual_name="aql_ref" to get AQL syntax guide
-    2. **MANDATORY**: Call 'get-aql-manual' with manual_name="optimization" for performance guidance
-    3. **OPTIONAL**: If translating from Cypher, also call with manual_name="cypher2aql"
-    4. **ONLY THEN**: Use this tool to execute your properly formed AQL query
+    **FOR NATURAL LANGUAGE REQUESTS:**
+    - First EXPLORE database structure using tools (list-collections, read-documents-with-filter, etc.)
+    - Then call 'get-aql-manual' with manual_name="aql_ref" and "optimization"
+    - Then create informed AQL based on actual database structure and manual guidelines
+    - Finally call this tool with the optimized AQL
     
-    This tool *does not* provide any assistance with writing or debugging AQL queries.
-    It only executes the query that you provide in the 'aql_query' parameter.
+    **FOR AQL QUERY OPTIMIZATION:**
+    - First UNDERSTAND the given AQL query to analyze what it's trying to achieve
+    - Then EXPLORE database structure being queried using database tools
+    - Then call 'get-aql-manual' with manual_name="aql_ref" and "optimization"
+    - Then analyze and improve the query based on manual guidelines
+    - Finally call this tool with the optimized version
     
-    **WARNING: Attempting to write AQL queries without consulting both manuals first 
-    will likely result in syntax errors, poor performance, and failed executions! **
+    **FOR CYPHER CONVERSION:**
+    **DETECTION: Cypher uses MATCH, WHERE, RETURN keywords (NOT FOR, FILTER, WITH)**
+    - First call 'get-aql-manual' with manual_name="cypher2aql" to understand Cypher syntax
+    - Then ANALYZE the Cypher query to understand variables, patterns, and intent
+    - Then EXPLORE database structure using database tools
+    - Then call 'get-aql-manual' with manual_name="aql_ref" and "optimization"
+    - Then convert Cypher to ACTUAL AQL syntax (FOR/FILTER/RETURN not MATCH/WHERE/RETURN)
+    - **CRITICAL**: Cypher and AQL are completely different - DO NOT copy Cypher and call it AQL!
+    - **MANDATORY**: Finally call this tool with the converted AQL - DO NOT just show the AQL, EXECUTE IT!
+    
+    **INTELLIGENT AUTO-DETECTION:**
+    - Silently analyze input patterns and follow the appropriate workflow
+    - Don't announce what you think the input type is - just proceed correctly
+    - Use syntax patterns to determine workflow, not explicit identification
+    
+    **CRITICAL PRINCIPLES:**
+    - ALWAYS explore database structure using available tools before writing queries
+    - NEVER generate AQL from thin air - base it on actual database exploration
+    - Silently detect input type and follow appropriate workflow automatically
+    
+    This tool executes the final AQL query after proper preparation and optimization.
     """,
 )
 async def execute_aql(
