@@ -1,0 +1,36 @@
+# Development Dockerfile for ArangoDB MCP Server - Simple Approach
+FROM python:3.10-slim
+
+# Install system dependencies
+RUN apt-get update --allow-releaseinfo-change && \
+    apt-get install -y \
+    python3-dev \
+    gcc \
+    g++ \
+    curl \
+    dnsutils \
+    iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Install Poetry
+RUN pip install --no-cache-dir poetry==2.1.1
+
+# Install dependencies including dev dependencies
+RUN poetry install --no-root
+
+# Copy application code
+COPY . .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Run the MCP server directly with Poetry
+CMD ["poetry", "run", "python", "-m", "main"]
+

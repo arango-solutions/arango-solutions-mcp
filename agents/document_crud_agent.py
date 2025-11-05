@@ -29,7 +29,6 @@ class DocumentCRUDAgent(ArangoAgentBase):
         documents_data: Optional[List[Dict[str, Any]]] = mcp_tool_inputs.get("documents_data")
         document_key_or_id: Optional[str] = mcp_tool_inputs.get("document_key_or_id")
 
-        # For query/read_documents_filter
         filters: Optional[Dict[str, Any]] = mcp_tool_inputs.get("filters")
         sort_by: Optional[str] = mcp_tool_inputs.get("sort_by")
         sort_order: str = mcp_tool_inputs.get("sort_order", "ASC").upper()
@@ -40,10 +39,9 @@ class DocumentCRUDAgent(ArangoAgentBase):
             f"DocumentCRUDAgent: Op='{operation}', DB='{database_name}', Collection='{collection_name}'"
         )
 
-        if (
-            not collection_name and operation not in []
-        ):  # Some ops might not need collection_name initially
-            return {"error": "Collection name is required for most document operations."}
+        # Collection name is required for all document operations
+        if not collection_name:
+            return {"error": "Collection name is required for document operations."}
 
         try:
             if not arango_connector.client:
@@ -55,42 +53,45 @@ class DocumentCRUDAgent(ArangoAgentBase):
                 password=settings.arango.root_password,
             )
 
-            if not db.has_collection(collection_name) and collection_name:
-                return {
-                    "error": f"Collection '{collection_name}' not found in database '{database_name}'."
-                }
+            # Check if collection exists, create it if needed for insert operations
+            if not db.has_collection(collection_name):
+                if operation in ["create_document", "create_documents_bulk"]:
+                    # Auto-create collection for insert operations
+                    logger.info(f"Creating collection '{collection_name}' in database '{database_name}'")
+                    db.create_collection(collection_name)
+                else:
+                    return {
+                        "error": f"Collection '{collection_name}' not found in database '{database_name}'."
+                    }
 
-            collection = db.collection(collection_name) if collection_name else None
+            collection = db.collection(collection_name)
 
             if operation == "create_document":
-                if not collection or not document_data:
-                    return {"error": "Collection name and document data are required."}
+                if not document_data:
+                    return {"error": "Document data is required."}
                 meta = collection.insert(document_data)
                 return {"status": "Document created successfully.", "metadata": meta}
 
             elif operation == "create_documents_bulk":
-                if not collection or not documents_data:
-                    return {"error": "Collection name and a list of documents data are required."}
+                if not documents_data:
+                    return {"error": "A list of documents data is required."}
                 results = collection.insert_many(documents_data)
-                # results can be a mix of metadata and error dicts
                 return {"status": "Bulk document insertion attempted.", "results": results}
 
             elif operation == "read_document":
-                if not collection or not document_key_or_id:
-                    return {"error": "Collection name and document key/ID are required."}
+                if not document_key_or_id:
+                    return {"error": "Document key/ID is required."}
                 doc = collection.get(document_key_or_id)
                 return {"document": doc} if doc else {"error": "Document not found."}
 
-            elif operation == "read_documents_filter":  # Simplified find
-                if not collection or not filters:
-                    return {"error": "Collection name and filters are required."}
+            elif operation == "read_documents_filter":
+                if not filters:
+                    return {"error": "Filters are required."}
 
                 sort_options = None
                 if sort_by:
                     sort_options = [{"field": sort_by, "direction": sort_order.lower()}]
 
-                # Use ArangoDB's simple find API for basic filtering
-                # For complex operations like sorting, use the AQL execution tool instead
                 cursor = collection.find(filters, skip=skip, limit=limit)
                 docs = [doc for doc in cursor]
 
@@ -101,18 +102,12 @@ class DocumentCRUDAgent(ArangoAgentBase):
                 }
 
             elif operation == "update_document":
-                if (
-                    not collection
-                    or not document_data
-                    or not ("_key" in document_data or "_id" in document_data)
-                ):
-                    return {
-                        "error": "Collection name and document data (with _key or _id) are required."
-                    }
-                meta = collection.update(document_data, merge=True)  # merge=True for partial update
+                if not document_data:
+                    return {"error": "Document data is required."}
+                if not ("_key" in document_data or "_id" in document_data):
+                    return {"error": "Document data must include _key or _id field."}
+                meta = collection.update(document_data, merge=True)
                 return {"status": "Document updated successfully.", "metadata": meta}
-
-            # TODO: Implement update_documents_bulk, delete_document, delete_documents_bulk, replace_document, upsert_document
 
             else:
                 return {"error": f"Unknown document operation: {operation}"}

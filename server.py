@@ -3,7 +3,6 @@ from mcp.server.fastmcp import FastMCP
 from arango_connector import arango_db_lifespan
 from config import settings
 
-# Explicitly define the server name and instructions
 _server_name = "ArangoDB_MCP_Server"
 _server_instructions = f"""
 Interact with ArangoDB multi-model database for document, graph, and search operations.

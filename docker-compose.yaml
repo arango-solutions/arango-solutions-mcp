@@ -1,0 +1,44 @@
+services:
+  arangodb:
+    image: arangodb/arangodb:latest
+    restart: always
+    container_name: arangodb-mcp-moretools
+    environment:
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-test}
+    ports:
+      - "8529:8529"
+    networks:
+      - mcp-network
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: arangodb-mcp-server-moretools
+    environment:
+      - DEV_MODE=true
+      - ARANGO_HOSTS=http://arangodb-mcp-moretools:8529
+      - ARANGO_ROOT_USERNAME=${ARANGO_ROOT_USERNAME:-root}
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-test}
+      - ARANGO_DEFAULT_DB_NAME=${ARANGO_DEFAULT_DB_NAME:-_system}
+    depends_on:
+      - arangodb
+    networks:
+      - mcp-network
+    develop:
+      watch:
+        - action: sync+restart
+          path: .
+          target: /app
+          ignore:
+            - .git/
+            - __pycache__/
+            - "*.pyc"
+            - dist/
+            - build/
+            - "*.egg-info"
+
+networks:
+  mcp-network:
+    driver: bridge
+

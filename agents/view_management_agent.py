@@ -1,4 +1,3 @@
-# mcp_server/agents/view_management_agent.py
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -39,14 +38,12 @@ class ViewManagementAgent(ArangoAgentBase):
                     f"_view_exists: View '{view_name}' not found (ViewGetError code {e.error_code})."
                 )
                 return False
-            # For other ViewGetErrors (e.g., permission issues), re-raise
             logger.warning(
                 f"_view_exists: Unexpected ViewGetError for view '{view_name}' (code: {e.error_code}): {e.error_message}",
                 exc_info=True,
             )
             raise
         except ArangoServerError as e:
-            # Some ArangoDB versions might throw a more generic ArangoServerError for not found
             if e.error_code in [1203, 1207]:
                 logger.debug(
                     f"_view_exists: View '{view_name}' not found (ArangoServerError code {e.error_code})."
@@ -57,7 +54,7 @@ class ViewManagementAgent(ArangoAgentBase):
                 exc_info=True,
             )
             raise
-        except Exception as e:  # Catch any other unexpected exceptions
+        except Exception as e:
             logger.error(
                 f"_view_exists: Unexpected exception while checking view '{view_name}': {e}",
                 exc_info=True,
@@ -102,16 +99,10 @@ class ViewManagementAgent(ArangoAgentBase):
                     )
                     return {"error": "View name and type are required for creation."}
 
-                # This is where the error was happening according to the log.
-                # _view_exists should now correctly return False if view is not found,
-                # or re-raise if there's another issue during the check.
-                if self._view_exists(db, view_name):  # CHECK 1
+                if self._view_exists(db, view_name):
                     return {
                         "status": f"View '{view_name}' already exists in database '{database_name}'."
                     }
-
-                # If _view_exists returned False, we proceed.
-                # If _view_exists raised an error (e.g. permissions), it would be caught by the outer try-except.
 
                 current_properties = properties
 
@@ -138,14 +129,10 @@ class ViewManagementAgent(ArangoAgentBase):
                 logger.info(f"View '{view_name}' created successfully.")
                 return {"status": "View created successfully.", "view_info": view_info}
 
-            # ... (rest of the operations, ensuring they also use self._view_exists correctly) ...
-            # Make sure all paths that check for view existence use self._view_exists(db, view_name)
-            # and handle the boolean return appropriately.
-
             elif operation == "get_view_properties":
                 if not view_name:
                     return {"error": "View name is required to get properties."}
-                if not self._view_exists(db, view_name):  # CHECK 2
+                if not self._view_exists(db, view_name):
                     return {"error": f"View '{view_name}' not found in database '{database_name}'."}
                 view_info = db.view(view_name)
                 return {"view_properties": view_info}
@@ -153,7 +140,7 @@ class ViewManagementAgent(ArangoAgentBase):
             elif operation == "update_view_properties":
                 if not view_name:
                     return {"error": "View name is required for update."}
-                if not self._view_exists(db, view_name):  # CHECK 5
+                if not self._view_exists(db, view_name):
                     return {"error": f"View '{view_name}' not found."}
 
                 view_obj_props = db.view(view_name)
@@ -178,7 +165,7 @@ class ViewManagementAgent(ArangoAgentBase):
             elif operation == "replace_view_properties":
                 if not view_name:
                     return {"error": "View name is required for replacement."}
-                if not self._view_exists(db, view_name):  # CHECK 6
+                if not self._view_exists(db, view_name):
                     return {"error": f"View '{view_name}' not found."}
 
                 view_obj_props = db.view(view_name)
@@ -194,7 +181,7 @@ class ViewManagementAgent(ArangoAgentBase):
                 elif view_actual_type == "search-alias":
                     if (
                         "indexes" not in properties
-                    ):  # Ensure properties are valid for search-alias replacement
+                    ):  
                         return {
                             "error": "For replacing 'search-alias' view type, 'properties' must include 'indexes' definition."
                         }
@@ -217,7 +204,7 @@ class ViewManagementAgent(ArangoAgentBase):
             elif operation == "delete_view":
                 if not view_name:
                     return {"error": "View name is required for deletion."}
-                if not self._view_exists(db, view_name):  # CHECK 7
+                if not self._view_exists(db, view_name):
                     return {"status": f"View '{view_name}' not found, no action taken."}
 
                 success = db.delete_view(view_name, ignore_missing=False)
@@ -226,7 +213,6 @@ class ViewManagementAgent(ArangoAgentBase):
             else:
                 return {"error": f"Unknown view operation: {operation}"}
 
-        # Catching specific ArangoDB errors first
         except (
             ViewListError,
             ViewCreateError,
@@ -243,7 +229,6 @@ class ViewManagementAgent(ArangoAgentBase):
                 "error": f"ArangoDB View Error: {getattr(e, 'error_message', str(e))}",
                 "error_code": getattr(e, "error_code", None),
             }
-        # Catch any other unexpected exceptions
         except Exception as e:
             logger.error(
                 f"ViewManagementAgent: Unexpected error - Op: {operation}, DB: {database_name}, View: {view_name}, Error: {e}",

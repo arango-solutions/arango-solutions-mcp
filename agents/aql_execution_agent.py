@@ -26,7 +26,6 @@ class AQLExecutionAgent(ArangoAgentBase):
         )
 
         try:
-            # Get the specific database if provided, else use default from connector
             if not arango_connector.client:
                 logger.error("AQLExecutionAgent: ArangoDB client not initialized.")
                 return {"error": "ArangoDB client not initialized."}
@@ -36,10 +35,6 @@ class AQLExecutionAgent(ArangoAgentBase):
                 username=settings.arango.root_username,
                 password=settings.arango.root_password,
             )
-
-            # Note: In production, consider adding query validation
-            # to restrict dangerous operations (INSERT, UPDATE, REMOVE, REPLACE)
-            # based on security requirements
 
             cursor = db_to_query.aql.execute(
                 aql_query, bind_vars=bind_vars, count=True, full_count=True
@@ -67,7 +62,7 @@ class AQLExecutionAgent(ArangoAgentBase):
                 "error_code": e.error_code,
                 "details": str(e),
             }
-        except ArangoServerError as e:  # Catch other server errors like DB not found
+        except ArangoServerError as e:
             logger.error(f"AQLExecutionAgent: ArangoServerError in DB '{database_name}': {e}")
             return {
                 "error": f"ArangoDB Server Error: {e.error_message}",

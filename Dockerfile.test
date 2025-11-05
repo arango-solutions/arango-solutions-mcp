@@ -1,0 +1,41 @@
+# Test Dockerfile for ArangoDB MCP Server
+FROM python:3.10-slim
+
+# Install system dependencies
+RUN apt-get update --allow-releaseinfo-change && \
+    apt-get install -y \
+    python3-dev \
+    gcc \
+    g++ \
+    curl \
+    dnsutils \
+    iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock* ./
+
+# Install Poetry
+RUN pip install poetry==2.1.1
+
+# Install all dependencies including dev dependencies for testing
+RUN poetry install --no-root
+
+# Copy application code
+COPY . .
+
+# Install the package
+RUN poetry install
+
+# Make test entrypoint executable
+RUN chmod +x /app/entrypoint-tests.sh
+
+# Set environment variables
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1
+
+# Run tests
+ENTRYPOINT ["/app/entrypoint-tests.sh"]
+

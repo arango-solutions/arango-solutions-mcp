@@ -267,8 +267,6 @@ async def read_documents_with_filter(
             "database_name": database_name,
             "collection_name": collection_name,
             "filters": filters,
-            # "sort_by": sort_by,
-            # "sort_order": sort_order,
             "limit": limit,
             "skip": skip,
         }

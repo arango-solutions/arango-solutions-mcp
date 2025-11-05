@@ -30,17 +30,14 @@ class ArangoDBSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="ARANGO_", env_file=".env", extra="ignore")
 
-    # Connection settings - MUST be provided via environment variables
     hosts: str = Field(description="ArangoDB server URLs (e.g., http://localhost:8529)")
     root_username: str = Field(description="ArangoDB username")
     root_password: str = Field(description="ArangoDB password - REQUIRED via environment")
     default_db_name: str = Field(default="_system", description="Default database name")
 
-    # Connection pool settings
     max_connections: int = Field(default=50, description="Maximum concurrent connections")
     timeout: int = Field(default=30, description="Connection timeout in seconds")
 
-    # SSL settings
     verify_ssl: bool = Field(default=False, description="Verify SSL certificates")
     ssl_cert_path: str = Field(
         default="", description="Path to SSL certificate file (supports cross-platform paths)"
@@ -50,21 +47,18 @@ class ArangoDBSettings(BaseSettings):
     @classmethod
     def validate_ssl_cert_path(cls, v: str) -> str:
         """Validate and normalize SSL certificate path for cross-platform compatibility."""
-        if not v:  # Empty string is valid (no SSL cert)
+        if not v:
             return v
 
         try:
-            # Convert to Path object for cross-platform handling
             cert_path = Path(v).resolve()
 
-            # Check if file exists (only if path is provided)
             if not cert_path.exists():
                 raise ValueError(f"SSL certificate file not found: {cert_path}")
 
             if not cert_path.is_file():
                 raise ValueError(f"SSL certificate path is not a file: {cert_path}")
 
-            # Return the resolved absolute path as string
             return str(cert_path)
 
         except Exception as e:
@@ -89,5 +83,4 @@ class AppSettings(BaseSettings):
     server: ServerSettings = ServerSettings()
 
 
-# Global settings instance
 settings = AppSettings()

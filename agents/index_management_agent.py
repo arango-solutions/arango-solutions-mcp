@@ -51,7 +51,6 @@ class IndexManagementAgent(ArangoAgentBase):
             elif operation == "create_index":
                 if not index_definition:
                     return {"error": "Index definition is required for creation."}
-                # Basic validation for index definition
                 if not index_definition.get("type"):
                     return {"error": "Index definition must include 'type' field."}
 
@@ -116,7 +115,7 @@ class IndexManagementAgent(ArangoAgentBase):
                     )
                     if target_index_obj:
                         target_index_id = target_index_obj["id"]
-                    else:  # not found by id or name
+                    else:
                         return {
                             "error": f"Index '{index_id_or_name}' not found in collection '{collection_name}'."
                         }
@@ -126,7 +125,7 @@ class IndexManagementAgent(ArangoAgentBase):
 
                 success = collection.delete_index(
                     target_index_id, ignore_missing=False
-                )  # already checked existence
+                )  
                 return {
                     "status": f"Index '{index_id_or_name}' deleted successfully.",
                     "success": success,
