@@ -27,6 +27,9 @@ class GraphManagementAgent(ArangoAgentBase):
         from_vertex_id: Optional[str] = mcp_tool_inputs.get("from_vertex_id")
         to_vertex_id: Optional[str] = mcp_tool_inputs.get("to_vertex_id")
         edge_data: Optional[Dict[str, Any]] = mcp_tool_inputs.get("edge_data")
+        
+        # For create_edges_bulk
+        edges_data: Optional[List[Dict[str, Any]]] = mcp_tool_inputs.get("edges_data")
 
         logger.info(
             f"GraphManagementAgent: Op='{operation}', DB='{database_name}', Graph='{graph_name}'"
@@ -108,6 +111,34 @@ class GraphManagementAgent(ArangoAgentBase):
 
                 meta = edge_collection.insert(edge_document_to_insert)
                 return {"status": "Edge created successfully.", "edge_metadata": meta}
+
+            elif operation == "create_edges_bulk":
+                if not graph_name or not edge_collection_name or not edges_data:
+                    return {
+                        "error": "Graph name, edge collection name, and edges_data are required for bulk edge creation."
+                    }
+                if not db.has_graph(graph_name):
+                    return {"error": f"Graph '{graph_name}' not found."}
+
+                graph_obj = db.graph(graph_name)
+                if not graph_obj.has_edge_definition(edge_collection_name):
+                    return {
+                        "error": f"Edge collection '{edge_collection_name}' not part of graph '{graph_name}' definitions."
+                    }
+
+                edge_collection = graph_obj.edge_collection(edge_collection_name)
+
+                # Prepare edge documents with _from and _to fields
+                edges_to_insert = []
+                for edge in edges_data:
+                    if "_from" not in edge or "_to" not in edge:
+                        return {
+                            "error": "Each edge in edges_data must include '_from' and '_to' fields."
+                        }
+                    edges_to_insert.append(edge)
+
+                results = edge_collection.insert_many(edges_to_insert)
+                return {"status": "Bulk edge insertion attempted.", "results": results}
 
             else:
                 return {"error": f"Unknown graph operation: {operation}"}

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional  # List removed as it's not directly used for type hints here
+from typing import Any, Dict, Optional
 
 from pydantic import Field
 

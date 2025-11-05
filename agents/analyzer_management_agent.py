@@ -17,18 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 class AnalyzerManagementAgent(ArangoAgentBase):
-    """Agent for managing ArangoDB text analyzers."""
+    """Agent for managing ArangoDB analyzers."""
 
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
         analyzer_name: Optional[str] = mcp_tool_inputs.get("analyzer_name")
 
-        # For create_analyzer
         analyzer_type: Optional[str] = mcp_tool_inputs.get("analyzer_type")
-        properties: Optional[Dict[str, Any]] = mcp_tool_inputs.get(
-            "properties"
-        )  # Can be Dict or str (for N-Gram)
+        properties: Optional[Dict[str, Any]] = mcp_tool_inputs.get("properties")
         features: Optional[List[str]] = mcp_tool_inputs.get("features")
 
         logger.info(
@@ -53,15 +50,27 @@ class AnalyzerManagementAgent(ArangoAgentBase):
                 if not analyzer_name or not analyzer_type:
                     return {"error": "Analyzer name and type are required for creation."}
 
-                # Basic validation for N-Gram analyzer
-                if (
-                    analyzer_type == "ngram"
-                    and isinstance(properties, dict)
-                    and ("minN" not in properties or "maxN" not in properties)
-                ):
-                    return {
-                        "error": "For N-Gram analyzer, properties must include 'minN' and 'maxN'."
-                    }
+                validation_rules = {
+                    "ngram": ["minN", "maxN"],
+                    "delimiter": ["delimiter"],
+                    "text": ["locale"],
+                    "stem": ["locale"],
+                    "norm": ["locale"],
+                }
+                
+                if analyzer_type in validation_rules:
+                    required_props = validation_rules[analyzer_type]
+                    
+                    if not isinstance(properties, dict):
+                        return {
+                            "error": f"For {analyzer_type} analyzer, properties must be a dictionary."
+                        }
+                    
+                    missing_props = [prop for prop in required_props if prop not in properties]
+                    if missing_props:
+                        return {
+                            "error": f"For {analyzer_type} analyzer, properties must include: {', '.join(required_props)}. Missing: {', '.join(missing_props)}"
+                        }
 
                 analyzer_info = db.create_analyzer(
                     name=analyzer_name,
@@ -75,10 +84,8 @@ class AnalyzerManagementAgent(ArangoAgentBase):
                 if not analyzer_name:
                     return {"error": "Analyzer name is required for deletion."}
 
-                success = db.delete_analyzer(
-                    analyzer_name, ignore_missing=True
-                )  # Set ignore_missing based on desired behavior
-                if success:  # delete_analyzer returns True/False
+                success = db.delete_analyzer(analyzer_name, ignore_missing=True)
+                if success:
                     return {"status": f"Analyzer '{analyzer_name}' deleted successfully."}
                 else:
                     return {
@@ -89,7 +96,7 @@ class AnalyzerManagementAgent(ArangoAgentBase):
                 if not analyzer_name:
                     return {"error": "Analyzer name is required to get properties."}
 
-                analyzer_def = db.analyzer(analyzer_name)  # this gets the definition
+                analyzer_def = db.analyzer(analyzer_name)
                 return {"analyzer_definition": analyzer_def}
 
             else:

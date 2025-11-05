@@ -20,7 +20,6 @@ class ManualManagementAgent(ArangoAgentBase):
             if operation != "get_aql_manual":
                 return {"error": f"Unknown manual operation: {operation}"}
 
-            # Construct the correct path to the manuals
             manuals_dir = "manuals"
             if manual_name == "aql_ref":
                 file_path = os.path.join(manuals_dir, "aql_ref.md")

@@ -2,44 +2,47 @@
 
 A comprehensive Model Context Protocol (MCP) server for ArangoDB multi-model database operations. This server provides document, graph, and search capabilities through a clean, Poetry-managed Python environment with zero hardcoded configuration.
 
+> **Note:** These MCP tools are built based on the **ArangoDB Community Edition**. All features available in the Community Edition work seamlessly. Features that are common to both Community and Enterprise editions will also work. However, advanced features exclusive to the Enterprise Edition.
 
+## Installation & Setup
 
 ### Prerequisites
-
-- Python 3.10 or higher
-- [Poetry](https://python-poetry.org/docs/#installation) for dependency management
+- Docker installed on your system
 - ArangoDB instance (local or remote)
 
-### 1. Installation
+### 1. Build the Docker Image
 
 ```bash
 # Clone or extract the project
-cd mcp_server
+cd arango-mcp-server
 
-# Install dependencies with Poetry
-poetry install
+# Build the Docker image
+docker build -t arangodb-mcp-server:latest -f Dockerfile .
 ```
 
 ### 2. Configuration
 
-The server uses environment variables configured through your MCP client's `mcp.json` file. **No hardcoded credentials!**
-
 #### For Cursor IDE:
 
-Edit your `.cursor/mcp.json` file:
+1. Open Cursor IDE
+2. Go to **Settings** (Ctrl+,)
+3. Navigate to **Features** → **Tools**
+4. Click on **"New MCP Server"**
+5. Configure the server with these settings:
 
 ```json
 {
   "mcpServers": {
     "arangodb-mcp": {
-      "command": "poetry",
-      "args": ["run", "python", "main.py"],
-      "env": {
-        "ARANGO_HOSTS": "http://localhost:8529",
-        "ARANGO_ROOT_USERNAME": "root",
-        "ARANGO_ROOT_PASSWORD": "your_password_here",
-        "ARANGO_DEFAULT_DB_NAME": "myapp"
-      }
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--network", "host",
+        "-e", "ARANGO_HOSTS=http://localhost:8529",
+        "-e", "ARANGO_ROOT_USERNAME=root",
+        "-e", "ARANGO_ROOT_PASSWORD=root",
+        "-e", "ARANGO_DEFAULT_DB_NAME=test",
+        "arangodb-mcp-server:latest"
+      ]
     }
   }
 }
@@ -53,40 +56,39 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "arangodb-mcp": {
-      "command": "poetry",
-      "args": ["run", "python", "main.py"],
-      "cwd": "/path/to/mcp_server",
-      "env": {
-        "ARANGO_HOSTS": "http://localhost:8529",
-        "ARANGO_ROOT_USERNAME": "root",
-        "ARANGO_ROOT_PASSWORD": "your_password_here",
-        "ARANGO_DEFAULT_DB_NAME": "myapp"
-      }
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--network", "host",
+        "-e", "ARANGO_HOSTS=http://localhost:8529",
+        "-e", "ARANGO_ROOT_USERNAME=root",
+        "-e", "ARANGO_ROOT_PASSWORD=root",
+        "-e", "ARANGO_DEFAULT_DB_NAME=test",
+        "arangodb-mcp-server:latest"
+      ]
     }
   }
 }
 ```
 
-### 3. Environment Variables
+**Note:** Update the environment variables (`ARANGO_HOSTS`, `ARANGO_ROOT_USERNAME`, `ARANGO_ROOT_PASSWORD`, `ARANGO_DEFAULT_DB_NAME`) to match your ArangoDB instance configuration.
+
+## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ARANGO_HOSTS` | Yes | - | ArangoDB server URL(s) |
 | `ARANGO_ROOT_USERNAME` | Yes | - | ArangoDB username |
 | `ARANGO_ROOT_PASSWORD` | Yes | - | ArangoDB password |
-| `ARANGO_DEFAULT_DB_NAME` | No | `_system` | Default database name |
+| `ARANGO_DEFAULT_DB_NAME` | Yes | - | Default database name |
 
-
-```
 
 ## Project Structure
 
-mcp_server/
-├── pyproject.toml           # Poetry configuration (no hardcoding!)
-├── poetry.lock             # Dependency lock file (auto-generated)
+```
+arango-mcp-server/
+├── pyproject.toml           # Poetry configuration 
+├── poetry.lock             # Dependency lock file 
 ├── README.md               # This file
-├── .cursor/
-│   └── mcp.json           # Cursor MCP configuration
 ├── main.py                # Entry point
 ├── server.py              # FastMCP server setup
 ├── config.py              # Pydantic settings (env-based)
@@ -101,7 +103,8 @@ mcp_server/
 │   ├── aql_execution_agent.py
 │   ├── index_management_agent.py
 │   ├── analyzer_management_agent.py
-│   └── view_management_agent.py
+│   ├── view_management_agent.py
+│   └── manual_management_agent.py
 ├── mcp_tools/             # MCP tool definitions
 │   ├── __init__.py
 │   ├── database_tools.py
@@ -111,8 +114,12 @@ mcp_server/
 │   ├── aql_tools.py
 │   ├── index_tools.py
 │   ├── analyzer_tools.py
-│   └── view_tools.py
-
+│   ├── view_tools.py
+│   └── manual_tools.py
+└── manuals/               # AQL documentation
+    ├── aql_ref.md
+    ├── cypher2aql.md
+    └── optimization.md
 ```
 
 ##  Available Tools
@@ -144,6 +151,7 @@ mcp_server/
 
 ### AQL Queries
 - `execute-aql-query` - Run AQL queries with bind variables
+- `get-aql-manual` - Access AQL reference documentation (aql_ref, cypher2aql, optimization)
 
 ### Index Management
 - `list-indexes` - Show collection indexes
@@ -172,4 +180,19 @@ mcp_server/
 2. Create tool definitions in `mcp_tools/` directory
 3. Import in `server.py`
 
+## Troubleshooting
+
+### Import Errors
+If you see import errors, ensure any deleted modules or new tools added/remove from `mcp_tools/__init__.py`.
+
+### Connection Issues
+- Verify ArangoDB is running on the specified host
+- Check environment variables are correctly set
+- Ensure Poetry dependencies are installed: `poetry install`
+
+### Tool Discovery
+If tools don't appear in your MCP client:
+- Restart the MCP client
+- Check the server logs for connection errors
+- Verify the JSON configuration syntax
 

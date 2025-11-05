@@ -24,7 +24,7 @@ class CollectionManagementAgent(ArangoAgentBase):
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
         collection_name: Optional[str] = mcp_tool_inputs.get("collection_name")
-        collection_type: str = mcp_tool_inputs.get("collection_type", "document")  # document, edge
+        collection_type: str = mcp_tool_inputs.get("collection_type", "document")
 
         logger.info(
             f"CollectionManagementAgent: Op='{operation}', DB='{database_name}', Collection='{collection_name}'"
@@ -43,7 +43,6 @@ class CollectionManagementAgent(ArangoAgentBase):
 
             if operation == "list_collections":
                 all_collections_info = db.collections()
-                # Filter out system collections (those starting with '_')
                 user_collections_info = [
                     col_info
                     for col_info in all_collections_info
@@ -64,36 +63,36 @@ class CollectionManagementAgent(ArangoAgentBase):
                 return {"error": f"Collection name is required for operation '{operation}'."}
 
             if operation == "create_collection":
-                if db.has_collection(collection_name):  # type: ignore
+                if db.has_collection(collection_name):
                     return {
                         "status": f"Collection '{collection_name}' already exists in database '{database_name}'."
                     }
 
                 is_edge = collection_type.lower() == "edge"
-                created_collection = db.create_collection(collection_name, edge=is_edge)  # type: ignore
+                created_collection = db.create_collection(collection_name, edge=is_edge)
                 return {
                     "status": f"Collection '{collection_name}' (type: {'edge' if is_edge else 'document'}) created successfully in database '{database_name}'.",
                     "collection_info": created_collection.properties(),
                 }
 
             elif operation == "delete_collection":
-                if not db.has_collection(collection_name):  # type: ignore
+                if not db.has_collection(collection_name):
                     return {
                         "error": f"Collection '{collection_name}' not found in database '{database_name}'."
                     }
 
-                db.delete_collection(collection_name, ignore_missing=False)  # type: ignore
+                db.delete_collection(collection_name, ignore_missing=False)
                 return {
                     "status": f"Collection '{collection_name}' deleted successfully from database '{database_name}'."
                 }
 
             elif operation == "get_collection_properties":
-                if not db.has_collection(collection_name):  # type: ignore
+                if not db.has_collection(collection_name):
                     return {
                         "error": f"Collection '{collection_name}' not found in database '{database_name}'."
                     }
 
-                collection_obj = db.collection(collection_name)  # type: ignore
+                collection_obj = db.collection(collection_name)
                 properties = collection_obj.properties()
                 count = collection_obj.count()
                 statistics = collection_obj.statistics()

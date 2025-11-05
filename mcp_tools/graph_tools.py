@@ -354,3 +354,107 @@ async def create_edge(
             "edge_data": edge_data,
         }
     )
+
+
+@mcp_app.tool(
+    name="create-edges-bulk",
+    description="""Efficiently creates multiple edges (relationships) in a single bulk operation.
+    
+    Bulk edge creation provides:
+    - Better performance for large graph structures
+    - Reduced network overhead
+    - Atomic batch processing
+    - Detailed success/failure reporting per edge
+    
+    Use this for:
+    - Building large graph structures (social networks, knowledge graphs)
+    - Data migration and graph imports
+    - Loading relationship data from external sources
+    - Batch processing of relationship creation
+    - High-throughput graph construction
+    
+    Performance tips:
+    - Use batches of 100-1000 edges for optimal performance
+    - Ensure all referenced vertices exist before creating edges
+    - Pre-validate _from and _to vertex IDs
+    - Consider creating indexes on frequently traversed paths
+    
+    Common patterns:
+    - Social networks: bulk import friendships, follows
+    - E-commerce: import purchase history, product similarities
+    - Knowledge graphs: bulk relationship imports
+    - Organizational structures: employee reporting relationships
+    """,
+)
+async def create_edges_bulk(
+    graph_name: str = Field(
+        description="""Name of the graph containing the edge collection.
+        
+        Examples:
+        - 'social_network' - for bulk user relationships
+        - 'product_catalog' - for bulk product relationships
+        - 'knowledge_graph' - for bulk concept relationships
+        
+        The graph must already exist and define the target edge collection.
+        """
+    ),
+    edge_collection_name: str = Field(
+        description="""Name of the edge collection where relationships will be stored.
+        
+        Examples:
+        - 'follows' - for bulk user following relationships
+        - 'purchases' - for bulk customer purchase relationships
+        - 'similar_to' - for bulk product similarity relationships
+        - 'knows' - for bulk social connections
+        
+        Must be defined in the graph's edge definitions.
+        """
+    ),
+    edges_data: List[Dict[str, Any]] = Field(
+        description="""Array of edge objects to insert. Each edge must include '_from' and '_to' fields.
+        
+        Required fields for each edge:
+        - '_from': Full document ID of source vertex (format: 'collection/key')
+        - '_to': Full document ID of target vertex (format: 'collection/key')
+        
+        Examples:
+        
+        Social network (friendships):
+        [
+          {"_from": "users/alice", "_to": "users/bob", "since": "2023-01-15", "strength": 0.9},
+          {"_from": "users/alice", "_to": "users/charlie", "since": "2023-02-20", "strength": 0.7},
+          {"_from": "users/bob", "_to": "users/charlie", "since": "2023-03-10", "strength": 0.8}
+        ]
+        
+        E-commerce (purchases):
+        [
+          {"_from": "customers/c123", "_to": "products/p456", "amount": 99.99, "date": "2023-12-01"},
+          {"_from": "customers/c123", "_to": "products/p789", "amount": 149.99, "date": "2023-12-02"},
+          {"_from": "customers/c456", "_to": "products/p456", "amount": 99.99, "date": "2023-12-03"}
+        ]
+        
+        Knowledge graph (relationships):
+        [
+          {"_from": "concepts/ai", "_to": "concepts/ml", "type": "includes", "strength": 0.95},
+          {"_from": "concepts/ml", "_to": "concepts/dl", "type": "includes", "strength": 0.9},
+          {"_from": "concepts/dl", "_to": "concepts/nn", "type": "uses", "strength": 0.85}
+        ]
+        
+        All vertex IDs must exist before creating edges.
+        Response will include details about successful and failed insertions.
+        Recommendation: Keep batches under 1000 edges for optimal performance.
+        """
+    ),
+    database_name: Optional[str] = Field(
+        default=None, description="Target database name. Uses default if not specified."
+    ),
+) -> Dict[str, Any]:
+    return await graph_agent.arun(
+        {
+            "operation": "create_edges_bulk",
+            "database_name": database_name,
+            "graph_name": graph_name,
+            "edge_collection_name": edge_collection_name,
+            "edges_data": edges_data,
+        }
+    )

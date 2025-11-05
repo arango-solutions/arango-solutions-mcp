@@ -86,7 +86,7 @@ async def execute_aql(
     """
     tool_input = {
         "aql_query": aql_query,
-        "bind_vars": bind_vars or {},  # Ensure it's a dict, not None
+        "bind_vars": bind_vars or {},
         "database_name": database_name,
     }
     result = await aql_agent.arun(tool_input)

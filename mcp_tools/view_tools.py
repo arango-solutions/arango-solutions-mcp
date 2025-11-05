@@ -1,4 +1,3 @@
-# mcp_server/mcp_tools/view_tools.py
 from typing import Any, Dict, List, Optional
 
 from pydantic import Field
@@ -186,7 +185,7 @@ async def create_view(
             "database_name": database_name,
             "view_name": view_name,
             "view_type": view_type,
-            "properties": properties,  # Pass None if user doesn't provide it
+            "properties": properties,
         }
     )
 
