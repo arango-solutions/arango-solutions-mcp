@@ -4,23 +4,25 @@ A comprehensive Model Context Protocol (MCP) server for ArangoDB multi-model dat
 
 > **Note:** These MCP tools are built based on the **ArangoDB Community Edition**. All features available in the Community Edition work seamlessly. Features that are common to both Community and Enterprise editions will also work. However, advanced features exclusive to the Enterprise Edition.
 
-## Installation & Setup
-
 ### Prerequisites
-- Docker installed on your system
+
+- Python 3.10 or higher
+- [Poetry](https://python-poetry.org/docs/#installation) for dependency management
 - ArangoDB instance (local or remote)
 
-### 1. Build the Docker Image
+### 1. Installation
 
 ```bash
 # Clone or extract the project
 cd arango-mcp-server
 
-# Build the Docker image
-docker build -t arangodb-mcp-server:latest -f Dockerfile .
+# Install dependencies with Poetry
+poetry install
 ```
 
 ### 2. Configuration
+
+The server uses environment variables configured through your MCP client's `mcp.json` file. **No hardcoded credentials!**
 
 #### For Cursor IDE:
 
@@ -28,25 +30,26 @@ docker build -t arangodb-mcp-server:latest -f Dockerfile .
 2. Go to **Settings** (Ctrl+,)
 3. Navigate to **Features** → **Tools**
 4. Click on **"New MCP Server"**
-5. Configure the server with these settings:
+5. Configure the server with these json settings:
 
 ```json
 {
   "mcpServers": {
     "arangodb-mcp": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm", "--network", "host",
-        "-e", "ARANGO_HOSTS=http://localhost:8529",
-        "-e", "ARANGO_ROOT_USERNAME=root",
-        "-e", "ARANGO_ROOT_PASSWORD=root",
-        "-e", "ARANGO_DEFAULT_DB_NAME=test",
-        "arangodb-mcp-server:latest"
-      ]
+      "command": "poetry",
+      "args": ["-C", "C:\\path\\to\\arango-mcp-server", "run", "python", "-m", "main"],
+      "env": {
+        "ARANGO_HOSTS": "http://localhost:8529",
+        "ARANGO_ROOT_USERNAME": "root",
+        "ARANGO_ROOT_PASSWORD": "your_password_here",
+        "ARANGO_DEFAULT_DB_NAME": "your_db_name"
+      }
     }
   }
 }
 ```
+
+**Note:** Replace `C:\Users\YourUsername\path\to\arango-mcp-server` with the actual path to your project directory. The `-C` flag specifies the working directory for Poetry.
 
 #### For Claude Desktop:
 
@@ -56,23 +59,20 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "arangodb-mcp": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm", "--network", "host",
-        "-e", "ARANGO_HOSTS=http://localhost:8529",
-        "-e", "ARANGO_ROOT_USERNAME=root",
-        "-e", "ARANGO_ROOT_PASSWORD=root",
-        "-e", "ARANGO_DEFAULT_DB_NAME=test",
-        "arangodb-mcp-server:latest"
-      ]
+      "command": "poetry",
+      "args": ["-C", "C:\\path\\to\\arango-mcp-server", "run", "python", "-m", "main"],
+      "env": {
+        "ARANGO_HOSTS": "http://localhost:8529",
+        "ARANGO_ROOT_USERNAME": "root",
+        "ARANGO_ROOT_PASSWORD": "your_password_here",
+        "ARANGO_DEFAULT_DB_NAME": "your_db_name"
+      }
     }
   }
 }
 ```
 
-**Note:** Update the environment variables (`ARANGO_HOSTS`, `ARANGO_ROOT_USERNAME`, `ARANGO_ROOT_PASSWORD`, `ARANGO_DEFAULT_DB_NAME`) to match your ArangoDB instance configuration.
-
-## Environment Variables
+### 3. Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
