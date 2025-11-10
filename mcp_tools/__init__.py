@@ -6,5 +6,6 @@ from . import (
     graph_tools,
     index_tools,
     manual_tools,
+    query_profiler_tools,
     view_tools,
 )
