@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # Reasoner Pod (FastAPI)
+  reasoner-pod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reasoner-pod
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      OPENCODE_BASE_URL: ${OPENCODE_BASE_URL:-http://host.docker.internal:4099}
+      OPENCODE_PROVIDER: ${OPENCODE_PROVIDER:-openai}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-gpt-4o}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CHECKPOINT_DIR: /app/data/checkpoints
+      LOGS_DIR: /app/data/logs
+    volumes:
+      - reasoner_data:/app/data
+    networks:
+      - reasoner-network
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  reasoner-network:
+    driver: bridge
+
+volumes:
+  reasoner_data:
+
+
