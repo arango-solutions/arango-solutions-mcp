@@ -1,5 +1,0 @@
-"""
-External service clients
-"""
-
-

@@ -1,5 +1,0 @@
-"""
-FastAPI middleware
-"""
-
-
