@@ -1,0 +1,16 @@
+---
+# Image
+images:
+  application:
+    registry: PLACEHOLDER
+    image: mcp-server/service
+    tag: PLACEHOLDER
+    kind: Application
+
+# Deployment
+arangodb_platform:
+  deployment:
+    name: PLACEHOLDER
+
+# Profiles needed for the deployment
+profiles: ""

@@ -1,0 +1,289 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@5.1
+  slack: circleci/slack@5.1.1
+
+parameters:
+  image-name:
+    type: string
+    default: "arangodb-mcp-server"
+  image-folder:
+    type: string
+    default: "mcp-server"
+  dev-role:
+    type: string
+    default: "arn:aws:iam::889010145541:role/circleci-project-dev-mcp-server"
+  qa-role:
+    type: string
+    default: "arn:aws:iam::889010145541:role/circleci-project-qa-mcp-server"
+  prod-role:
+    type: string
+    default: "arn:aws:iam::889010145541:role/circleci-project-prd-mcp-server"
+  login-role:
+    type: string
+    default: "889010145541.dkr.ecr.us-east-1.amazonaws.com"
+  prod-image:
+    type: string
+    description: "Full production image path including service name (used for Docker builds)"
+    default: "889010145541.dkr.ecr.us-east-1.amazonaws.com/release/prd/mcp-server/service"
+  prod-image-base:
+    type: string
+    description: "Base production registry path without service name (used for chart generation)"
+    default: "889010145541.dkr.ecr.us-east-1.amazonaws.com/release/prd"
+  qa-image:
+    type: string
+    description: "Full QA image path including service name (used for Docker builds)"
+    default: "889010145541.dkr.ecr.us-east-1.amazonaws.com/release/qa/mcp-server/service"
+  qa-image-base:
+    type: string
+    description: "Base QA registry path without service name (used for chart generation)"
+    default: "889010145541.dkr.ecr.us-east-1.amazonaws.com/release/qa"
+  dev-image:
+    type: string
+    description: "Full development image path including service name (used for Docker builds)"
+    default: "889010145541.dkr.ecr.us-east-1.amazonaws.com/release/dev/mcp-server/service"
+  dev-image-base:
+    type: string
+    description: "Base development registry path without service name (used for chart generation)"
+    default: "889010145541.dkr.ecr.us-east-1.amazonaws.com/release/dev"
+  region:
+    type: string
+    default: "us-east-1"
+
+executors:
+  golang-executor:
+    docker:
+      - image: 889010145541.dkr.ecr.us-east-1.amazonaws.com/release/prd/framework/runner:v0.2.16
+        aws_auth:
+          oidc_role_arn: << pipeline.parameters.dev-role >>
+
+jobs:
+  image-commit-dev:
+    executor: golang-executor
+    steps:
+      - checkout
+      - run: git fetch --depth=10000 --tags
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.dev-role >>'
+          region: << pipeline.parameters.region >>
+      - run: aws ecr get-login-password --region << pipeline.parameters.region >> | docker login --username AWS --password-stdin << pipeline.parameters.login-role >>
+      - run: |
+          docker build -f Dockerfile . -t "<< pipeline.parameters.dev-image >>:$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7)" --push \
+            --build-arg PRIVATE_PYPI_URL=${PYTHON_REPO_URL} \
+            --build-arg PRIVATE_PYPI_USERNAME=${PYPI_ACCOUNT_USER} \
+            --build-arg PRIVATE_PYPI_PASSWORD=${PYPI_ACCOUNT_KEY} \
+            --build-arg PRIVATE_PYPI_REPO=${PYTHON_REPO_ID}
+
+  chart-commit-dev:
+    executor: golang-executor
+    steps:
+      - checkout
+      - run: git fetch --depth=10000 --tags
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.dev-role >>'
+          region: << pipeline.parameters.region >>
+      - run: >
+          bash charts/patch.sh charts/ dest/ \
+            "$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7)" \
+            "<< pipeline.parameters.dev-image-base >>" \
+            << pipeline.parameters.image-name >>
+      - run: stat "dest/<< pipeline.parameters.image-name >>-$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7).tgz"
+      - run: aws s3 cp "dest/<< pipeline.parameters.image-name >>-$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7).tgz" "s3://arangodb-platform-dev-chart-registry/charts/<< pipeline.parameters.image-folder >>/<< pipeline.parameters.image-name >>/$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7)/<< pipeline.parameters.image-name >>-$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7).tgz"
+
+  image-commit-qa:
+    executor: golang-executor
+    steps:
+      - checkout
+      - run: git fetch --depth=10000 --tags
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.qa-role >>'
+          region: << pipeline.parameters.region >>
+      - run: aws ecr get-login-password --region << pipeline.parameters.region >> | docker login --username AWS --password-stdin << pipeline.parameters.login-role >>
+      - run: |
+          docker build --no-cache -f Dockerfile . -t "<< pipeline.parameters.qa-image >>:$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7)" --push \
+            --build-arg PRIVATE_PYPI_URL=${PYTHON_REPO_URL} \
+            --build-arg PRIVATE_PYPI_USERNAME=${PYPI_ACCOUNT_USER} \
+            --build-arg PRIVATE_PYPI_PASSWORD=${PYPI_ACCOUNT_KEY} \
+            --build-arg PRIVATE_PYPI_REPO=${PYTHON_REPO_ID}
+
+  chart-commit-qa:
+    executor: golang-executor
+    steps:
+      - checkout
+      - run: git fetch --depth=10000 --tags
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.qa-role >>'
+          region: << pipeline.parameters.region >>
+      - run: >
+          bash charts/patch.sh charts/ dest/ \
+            "$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7)" \
+            "<< pipeline.parameters.qa-image-base >>" \
+            << pipeline.parameters.image-name >>
+      - run: stat "dest/<< pipeline.parameters.image-name >>-$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7).tgz"
+      - run: aws s3 cp "dest/<< pipeline.parameters.image-name >>-$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7).tgz" "s3://arangodb-platform-qa-chart-registry/charts/<< pipeline.parameters.image-folder >>/<< pipeline.parameters.image-name >>/$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7)/<< pipeline.parameters.image-name >>-$(git describe --tags --abbrev=0)-$(echo ${CIRCLE_SHA1} | cut -c -7).tgz"
+
+  image-commit-prd:
+    executor: golang-executor
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.prod-role >>'
+          region: << pipeline.parameters.region >>
+      - run: aws ecr get-login-password --region << pipeline.parameters.region >> | docker login --username AWS --password-stdin << pipeline.parameters.login-role >>
+      - run: |
+          docker build --no-cache -f Dockerfile . -t "<< pipeline.parameters.prod-image >>:${CIRCLE_TAG}" --push \
+            --build-arg PRIVATE_PYPI_URL=${PYTHON_REPO_URL} \
+            --build-arg PRIVATE_PYPI_USERNAME=${PYPI_ACCOUNT_USER} \
+            --build-arg PRIVATE_PYPI_PASSWORD=${PYPI_ACCOUNT_KEY} \
+            --build-arg PRIVATE_PYPI_REPO=${PYTHON_REPO_ID}
+
+  chart-commit-prd:
+    executor: golang-executor
+    steps:
+      - checkout
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.prod-role >>'
+          region: << pipeline.parameters.region >>
+      - run: >
+          bash charts/patch.sh charts/ dest/ \
+            "${CIRCLE_TAG}" \
+            "<< pipeline.parameters.prod-image-base >>" \
+            << pipeline.parameters.image-name >>
+      - run: stat "dest/<< pipeline.parameters.image-name>>-${CIRCLE_TAG}.tgz"
+      - run: aws s3 cp "dest/<< pipeline.parameters.image-name>>-${CIRCLE_TAG}.tgz" "s3://arangodb-platform-prd-chart-registry/charts/<< pipeline.parameters.image-folder>>/<< pipeline.parameters.image-name >>/${CIRCLE_TAG}/<< pipeline.parameters.image-name >>-${CIRCLE_TAG}.tgz"
+
+  refresh-dev:
+    executor: golang-executor
+    steps:
+      - checkout
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.dev-role >>'
+          region: << pipeline.parameters.region >>
+      - run: framework-helper snf --arn "arn:aws:states:us-east-1:889010145541:stateMachine:arangodb-platform-dev-lambda-s3" --version "<< pipeline.parameters.image-name >>"
+
+  refresh-qa:
+    executor: golang-executor
+    steps:
+      - checkout
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.qa-role >>'
+          region: << pipeline.parameters.region >>
+      - run: framework-helper snf --arn "arn:aws:states:us-east-1:889010145541:stateMachine:arangodb-platform-qa-lambda-s3" --version "<< pipeline.parameters.image-name >>"
+
+  refresh-prd:
+    executor: golang-executor
+    steps:
+      - checkout
+      - aws-cli/setup:
+          role_arn: '<< pipeline.parameters.prod-role >>'
+          region: << pipeline.parameters.region >>
+      - run: framework-helper snf --arn "arn:aws:states:us-east-1:889010145541:stateMachine:arangodb-platform-prd-lambda-s3" --version "<< pipeline.parameters.image-name >>"
+
+workflows:
+  dev:
+    jobs:
+      - image-commit-dev:
+          context:
+            - aws
+            - agml-pypi
+          filters:
+            branches:
+              ignore: main
+      - chart-commit-dev:
+          context: aws
+          filters:
+            branches:
+              ignore: main
+          requires:
+            - image-commit-dev
+      - refresh-dev:
+          context: aws
+          filters:
+            branches:
+              ignore: main
+          requires:
+            - chart-commit-dev
+
+  qa:
+    jobs:
+      - image-commit-qa:
+          context:
+            - aws
+            - agml-pypi
+          filters:
+            branches:
+              only: main
+      - chart-commit-qa:
+          context: aws
+          filters:
+            branches:
+              only: main
+          requires:
+            - image-commit-qa
+      - refresh-qa:
+          context: aws
+          filters:
+            branches:
+              only: main
+          requires:
+            - chart-commit-qa
+
+  release:
+    jobs:
+      - image-commit-prd:
+          context:
+            - aws
+            - agml-pypi
+          filters:
+            tags:
+              only:
+                - /^v.*/
+            branches:
+              ignore: /.*/
+      - chart-commit-prd:
+          context: aws
+          filters:
+            tags:
+              only:
+                - /^v.*/
+            branches:
+              ignore: /.*/
+          requires:
+            - image-commit-prd
+      - refresh-dev:
+          context: aws
+          filters:
+            tags:
+              only:
+                - /^v.*/
+            branches:
+              ignore: /.*/
+          requires:
+            - chart-commit-prd
+      - refresh-qa:
+          context: aws
+          filters:
+            tags:
+              only:
+                - /^v.*/
+            branches:
+              ignore: /.*/
+          requires:
+            - chart-commit-prd
+      - refresh-prd:
+          context: aws
+          filters:
+            tags:
+              only:
+                - /^v.*/
+            branches:
+              ignore: /.*/
+          requires:
+            - chart-commit-prd
