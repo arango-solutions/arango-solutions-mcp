@@ -1,0 +1,63 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "template.releaseName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    profiles.arangodb.com/deployment: deployment
+    app.kubernetes.io/name: {{ template "template.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    release: {{ .Release.Name }}
+    type: deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "template.name" . }}
+      app.kubernetes.io/managed-by: {{ .Release.Service }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      release: {{ .Release.Name }}
+      type: deployment
+  template:
+    metadata:
+      annotations:
+        profiles.arangodb.com/profiles: {{ .Values.profiles }}
+      labels:
+        app.kubernetes.io/name: {{ template "template.name" . }}
+        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        release: {{ .Release.Name }}
+        type: deployment
+        integration.profiles.arangodb.com/authn: v1
+        integration.profiles.arangodb.com/authz: v0
+        integration.profiles.arangodb.com/meta: v1
+        profiles.arangodb.com/deployment: {{ .Values.arangodb_platform.deployment.name }}
+    spec:
+      containers:
+        - name: mcp-server
+          image: "{{ .Values.images.application.registry }}/{{ .Values.images.application.image }}:{{ .Values.images.application.tag }}"
+          env:
+            - name: ARANGO_HOSTS
+              value: "http://w0grvpi3.rnd.pilot.arango.ai"
+            - name: ARANGO_ROOT_USERNAME
+              value: "root"
+            - name: ARANGO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: arangodb-secret
+                  key: password
+            - name: ARANGO_DEFAULT_DB_NAME
+              value: "_system"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "0.25"
+            limits:
+              memory: "1Gi"
+              cpu: "0.5"
+          # Note: MCP server uses stdio transport, not HTTP
+          # Health checks are handled by process monitoring
