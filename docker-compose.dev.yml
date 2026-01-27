@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # ArangoDB database (same as production)
+  arangodb:
+    image: arangodb:3.12.7
+    container_name: arangodb-dev
+    environment:
+      ARANGO_ROOT_PASSWORD: test
+    ports:
+      - "8529:8529"
+    volumes:
+      - arangodb_dev_data:/var/lib/arangodb3
+      - arangodb_dev_apps:/var/lib/arangodb3-apps
+    networks:
+      - mcp-dev-network
+
+  # MCP Server (Development mode with hot reload)
+  mcp-server-dev:
+    build: .
+    container_name: mcp-server-dev
+    environment:
+      # ArangoDB connection
+      ARANGO_HOSTS: "http://arangodb:8529"
+      ARANGO_ROOT_USERNAME: "root"
+      ARANGO_ROOT_PASSWORD: "test"
+      ARANGO_DEFAULT_DB_NAME: "_system"
+      # Server configuration
+      MCP_SERVER_LOG_LEVEL: "DEBUG"
+    ports:
+      - "8050:8050"
+    volumes:
+      # Mount source code for development
+      - ./server.py:/app/server.py
+      - ./main.py:/app/main.py
+      - ./config.py:/app/config.py
+      - ./arango_connector.py:/app/arango_connector.py
+      - ./mcp_tools:/app/mcp_tools
+      - ./agents:/app/agents
+    depends_on:
+      - arangodb
+    networks:
+      - mcp-dev-network
+    # Override command for development with auto-reload
+    command: poetry run uvicorn server:app --host 0.0.0.0 --port 8050 --reload
+
+volumes:
+  arangodb_dev_data:
+  arangodb_dev_apps:
+
+networks:
+  mcp-dev-network:
+    driver: bridge

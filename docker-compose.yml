@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # ArangoDB database
+  arangodb:
+    image: arangodb:3.12.7
+    container_name: arangodb
+    environment:
+      ARANGO_ROOT_PASSWORD: test
+    ports:
+      - "8529:8529"
+    volumes:
+      - arangodb_data:/var/lib/arangodb3
+      - arangodb_apps:/var/lib/arangodb3-apps
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8529/_api/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MCP Server (HTTP mode)
+  mcp-server:
+    build: .
+    container_name: mcp-server
+    environment:
+      # ArangoDB connection
+      ARANGO_HOSTS: "http://arangodb:8529"
+      ARANGO_ROOT_USERNAME: "root"
+      ARANGO_ROOT_PASSWORD: "test"
+      ARANGO_DEFAULT_DB_NAME: "_system"
+      # Server configuration
+      MCP_SERVER_LOG_LEVEL: "INFO"
+    ports:
+      - "8050:8050"
+    depends_on:
+      arangodb:
+        condition: service_healthy
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  arangodb_data:
+  arangodb_apps:
+
+networks:
+  mcp-network:
+    driver: bridge

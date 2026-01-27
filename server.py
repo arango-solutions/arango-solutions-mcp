@@ -1,4 +1,4 @@
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from arango_connector import arango_db_lifespan
 from config import settings
@@ -457,6 +457,31 @@ and handles authentication automatically.
 # Create the FastMCP application instance
 mcp_app = FastMCP(name=_server_name, instructions=_server_instructions, lifespan=arango_db_lifespan)
 
+# Add health check endpoint for HTTP transport
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+@mcp_app.custom_route("/health", methods=["GET"])
+async def health_check(request: Request) -> JSONResponse:
+    """Health check endpoint for monitoring and load balancers."""
+    from arango_connector import arango_connector
+    
+    # Check ArangoDB connection health
+    is_healthy = arango_connector.health_check()
+    
+    status_code = 200 if is_healthy else 503
+    
+    return JSONResponse(
+        {
+            "status": "healthy" if is_healthy else "unhealthy",
+            "service": settings.server.server_name,
+            "version": settings.server.server_version,
+            "database_connected": is_healthy,
+            "default_database": settings.arango.default_db_name if is_healthy else None,
+        },
+        status_code=status_code
+    )
+
 # Import tool and resource modules to register them
 # These imports MUST happen AFTER mcp_app is defined.
 from mcp_tools import (
@@ -471,3 +496,7 @@ from mcp_tools import (
     query_profiler_tools,
     view_tools,
 )
+
+# Create ASGI application for production deployment
+# This can be used with: uvicorn server:app --host 0.0.0.0 --port 8050
+app = mcp_app.http_app()
