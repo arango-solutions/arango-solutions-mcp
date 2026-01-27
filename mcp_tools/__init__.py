@@ -1,4 +1,5 @@
 from . import (
+    analyzer_tools,
     aql_tools,
     collection_tools,
     database_tools,

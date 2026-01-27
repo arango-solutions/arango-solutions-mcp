@@ -12,6 +12,6 @@ __version__ = "1.0.0"
 __author__ = "ArangoDB MCP Team"
 
 from .config import settings
-from .server import mcp_app
+from .server import app, mcp_app
 
-__all__ = ["mcp_app", "settings"]
+__all__ = ["app", "mcp_app", "settings"]

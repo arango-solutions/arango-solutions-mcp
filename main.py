@@ -44,7 +44,15 @@ def setup_event_loop_policy():
 
 
 def run_server_cli():
-    """CLI entry point for the server."""
+    """CLI entry point for the server.
+    
+    Supports both STDIO and HTTP transports based on configuration.
+    
+    Environment Variables:
+        MCP_TRANSPORT: 'stdio' (default) or 'http'
+        MCP_HTTP_HOST: HTTP bind address (default: 0.0.0.0)
+        MCP_HTTP_PORT: HTTP port (default: 8000)
+    """
     logger.info(f"Starting {settings.server.server_name} v{settings.server.server_version}")
     logger.info(f"Platform: {platform.system()} {platform.release()}")
     logger.info(f"Python: {sys.version}")
@@ -53,8 +61,39 @@ def run_server_cli():
     try:
         setup_event_loop_policy()
 
-        logger.info("Starting MCP server with stdio transport...")
-        mcp_app.run(transport="stdio")
+        transport = settings.server.transport.lower()
+        
+        if transport == "http":
+            logger.info("=" * 70)
+            logger.info("Starting MCP server with HTTP Streamable transport...")
+            logger.info(f"HTTP Server: http://{settings.server.http_host}:{settings.server.http_port}")
+            logger.info(f"MCP Endpoint: http://{settings.server.http_host}:{settings.server.http_port}/mcp")
+            logger.info("=" * 70)
+            logger.info("HTTP transport enables:")
+            logger.info("  - Multiple concurrent clients")
+            logger.info("  - Network accessibility")
+            logger.info("  - Integration with Cline, OpenCode, and web clients")
+            logger.info("=" * 70)
+            
+            # Use Uvicorn to run the HTTP server with ASGI app
+            import uvicorn
+            from server import app
+            
+            logger.info("Starting with Uvicorn ASGI server (production mode)...")
+            uvicorn.run(
+                app,
+                host=settings.server.http_host,
+                port=settings.server.http_port,
+                log_level=settings.server.log_level.lower()
+            )
+        else:
+            logger.info("Starting MCP server with STDIO transport...")
+            logger.info("STDIO transport is ideal for:")
+            logger.info("  - Cursor IDE integration")
+            logger.info("  - Claude Desktop integration")
+            logger.info("  - Local development and testing")
+            
+            mcp_app.run(transport="stdio")
 
     except KeyboardInterrupt:
         logger.info("Server shutdown requested by user. Exiting.")

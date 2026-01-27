@@ -197,11 +197,27 @@ class ArangoDBSettings(BaseSettings):
 class ServerSettings(BaseSettings):
     """MCP server configuration settings."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="MCP_", env_file=".env", extra="ignore")
 
     server_name: str = "ArangoDB MCP Server"
     server_version: str = "1.0.0"
     log_level: str = "INFO"
+    
+    # Transport configuration
+    transport: str = Field(
+        default="stdio",
+        description="Transport protocol: 'stdio' for local clients (Cursor, Claude Desktop) or 'http' for network access (Cline, OpenCode)"
+    )
+    
+    # HTTP transport settings (used only when transport='http')
+    http_host: str = Field(
+        default="0.0.0.0",
+        description="HTTP server bind address (0.0.0.0 for all interfaces, 127.0.0.1 for localhost only)"
+    )
+    http_port: int = Field(
+        default=8000,
+        description="HTTP server port"
+    )
 
 
 class AppSettings(BaseSettings):
