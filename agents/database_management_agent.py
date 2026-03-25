@@ -1,6 +1,5 @@
-# mcp_server/agents/database_management_agent.py
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from arango.exceptions import (
     ArangoServerError,
@@ -10,8 +9,7 @@ from arango.exceptions import (
 )
 
 from agents.agent_base import ArangoAgentBase
-from arango_connector import arango_connector  # arango_connector.get_db() returns StandardDatabase
-from config import settings
+from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +17,10 @@ logger = logging.getLogger(__name__)
 class DatabaseManagementAgent(ArangoAgentBase):
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation = mcp_tool_inputs.get("operation")
-        db_name_param = mcp_tool_inputs.get("database_name")  # Parameter from tool call
+        db_name_param: Optional[str] = mcp_tool_inputs.get("database_name")
 
         try:
-            # For listing databases, creating, or deleting, we always need the _system db context
-            if not arango_connector.client:
-                logger.error("DatabaseManagementAgent: ArangoDB client not initialized.")
-                return {"error": "ArangoDB client not initialized."}
-
-            # Get a connection to the _system database for system-level operations
-            system_db = arango_connector.client.db(
-                "_system",
-                username=settings.arango.root_username,
-                password=settings.arango.root_password,
-            )
+            system_db = arango_connector.get_system_db()
 
             if operation == "list_databases":
                 databases = system_db.databases()  # Correct: called on _system db
@@ -63,17 +51,8 @@ class DatabaseManagementAgent(ArangoAgentBase):
                 return {"status": f"Database '{db_to_delete_name}' deleted.", "success": success}
 
             elif operation == "get_database_info":
-                # For get_database_info, we connect to the specific database requested, or default
-                target_db_name = db_name_param or settings.arango.default_db_name
-
-                if not arango_connector.client:  # Should be caught above, but for safety
-                    return {"error": "ArangoDB client not initialized."}
-
-                db_to_inspect = arango_connector.client.db(
-                    target_db_name,
-                    username=settings.arango.root_username,
-                    password=settings.arango.root_password,
-                )
+                db_to_inspect = arango_connector.get_db(db_name_param)
+                target_db_name = db_name_param or db_to_inspect.name
                 info = db_to_inspect.properties()
                 return {"database_info": info, "database_name": target_db_name}
 
