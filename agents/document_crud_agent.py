@@ -107,6 +107,44 @@ class DocumentCRUDAgent(ArangoAgentBase):
                 meta = collection.replace(document_data)
                 return {"status": "Document replaced successfully.", "metadata": meta}
 
+            elif operation == "upsert_document":
+                search_fields: Optional[Dict[str, Any]] = mcp_tool_inputs.get("search_fields")
+                if not search_fields or not document_data:
+                    return {"error": "Both search_fields and document_data are required for upsert."}
+                update_data = mcp_tool_inputs.get("update_data") or document_data
+
+                aql = (
+                    "UPSERT @search "
+                    "INSERT @insert "
+                    "UPDATE @update "
+                    f"IN `{collection_name}` "
+                    "RETURN { old: OLD, new: NEW }"
+                )
+                cursor = db.aql.execute(aql, bind_vars={
+                    "search": search_fields,
+                    "insert": document_data,
+                    "update": update_data,
+                })
+                result_doc = next(cursor, None)
+                was_insert = result_doc["old"] is None if result_doc else None
+                return {
+                    "status": "Document upserted successfully.",
+                    "was_insert": was_insert,
+                    "document": result_doc["new"] if result_doc else None,
+                }
+
+            elif operation == "update_documents_bulk":
+                if not documents_data:
+                    return {"error": "A list of documents data is required."}
+                results = collection.update_many(documents_data, merge=True)
+                return {"status": "Bulk update attempted.", "results": results}
+
+            elif operation == "delete_documents_bulk":
+                if not documents_data:
+                    return {"error": "A list of documents (with _key or _id) is required."}
+                results = collection.delete_many(documents_data)
+                return {"status": "Bulk delete attempted.", "results": results}
+
             else:
                 return {"error": f"Unknown document operation: {operation}"}
 

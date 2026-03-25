@@ -412,3 +412,130 @@ async def replace_document(
             "document_data": document_data,
         }
     )
+
+
+@mcp_app.tool(
+    name="upsert-document",
+    description="""Insert a document if it doesn't exist, or update it if it does.
+
+    Atomically searches for a document matching search_fields. If found, merges
+    update_data into the existing document. If not found, inserts document_data
+    as a new document.
+
+    Use this for:
+    - Idempotent data ingestion (safe to retry without duplicates)
+    - Sync / import pipelines where records may already exist
+    - Counters and accumulators (increment on match, initialize on miss)
+    """,
+)
+async def upsert_document(
+    collection_name: str = Field(
+        description="Name of the collection for the upsert operation."
+    ),
+    search_fields: Dict[str, Any] = Field(
+        description="""Fields to match when looking for an existing document.
+
+        Example: {"email": "alice@example.com"}
+        If a document with this email exists, it will be updated.
+        """
+    ),
+    document_data: Dict[str, Any] = Field(
+        description="""Document to INSERT if no match is found.
+
+        Example: {"email": "alice@example.com", "name": "Alice", "role": "user"}
+        """
+    ),
+    update_data: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="""Fields to UPDATE if a match IS found (merge semantics).
+        If omitted, document_data is used for both insert and update.
+
+        Example: {"last_seen": "2024-01-15", "login_count": 42}
+        """,
+    ),
+    database_name: Optional[str] = Field(
+        default=None, description="Target database name. Uses default if not specified."
+    ),
+) -> Dict[str, Any]:
+    return await doc_agent.arun(
+        {
+            "operation": "upsert_document",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "search_fields": search_fields,
+            "document_data": document_data,
+            "update_data": update_data,
+        }
+    )
+
+
+@mcp_app.tool(
+    name="update-documents-bulk",
+    description="""Partially updates multiple documents in a single operation.
+
+    Each document in the list must include _key or _id to identify
+    the target. Other fields are merged into the existing document.
+    Returns per-document results (success or error for each).
+    """,
+)
+async def update_documents_bulk(
+    collection_name: str = Field(
+        description="Name of the collection containing the documents to update."
+    ),
+    documents_data: List[Dict[str, Any]] = Field(
+        description="""Array of partial documents, each with _key or _id plus fields to update.
+
+        Example:
+        [
+          {"_key": "user1", "status": "active"},
+          {"_key": "user2", "status": "suspended", "reason": "TOS violation"}
+        ]
+        """
+    ),
+    database_name: Optional[str] = Field(
+        default=None, description="Target database name. Uses default if not specified."
+    ),
+) -> Dict[str, Any]:
+    return await doc_agent.arun(
+        {
+            "operation": "update_documents_bulk",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "documents_data": documents_data,
+        }
+    )
+
+
+@mcp_app.tool(
+    name="delete-documents-bulk",
+    description="""Deletes multiple documents from a collection in a single operation.
+
+    Each entry must include _key or _id to identify the document to remove.
+    Returns per-document results. Faster than individual deletes for batch cleanup.
+
+    WARNING: This is irreversible for each successfully deleted document.
+    """,
+)
+async def delete_documents_bulk(
+    collection_name: str = Field(
+        description="Name of the collection containing the documents to delete."
+    ),
+    documents_data: List[Dict[str, Any]] = Field(
+        description="""Array of document identifiers to delete.
+
+        Example:
+        [{"_key": "old_user_1"}, {"_key": "old_user_2"}, {"_key": "old_user_3"}]
+        """
+    ),
+    database_name: Optional[str] = Field(
+        default=None, description="Target database name. Uses default if not specified."
+    ),
+) -> Dict[str, Any]:
+    return await doc_agent.arun(
+        {
+            "operation": "delete_documents_bulk",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "documents_data": documents_data,
+        }
+    )
