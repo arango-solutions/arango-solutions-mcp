@@ -177,6 +177,75 @@ class TestDocumentAgent:
         assert result["count"] == 3
 
     @pytest.mark.asyncio
+    async def test_upsert_insert(self):
+        result = await self.agent.arun({
+            "operation": "upsert_document",
+            "collection_name": self.col,
+            "search_fields": {"email": "new@example.com"},
+            "document_data": {"email": "new@example.com", "name": "New User"},
+        })
+        assert "error" not in result
+        assert result["was_insert"] is True
+        assert result["document"]["name"] == "New User"
+
+    @pytest.mark.asyncio
+    async def test_upsert_update(self):
+        await self.agent.arun({
+            "operation": "create_document",
+            "collection_name": self.col,
+            "document_data": {"email": "existing@example.com", "visits": 1},
+        })
+        result = await self.agent.arun({
+            "operation": "upsert_document",
+            "collection_name": self.col,
+            "search_fields": {"email": "existing@example.com"},
+            "document_data": {"email": "existing@example.com", "visits": 1},
+            "update_data": {"visits": 2, "returning": True},
+        })
+        assert "error" not in result
+        assert result["was_insert"] is False
+        assert result["document"]["visits"] == 2
+        assert result["document"]["returning"] is True
+
+    @pytest.mark.asyncio
+    async def test_update_documents_bulk(self):
+        keys = []
+        for i in range(3):
+            r = await self.agent.arun({
+                "operation": "create_document",
+                "collection_name": self.col,
+                "document_data": {"batch": True, "val": i},
+            })
+            keys.append(r["metadata"]["_key"])
+
+        result = await self.agent.arun({
+            "operation": "update_documents_bulk",
+            "collection_name": self.col,
+            "documents_data": [{"_key": k, "val": 99} for k in keys],
+        })
+        assert "error" not in result
+        assert "results" in result
+
+    @pytest.mark.asyncio
+    async def test_delete_documents_bulk(self):
+        keys = []
+        for i in range(3):
+            r = await self.agent.arun({
+                "operation": "create_document",
+                "collection_name": self.col,
+                "document_data": {"to_delete": True, "seq": i},
+            })
+            keys.append(r["metadata"]["_key"])
+
+        result = await self.agent.arun({
+            "operation": "delete_documents_bulk",
+            "collection_name": self.col,
+            "documents_data": [{"_key": k} for k in keys],
+        })
+        assert "error" not in result
+        assert "results" in result
+
+    @pytest.mark.asyncio
     async def test_missing_collection_error(self):
         result = await self.agent.arun({
             "operation": "create_document",
@@ -184,6 +253,66 @@ class TestDocumentAgent:
             "document_data": {"x": 1},
         })
         assert "error" in result
+
+
+# ── Collection Agent: Sharding Parameters ─────────────────────────────
+
+class TestCollectionShardingAgent:
+    """Test that sharding parameters are passed through to ArangoDB.
+
+    On a single-server deployment, ArangoDB accepts sharding params
+    but treats them as metadata. These tests verify the agent passes
+    them correctly.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, patch_connector):
+        self.agent = CollectionManagementAgent()
+
+    @pytest.mark.asyncio
+    async def test_create_with_shard_keys(self):
+        """Verify shard params are accepted without error.
+
+        On single-server, ArangoDB silently accepts these params but doesn't
+        reflect them in properties. Actual shard verification happens in
+        test_cluster.py against a real cluster.
+        """
+        result = await self.agent.arun({
+            "operation": "create_collection",
+            "collection_name": "sharded_col",
+            "collection_type": "document",
+            "number_of_shards": 3,
+            "shard_keys": ["region"],
+        })
+        assert "error" not in result, result
+        assert "created" in result.get("status", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_create_with_replication_factor(self):
+        result = await self.agent.arun({
+            "operation": "create_collection",
+            "collection_name": "replicated_col",
+            "number_of_shards": 2,
+            "replication_factor": 1,
+        })
+        assert "error" not in result, result
+
+    @pytest.mark.asyncio
+    async def test_create_with_computed_values(self, arango_version):
+        major, minor = [int(x) for x in arango_version.split(".")[:2]]
+        if major < 3 or (major == 3 and minor < 10):
+            pytest.skip("Computed values require ArangoDB 3.10+")
+        result = await self.agent.arun({
+            "operation": "create_collection",
+            "collection_name": "computed_col",
+            "computed_values": [{
+                "name": "createdAt",
+                "expression": "RETURN DATE_ISO8601(DATE_NOW())",
+                "overwrite": False,
+                "computeOn": ["insert"],
+            }],
+        })
+        assert "error" not in result, result
 
 
 # ── Index Agent ───────────────────────────────────────────────────────

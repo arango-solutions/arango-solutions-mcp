@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from arango.exceptions import (
     ArangoServerError,
@@ -25,6 +25,14 @@ class CollectionManagementAgent(ArangoAgentBase):
         collection_name: Optional[str] = mcp_tool_inputs.get("collection_name")
         collection_type: str = mcp_tool_inputs.get("collection_type", "document")
 
+        # Sharding / cluster parameters
+        number_of_shards: Optional[int] = mcp_tool_inputs.get("number_of_shards")
+        shard_keys: Optional[List[str]] = mcp_tool_inputs.get("shard_keys")
+        replication_factor: Optional[Union[int, str]] = mcp_tool_inputs.get("replication_factor")
+        write_concern: Optional[int] = mcp_tool_inputs.get("write_concern")
+        sharding_strategy: Optional[str] = mcp_tool_inputs.get("sharding_strategy")
+        computed_values: Optional[List[Dict[str, Any]]] = mcp_tool_inputs.get("computed_values")
+
         logger.info(
             f"CollectionManagementAgent: Op='{operation}', DB='{database_name}', Collection='{collection_name}'"
         )
@@ -35,7 +43,6 @@ class CollectionManagementAgent(ArangoAgentBase):
 
             if operation == "list_collections":
                 all_collections_info = db.collections()
-                # Filter out system collections (those starting with '_')
                 user_collections_info = [
                     col_info
                     for col_info in all_collections_info
@@ -62,7 +69,23 @@ class CollectionManagementAgent(ArangoAgentBase):
                     }
 
                 is_edge = collection_type.lower() == "edge"
-                created_collection = db.create_collection(collection_name, edge=is_edge)  # type: ignore
+
+                create_kwargs: Dict[str, Any] = {"edge": is_edge}
+                # python-arango 8.x parameter names
+                if number_of_shards is not None:
+                    create_kwargs["shard_count"] = number_of_shards
+                if shard_keys is not None:
+                    create_kwargs["shard_fields"] = shard_keys
+                if replication_factor is not None:
+                    create_kwargs["replication_factor"] = replication_factor
+                if write_concern is not None:
+                    create_kwargs["write_concern"] = write_concern
+                if sharding_strategy is not None:
+                    create_kwargs["sharding_strategy"] = sharding_strategy
+                if computed_values is not None:
+                    create_kwargs["computedValues"] = computed_values
+
+                created_collection = db.create_collection(collection_name, **create_kwargs)  # type: ignore
                 return {
                     "status": f"Collection '{collection_name}' (type: {'edge' if is_edge else 'document'}) created successfully in database '{database_name}'.",
                     "collection_info": created_collection.properties(),

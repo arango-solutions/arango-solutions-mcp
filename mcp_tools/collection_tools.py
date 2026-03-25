@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional  # List removed as it's not directly used for type hints here
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import Field
 
@@ -54,46 +54,34 @@ async def list_collections(
 @mcp_app.tool(
     name="create-collection",
     description="""Creates a new collection for storing documents or relationships.
-    
+
     Collection types:
-    - Document collections: Store business entities (users, products, orders, etc.)
-    - Edge collections: Store relationships between documents (follows, purchases, contains)
-    
-    Document collections are used for:
-    - User profiles and accounts
-    - Product catalogs
-    - Orders and transactions
-    - Content and media
-    - Configuration data
-    
-    Edge collections enable graph functionality:
-    - Social networks (user follows user)
-    - E-commerce (user purchases product)
-    - Organizational charts (employee reports to manager)
-    - Knowledge graphs (concept relates to concept)
-    
+    - Document collections: Store business entities (users, products, orders)
+    - Edge collections: Store relationships between documents (follows, purchases)
+
+    Cluster / sharding options (ignored on single-server deployments):
+    - number_of_shards: How many shards to split the data across
+    - shard_keys: Which document fields determine shard placement
+    - replication_factor: How many copies of each shard (or 'satellite')
+    - write_concern: Minimum replicas that must confirm a write
+    - sharding_strategy: Algorithm for mapping documents to shards
+
+    Computed values (3.10+):
+    - Automatically compute and store derived fields on write
+
     Best practices:
     - Use descriptive names (users, products, follows, purchases)
-    - Plan your data model before creating collections
-    - Consider indexing needs for frequently queried fields
+    - Choose shard keys that distribute data evenly and match query patterns
+    - Set replication_factor >= 2 in production clusters
     """,
 )
 async def create_collection(
     collection_name: str = Field(
-        description="""Name for the new collection. Should be descriptive and follow naming conventions.
-        
-        Good examples:
-        - 'users' - for user accounts and profiles
-        - 'products' - for product catalog
-        - 'orders' - for e-commerce orders
-        - 'follows' - for social following relationships (edge)
-        - 'purchases' - for purchase relationships (edge)
-        
+        description="""Name for the new collection.
+
         Naming conventions:
         - Use lowercase, plural nouns for document collections
         - Use verb forms for edge collections (follows, likes, contains)
-        - Avoid spaces and special characters
-        - Be consistent across your application
         """
     ),
     database_name: Optional[str] = Field(
@@ -101,29 +89,99 @@ async def create_collection(
     ),
     collection_type: str = Field(
         default="document",
-        description="""Type of collection to create.
-        
-        Options:
-        - 'document' (default): For storing business entities and data objects
-        - 'edge': For storing relationships between documents (required for graphs)
-        
-        Choose 'edge' when:
-        - Modeling relationships (friendships, purchases, hierarchies)
-        - Building graph structures
-        - Need to traverse connections between entities
-        
-        Edge collections require _from and _to fields pointing to document _id values.
+        description="""Type of collection: 'document' (default) or 'edge'.
+        Choose 'edge' for graph relationships requiring _from and _to fields.
+        """,
+    ),
+    number_of_shards: Optional[int] = Field(
+        default=None,
+        description="""Number of shards for the collection (cluster only).
+        More shards = better write parallelism but more overhead.
+        Typical values: 1 (small), 3-6 (medium), 9+ (large/high-throughput).
+        Ignored on single-server deployments.
+        """,
+    ),
+    shard_keys: Optional[List[str]] = Field(
+        default=None,
+        description="""Document fields used to determine shard placement (cluster only).
+        Defaults to ['_key'] if not specified.
+
+        Examples:
+        - ['_key'] — default, uniform distribution
+        - ['region'] — co-locate documents by region
+        - ['tenant_id'] — multi-tenant isolation
+        - ['customer_id', 'order_date'] — compound key
+
+        Choose keys that appear in most queries to enable shard pruning.
+        Cannot be changed after collection creation.
+        """,
+    ),
+    replication_factor: Optional[Union[int, str]] = Field(
+        default=None,
+        description="""Number of shard replicas (cluster only).
+        - 1: no replication (not recommended for production)
+        - 2: one primary + one follower (default in most clusters)
+        - 3+: higher durability
+        - 'satellite': replicate to ALL DB servers (Enterprise only,
+          useful for small lookup tables to avoid network joins)
+        """,
+    ),
+    write_concern: Optional[int] = Field(
+        default=None,
+        description="""Minimum number of replicas that must confirm a write (cluster only).
+        Must be <= replication_factor. Higher values = stronger durability
+        guarantees but higher write latency. Default is 1.
+        """,
+    ),
+    sharding_strategy: Optional[str] = Field(
+        default=None,
+        description="""Sharding algorithm (cluster only). Options:
+        - 'community-compat': default community sharding
+        - 'enterprise-compat': default enterprise sharding
+        - 'enterprise-smart-edge-compat': for SmartGraph edge collections
+        - 'hash': hash-based distribution
+        - 'enterprise-hash-smart-edge': SmartGraph hash distribution
+        Usually left as default unless building SmartGraphs.
+        """,
+    ),
+    computed_values: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="""Computed values to auto-generate fields on write (ArangoDB 3.10+).
+
+        Each entry: {
+          "name": "field_name",
+          "expression": "RETURN ..AQL expression..",
+          "overwrite": true/false,
+          "computeOn": ["insert", "update", "replace"],
+          "keepNull": false,
+          "failOnWarning": false
+        }
+
+        Example — auto-set updatedAt timestamp:
+        [{"name": "updatedAt", "expression": "RETURN DATE_ISO8601(DATE_NOW())",
+          "overwrite": true, "computeOn": ["insert", "update", "replace"]}]
         """,
     ),
 ) -> Dict[str, Any]:
-    return await collection_agent.arun(
-        {
-            "operation": "create_collection",
-            "database_name": database_name,
-            "collection_name": collection_name,
-            "collection_type": collection_type,
-        }
-    )
+    payload: Dict[str, Any] = {
+        "operation": "create_collection",
+        "database_name": database_name,
+        "collection_name": collection_name,
+        "collection_type": collection_type,
+    }
+    if number_of_shards is not None:
+        payload["number_of_shards"] = number_of_shards
+    if shard_keys is not None:
+        payload["shard_keys"] = shard_keys
+    if replication_factor is not None:
+        payload["replication_factor"] = replication_factor
+    if write_concern is not None:
+        payload["write_concern"] = write_concern
+    if sharding_strategy is not None:
+        payload["sharding_strategy"] = sharding_strategy
+    if computed_values is not None:
+        payload["computed_values"] = computed_values
+    return await collection_agent.arun(payload)
 
 
 @mcp_app.tool(
