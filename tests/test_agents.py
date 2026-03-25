@@ -7,8 +7,10 @@ that agents produce correct results against an ephemeral test database.
 import pytest
 from arango.database import StandardDatabase
 
+from agents.cluster_management_agent import ClusterManagementAgent
 from agents.collection_management_agent import CollectionManagementAgent
 from agents.document_crud_agent import DocumentCRUDAgent
+from agents.graph_management_agent import GraphManagementAgent
 from agents.index_management_agent import IndexManagementAgent
 from agents.aql_execution_agent import AQLExecutionAgent
 
@@ -432,4 +434,229 @@ class TestAQLAgent:
     @pytest.mark.asyncio
     async def test_empty_query_returns_error(self):
         result = await self.agent.arun({"aql_query": ""})
+        assert "error" in result
+
+
+# ── Cluster Agent (single-server safe) ────────────────────────────────
+
+class TestClusterAgent:
+    """Test cluster agent operations against a single-server deployment.
+
+    Cluster-specific operations return server-appropriate results:
+    - server_role should return 'SINGLE' on a single server
+    - cluster_health may error on a single server (expected)
+    """
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, patch_connector):
+        self.agent = ClusterManagementAgent()
+
+    @pytest.mark.asyncio
+    async def test_server_role(self):
+        result = await self.agent.arun({"operation": "cluster_server_role"})
+        assert "error" not in result
+        assert result["role"] in ("SINGLE", "COORDINATOR", "PRIMARY", "DBSERVER")
+
+    @pytest.mark.asyncio
+    async def test_server_id(self):
+        """server_id may error on single-server (returns 500)."""
+        result = await self.agent.arun({"operation": "cluster_server_id"})
+        assert "server_id" in result or "error" in result
+
+    @pytest.mark.asyncio
+    async def test_cluster_health_single_server(self):
+        """On a single server, cluster_health may error — that's expected."""
+        result = await self.agent.arun({"operation": "cluster_health"})
+        # Either returns health info (cluster) or an error (single server)
+        assert "health" in result or "error" in result
+
+    @pytest.mark.asyncio
+    async def test_collection_shard_distribution(self, test_collection):
+        result = await self.agent.arun({
+            "operation": "collection_shard_distribution",
+            "collection_name": test_collection,
+        })
+        assert "error" not in result
+        dist = result["shard_distribution"]
+        assert dist["collection"] == test_collection
+
+    @pytest.mark.asyncio
+    async def test_collection_shard_distribution_missing(self):
+        result = await self.agent.arun({
+            "operation": "collection_shard_distribution",
+            "collection_name": "nonexistent_xyz_col",
+        })
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_unknown_operation(self):
+        result = await self.agent.arun({"operation": "bogus_op"})
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_server_statistics_requires_id(self):
+        result = await self.agent.arun({"operation": "cluster_server_statistics"})
+        assert "error" in result
+        assert "server_id" in result["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_toggle_maintenance_invalid_mode(self):
+        result = await self.agent.arun({
+            "operation": "cluster_toggle_maintenance",
+            "mode": "invalid",
+        })
+        assert "error" in result
+        assert "'on' or 'off'" in result["error"]
+
+
+# ── Graph Agent (SmartGraph params) ───────────────────────────────────
+
+class TestGraphAgent:
+    """Test graph agent including SmartGraph parameter passthrough."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, patch_connector):
+        self.agent = GraphManagementAgent()
+
+    @pytest.mark.asyncio
+    async def test_create_and_list_graph(self):
+        result = await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "test_graph",
+            "edge_definitions": [{
+                "edge_collection": "test_edges",
+                "from_vertex_collections": ["test_from"],
+                "to_vertex_collections": ["test_to"],
+            }],
+        })
+        assert "error" not in result, result
+        assert "created" in result.get("status", "").lower()
+
+        listing = await self.agent.arun({"operation": "list_graphs"})
+        graph_names = [g["name"] for g in listing["graphs"]]
+        assert "test_graph" in graph_names
+
+    @pytest.mark.asyncio
+    async def test_create_graph_duplicate_safe(self):
+        await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "dup_graph",
+            "edge_definitions": [{
+                "edge_collection": "dup_edges",
+                "from_vertex_collections": ["a"],
+                "to_vertex_collections": ["b"],
+            }],
+        })
+        result = await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "dup_graph",
+            "edge_definitions": [{
+                "edge_collection": "dup_edges",
+                "from_vertex_collections": ["a"],
+                "to_vertex_collections": ["b"],
+            }],
+        })
+        assert "already exists" in result.get("status", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_get_graph_properties(self):
+        await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "props_graph",
+            "edge_definitions": [{
+                "edge_collection": "pg_edges",
+                "from_vertex_collections": ["pg_v1"],
+                "to_vertex_collections": ["pg_v2"],
+            }],
+        })
+        result = await self.agent.arun({
+            "operation": "get_graph_properties",
+            "graph_name": "props_graph",
+        })
+        assert "error" not in result
+        assert "properties" in result
+
+    @pytest.mark.asyncio
+    async def test_get_graph_properties_not_found(self):
+        result = await self.agent.arun({
+            "operation": "get_graph_properties",
+            "graph_name": "nonexistent_graph_xyz",
+        })
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_delete_graph(self):
+        await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "del_graph",
+            "edge_definitions": [{
+                "edge_collection": "dg_edges",
+                "from_vertex_collections": ["dg_v"],
+                "to_vertex_collections": ["dg_v"],
+            }],
+        })
+        result = await self.agent.arun({
+            "operation": "delete_graph",
+            "graph_name": "del_graph",
+        })
+        assert "deleted" in result.get("status", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_create_graph_with_cluster_params(self):
+        """SmartGraph params are accepted without error on any deployment."""
+        result = await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "smart_test_graph",
+            "edge_definitions": [{
+                "edge_collection": "st_edges",
+                "from_vertex_collections": ["st_v1"],
+                "to_vertex_collections": ["st_v2"],
+            }],
+            "shard_count": 3,
+            "replication_factor": 1,
+        })
+        # On single-server: sharding params are silently accepted
+        # On cluster: graph is created with those settings
+        assert "error" not in result or "enterprise" in result.get("error", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_create_edge(self):
+        await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "edge_test_graph",
+            "edge_definitions": [{
+                "edge_collection": "et_edges",
+                "from_vertex_collections": ["et_from"],
+                "to_vertex_collections": ["et_to"],
+            }],
+        })
+        # Insert vertices via the graph
+        from arango_connector import arango_connector
+        db = arango_connector.get_db()
+        db.collection("et_from").insert({"_key": "v1", "name": "vertex1"})
+        db.collection("et_to").insert({"_key": "v2", "name": "vertex2"})
+
+        result = await self.agent.arun({
+            "operation": "create_edge",
+            "graph_name": "edge_test_graph",
+            "edge_collection_name": "et_edges",
+            "from_vertex_id": "et_from/v1",
+            "to_vertex_id": "et_to/v2",
+            "edge_data": {"weight": 0.75},
+        })
+        assert "error" not in result, result
+        assert result["edge_metadata"]["_key"]
+
+    @pytest.mark.asyncio
+    async def test_missing_edge_definition_error(self):
+        result = await self.agent.arun({
+            "operation": "create_graph",
+            "graph_name": "no_edges",
+            "edge_definitions": None,
+        })
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_unknown_operation(self):
+        result = await self.agent.arun({"operation": "bogus_graph_op"})
         assert "error" in result

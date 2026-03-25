@@ -41,6 +41,7 @@ mcp_app = FastMCP(name=_server_name, instructions=_server_instructions, lifespan
 from mcp_tools import (
     analyzer_tools,
     aql_tools,
+    cluster_tools,
     collection_tools,
     database_tools,
     document_tools,
