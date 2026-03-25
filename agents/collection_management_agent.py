@@ -12,7 +12,6 @@ from arango.exceptions import (
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,24 +21,17 @@ class CollectionManagementAgent(ArangoAgentBase):
 
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
-        database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
+        database_name: Optional[str] = mcp_tool_inputs.get("database_name")
         collection_name: Optional[str] = mcp_tool_inputs.get("collection_name")
-        collection_type: str = mcp_tool_inputs.get("collection_type", "document")  # document, edge
+        collection_type: str = mcp_tool_inputs.get("collection_type", "document")
 
         logger.info(
             f"CollectionManagementAgent: Op='{operation}', DB='{database_name}', Collection='{collection_name}'"
         )
 
         try:
-            if not arango_connector.client:
-                logger.error("CollectionManagementAgent: ArangoDB client not initialized.")
-                return {"error": "ArangoDB client not initialized."}
-
-            db = arango_connector.client.db(
-                database_name,
-                username=settings.arango.root_username,
-                password=settings.arango.root_password,
-            )
+            db = arango_connector.get_db(database_name)
+            database_name = database_name or db.name
 
             if operation == "list_collections":
                 all_collections_info = db.collections()

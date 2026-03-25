@@ -41,7 +41,7 @@ async def create_document(
         - 'orders' - for e-commerce orders
         - 'events' - for event logging
         
-        Collection will be created automatically if it doesn't exist.
+        The collection must already exist. Use 'create-collection' first if needed.
         """
     ),
     document_data: Dict[str, Any] = Field(
@@ -327,6 +327,86 @@ async def update_document(
     return await doc_agent.arun(
         {
             "operation": "update_document",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "document_data": document_data,
+        }
+    )
+
+
+@mcp_app.tool(
+    name="delete-document",
+    description="""Permanently deletes a single document from a collection.
+
+    WARNING: This operation is irreversible. The document and all its data
+    will be permanently removed.
+
+    Use this for:
+    - Removing specific records (user accounts, expired entries)
+    - Cleaning up test data
+    - GDPR/compliance data deletion
+
+    The document must exist or the operation will fail.
+    For bulk deletion, use the 'execute-aql-query' tool with a REMOVE statement.
+    """,
+)
+async def delete_document(
+    collection_name: str = Field(
+        description="Name of the collection containing the document to delete."
+    ),
+    document_key_or_id: str = Field(
+        description="""Document identifier - either _key or full _id.
+
+        Examples:
+        - Key: 'user123'
+        - ID: 'users/user123'
+        """
+    ),
+    database_name: Optional[str] = Field(
+        default=None, description="Target database name. Uses default if not specified."
+    ),
+) -> Dict[str, Any]:
+    return await doc_agent.arun(
+        {
+            "operation": "delete_document",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "document_key_or_id": document_key_or_id,
+        }
+    )
+
+
+@mcp_app.tool(
+    name="replace-document",
+    description="""Completely replaces a document with new content.
+
+    Unlike 'update-document' (which merges), replace overwrites the entire
+    document body. Only _key, _id, and _rev are preserved from the original.
+
+    Use this when you need to set the document to an exact known state
+    rather than partially patching fields.
+    """,
+)
+async def replace_document(
+    collection_name: str = Field(
+        description="Name of the collection containing the document to replace."
+    ),
+    document_data: Dict[str, Any] = Field(
+        description="""Complete replacement document. Must include _key or _id.
+
+        Example:
+        {"_key": "user123", "name": "Jane Doe", "email": "jane@new.com", "role": "admin"}
+
+        All previous fields not in this payload will be removed.
+        """
+    ),
+    database_name: Optional[str] = Field(
+        default=None, description="Target database name. Uses default if not specified."
+    ),
+) -> Dict[str, Any]:
+    return await doc_agent.arun(
+        {
+            "operation": "replace_document",
             "database_name": database_name,
             "collection_name": collection_name,
             "document_data": document_data,

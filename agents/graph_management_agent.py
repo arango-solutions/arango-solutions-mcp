@@ -5,7 +5,6 @@ from arango.exceptions import ArangoServerError, GraphCreateError, GraphDeleteEr
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +14,12 @@ class GraphManagementAgent(ArangoAgentBase):
 
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
-        database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
+        database_name: Optional[str] = mcp_tool_inputs.get("database_name")
         graph_name: Optional[str] = mcp_tool_inputs.get("graph_name")
 
-        # For create_graph
         edge_definitions: Optional[List[Dict[str, Any]]] = mcp_tool_inputs.get("edge_definitions")
         orphan_collections: Optional[List[str]] = mcp_tool_inputs.get("orphan_collections")
 
-        # For create_edge
         edge_collection_name: Optional[str] = mcp_tool_inputs.get("edge_collection_name")
         from_vertex_id: Optional[str] = mcp_tool_inputs.get("from_vertex_id")
         to_vertex_id: Optional[str] = mcp_tool_inputs.get("to_vertex_id")
@@ -33,14 +30,8 @@ class GraphManagementAgent(ArangoAgentBase):
         )
 
         try:
-            if not arango_connector.client:
-                return {"error": "ArangoDB client not initialized."}
-
-            db = arango_connector.client.db(
-                database_name,
-                username=settings.arango.root_username,
-                password=settings.arango.root_password,
-            )
+            db = arango_connector.get_db(database_name)
+            database_name = database_name or db.name
 
             if operation == "list_graphs":
                 graphs = db.graphs()

@@ -11,7 +11,6 @@ from arango.exceptions import (
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +20,11 @@ class AnalyzerManagementAgent(ArangoAgentBase):
 
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
-        database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
+        database_name: Optional[str] = mcp_tool_inputs.get("database_name")
         analyzer_name: Optional[str] = mcp_tool_inputs.get("analyzer_name")
 
-        # For create_analyzer
         analyzer_type: Optional[str] = mcp_tool_inputs.get("analyzer_type")
-        properties: Optional[Dict[str, Any]] = mcp_tool_inputs.get(
-            "properties"
-        )  # Can be Dict or str (for N-Gram)
+        properties: Optional[Dict[str, Any]] = mcp_tool_inputs.get("properties")
         features: Optional[List[str]] = mcp_tool_inputs.get("features")
 
         logger.info(
@@ -36,14 +32,7 @@ class AnalyzerManagementAgent(ArangoAgentBase):
         )
 
         try:
-            if not arango_connector.client:
-                return {"error": "ArangoDB client not initialized."}
-
-            db = arango_connector.client.db(
-                database_name,
-                username=settings.arango.root_username,
-                password=settings.arango.root_password,
-            )
+            db = arango_connector.get_db(database_name)
 
             if operation == "list_analyzers":
                 analyzers = db.analyzers()

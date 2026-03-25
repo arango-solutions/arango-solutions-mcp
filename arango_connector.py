@@ -13,49 +13,54 @@ logger = logging.getLogger(__name__)
 class ArangoDBConnector:
     """Manages ArangoDB connections with automatic reconnection and health checks."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.client: Optional[ArangoClient] = None
         self._default_db: Optional[StandardDatabase] = None
+        self._server_version: Optional[str] = None
+
+    @property
+    def server_version(self) -> Optional[str]:
+        return self._server_version
 
     async def connect(self) -> None:
-        """Establish connection to ArangoDB cluster."""
+        """Establish connection to ArangoDB."""
         try:
-            # Validate required credentials are provided
             if not settings.arango.root_password:
                 raise ValueError(
-                    "ArangoDB password not configured. Please set ARANGO_ROOT_PASSWORD via MCP client JSON configuration."
+                    "ArangoDB password not configured. "
+                    "Set ARANGO_ROOT_PASSWORD via MCP client JSON configuration."
                 )
 
-            # Parse hosts if multiple are provided
             hosts = [host.strip() for host in settings.arango.hosts.split(",")]
 
             logger.info(
                 f"Connecting to ArangoDB at: {hosts} as user: {settings.arango.root_username}"
             )
 
-            # Create client with connection pooling using the modern python-arango API.
-            # NOTE: serializer_options and http_client_options are deprecated in newer versions.
-            # We now configure and pass an HTTPClient instance directly.
-            self.client = ArangoClient(hosts=hosts)
+            client_kwargs: dict = {"hosts": hosts}
 
-            # Test connection by accessing default database
+            if settings.arango.verify_ssl:
+                client_kwargs["verify_override"] = True
+                if settings.arango.ssl_cert_path:
+                    client_kwargs["verify_override"] = settings.arango.ssl_cert_path
+            else:
+                client_kwargs["verify_override"] = False
+
+            self.client = ArangoClient(**client_kwargs)
+
             self._default_db = self.client.db(
                 settings.arango.default_db_name,
                 username=settings.arango.root_username,
                 password=settings.arango.root_password,
-                # The http_client is implicitly used by the db object now
             )
 
-            # Verify connection works
-            # Using a simple, lightweight call like .version() is a good health check.
-            server_info = self._default_db.version()
-            logger.info(f"Successfully connected to ArangoDB. Server version: {server_info}")
+            self._server_version = self._default_db.version()
+            logger.info(f"Connected to ArangoDB server version: {self._server_version}")
 
-        except ValueError as e:  # Catch our specific password error
+        except ValueError as e:
             logger.error(f"Configuration error: {e}")
             raise
         except Exception as e:
-            # Handle connection and authentication errors
             error_msg = str(e).lower()
             if "connection" in error_msg or "connect" in error_msg:
                 logger.error(f"Failed to connect to ArangoDB: {e}")
@@ -69,16 +74,18 @@ class ArangoDBConnector:
         """Close ArangoDB connections gracefully."""
         try:
             if self.client:
-                # ArangoDB Python client doesn't have an explicit close method
-                # Connections are managed by the HTTP client
                 logger.info("Disconnecting from ArangoDB")
                 self.client = None
                 self._default_db = None
+                self._server_version = None
         except Exception as e:
             logger.warning(f"Error during ArangoDB disconnection: {e}")
 
     def get_db(self, db_name: Optional[str] = None) -> StandardDatabase:
-        """Get database instance with authentication."""
+        """Get an authenticated database handle.
+
+        All agents should use this instead of manually calling client.db().
+        """
         if not self.client:
             raise RuntimeError("ArangoDB client not initialized. Call connect() first.")
 
@@ -90,13 +97,15 @@ class ArangoDBConnector:
             password=settings.arango.root_password,
         )
 
+    def get_system_db(self) -> StandardDatabase:
+        """Get an authenticated handle to the _system database."""
+        return self.get_db("_system")
+
     def health_check(self) -> bool:
         """Check if ArangoDB connection is healthy."""
         try:
             if not self.client or not self._default_db:
                 return False
-
-            # Simple query to test connection
             self._default_db.properties()
             return True
         except Exception:

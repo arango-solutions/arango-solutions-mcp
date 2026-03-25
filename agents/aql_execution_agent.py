@@ -1,11 +1,10 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from arango.exceptions import AQLQueryExecuteError, ArangoServerError
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,7 @@ class AQLExecutionAgent(ArangoAgentBase):
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         aql_query: str = mcp_tool_inputs.get("aql_query", "")
         bind_vars: Dict[str, Any] = mcp_tool_inputs.get("bind_vars", {})
-        database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
+        database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
         if not aql_query:
             return {"error": "AQL query string cannot be empty."}
@@ -26,20 +25,8 @@ class AQLExecutionAgent(ArangoAgentBase):
         )
 
         try:
-            # Get the specific database if provided, else use default from connector
-            if not arango_connector.client:
-                logger.error("AQLExecutionAgent: ArangoDB client not initialized.")
-                return {"error": "ArangoDB client not initialized."}
-
-            db_to_query = arango_connector.client.db(
-                database_name,
-                username=settings.arango.root_username,
-                password=settings.arango.root_password,
-            )
-
-            # Note: In production, consider adding query validation
-            # to restrict dangerous operations (INSERT, UPDATE, REMOVE, REPLACE)
-            # based on security requirements
+            db_to_query = arango_connector.get_db(database_name)
+            database_name = database_name or db_to_query.name
 
             cursor = db_to_query.aql.execute(
                 aql_query, bind_vars=bind_vars, count=True, full_count=True

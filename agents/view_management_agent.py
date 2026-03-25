@@ -1,4 +1,3 @@
-# mcp_server/agents/view_management_agent.py
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -13,7 +12,6 @@ from arango.exceptions import (
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +64,7 @@ class ViewManagementAgent(ArangoAgentBase):
 
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
-        database_name: str = mcp_tool_inputs.get("database_name") or settings.arango.default_db_name
+        database_name: Optional[str] = mcp_tool_inputs.get("database_name")
         view_name: Optional[str] = mcp_tool_inputs.get("view_name")
         new_view_name: Optional[str] = mcp_tool_inputs.get("new_view_name")
         view_type: Optional[str] = mcp_tool_inputs.get("view_type")
@@ -81,15 +79,8 @@ class ViewManagementAgent(ArangoAgentBase):
         )
 
         try:
-            if not arango_connector.client:
-                logger.error("ViewManagementAgent: ArangoDB client not initialized.")
-                return {"error": "ArangoDB client not initialized."}
-
-            db = arango_connector.client.db(
-                database_name,
-                username=settings.arango.root_username,
-                password=settings.arango.root_password,
-            )
+            db = arango_connector.get_db(database_name)
+            database_name = database_name or db.name
 
             if operation == "list_views":
                 views = db.views()
