@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from arango.exceptions import ArangoServerError, GraphCreateError, GraphDeleteError, GraphListError
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class GraphManagementAgent(ArangoAgentBase):
-    """Agent for managing ArangoDB named graphs."""
+    """Agent for managing ArangoDB named graphs, including SmartGraphs."""
 
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
@@ -24,6 +24,16 @@ class GraphManagementAgent(ArangoAgentBase):
         from_vertex_id: Optional[str] = mcp_tool_inputs.get("from_vertex_id")
         to_vertex_id: Optional[str] = mcp_tool_inputs.get("to_vertex_id")
         edge_data: Optional[Dict[str, Any]] = mcp_tool_inputs.get("edge_data")
+
+        # SmartGraph / EnterpriseGraph parameters
+        smart: Optional[bool] = mcp_tool_inputs.get("smart")
+        disjoint: Optional[bool] = mcp_tool_inputs.get("disjoint")
+        smart_field: Optional[str] = mcp_tool_inputs.get("smart_field")
+        shard_count: Optional[int] = mcp_tool_inputs.get("shard_count")
+        replication_factor: Optional[int] = mcp_tool_inputs.get("replication_factor")
+        write_concern: Optional[int] = mcp_tool_inputs.get("write_concern")
+        satellite_collections: Optional[List[str]] = mcp_tool_inputs.get("satellite_collections")
+        is_satellite: Optional[bool] = mcp_tool_inputs.get("is_satellite")
 
         logger.info(
             f"GraphManagementAgent: Op='{operation}', DB='{database_name}', Graph='{graph_name}'"
@@ -47,15 +57,45 @@ class GraphManagementAgent(ArangoAgentBase):
                         "status": f"Graph '{graph_name}' already exists in database '{database_name}'."
                     }
 
-                graph_obj = db.create_graph(
-                    graph_name,
-                    edge_definitions=edge_definitions,
-                    orphan_collections=orphan_collections or [],
-                )
+                create_kwargs: Dict[str, Any] = {
+                    "edge_definitions": edge_definitions,
+                    "orphan_collections": orphan_collections or [],
+                }
+
+                if smart is not None:
+                    create_kwargs["smart"] = smart
+                if disjoint is not None:
+                    create_kwargs["disjoint"] = disjoint
+                if smart_field is not None:
+                    create_kwargs["smart_field"] = smart_field
+                if shard_count is not None:
+                    create_kwargs["shard_count"] = shard_count
+                if replication_factor is not None:
+                    create_kwargs["replication_factor"] = replication_factor
+                if write_concern is not None:
+                    create_kwargs["write_concern"] = write_concern
+                if satellite_collections is not None:
+                    create_kwargs["satellite_collections"] = satellite_collections
+
+                # SatelliteGraph: set replication_factor to "satellite"
+                if is_satellite:
+                    create_kwargs["replication_factor"] = "satellite"
+
+                graph_obj = db.create_graph(graph_name, **create_kwargs)
                 return {
                     "status": f"Graph '{graph_name}' created successfully.",
                     "graph_info": graph_obj.properties(),
                 }
+
+            elif operation == "get_graph_properties":
+                if not graph_name:
+                    return {"error": "Graph name is required."}
+                if not db.has_graph(graph_name):
+                    return {
+                        "error": f"Graph '{graph_name}' not found in database '{database_name}'."
+                    }
+                graph_obj = db.graph(graph_name)
+                return {"properties": graph_obj.properties()}
 
             elif operation == "delete_graph":
                 if not graph_name:

@@ -19,6 +19,16 @@ import subprocess
 import time
 import uuid
 
+# Track whether the user explicitly provided ARANGO_HOSTS before we
+# set a dummy value for config validation during test collection.
+_USER_PROVIDED_HOSTS = "ARANGO_HOSTS" in os.environ
+
+# Set defaults so that config.py can be imported at collection time
+# without raising validation errors.
+os.environ.setdefault("ARANGO_HOSTS", "http://localhost:8529")
+os.environ.setdefault("ARANGO_ROOT_USERNAME", "root")
+os.environ.setdefault("ARANGO_ROOT_PASSWORD", "test_root_password")
+
 import pytest
 import urllib.request
 import urllib.error
@@ -102,7 +112,7 @@ def arango_container():
 
     Yields the _ContainerHandle (or None if using an external instance).
     """
-    if os.environ.get("ARANGO_HOSTS"):
+    if _USER_PROVIDED_HOSTS:
         yield None
         return
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import Field
 
@@ -54,112 +54,126 @@ async def list_graphs(
 @mcp_app.tool(
     name="create-graph",
     description="""Creates a named graph structure for modeling complex relationships.
-    
-    Named graphs provide:
-    - Structured relationship definitions between entity types
-    - Optimized graph traversal performance
-    - Data consistency and validation
-    - Simplified graph query operations
-    - Clear data model documentation
-    
-    Graph design patterns:
-    
-    Social Network:
-    - Vertices: users, groups, pages
-    - Edges: follows, likes, member_of
-    
-    E-commerce:
-    - Vertices: customers, products, categories, orders
-    - Edges: purchases, belongs_to, contains, reviews
-    
-    Knowledge Graph:
-    - Vertices: concepts, entities, documents
-    - Edges: relates_to, instance_of, mentions
-    
-    Best practices:
-    - Plan your graph schema before creation
-    - Use descriptive names for collections and relationships
-    - Consider query patterns when designing edge definitions
-    - Start simple and evolve the graph structure
+
+    Supports standard graphs, SmartGraphs (Enterprise), and SatelliteGraphs.
+
+    Graph types:
+    - Standard: basic named graph on any deployment
+    - SmartGraph (Enterprise, cluster): shards vertex and edge data together
+      by a smart_field for locality-optimized traversals
+    - Disjoint SmartGraph: vertices with different smart_field values
+      are guaranteed to be in disjoint graph components
+    - SatelliteGraph (Enterprise, cluster): replicated to every DB server
+      for join-free traversals with satellite collections
+
+    Cluster options (shard_count, replication_factor, write_concern)
+    are silently accepted on single-server deployments.
     """,
 )
 async def create_graph(
     graph_name: str = Field(
         description="""Unique name for the new graph structure.
-        
+
         Examples:
-        - 'social_network' - for user relationships and interactions
-        - 'product_catalog' - for product hierarchies and recommendations
-        - 'knowledge_graph' - for conceptual relationships
-        - 'org_chart' - for organizational hierarchy
-        
-        Naming conventions:
-        - Use descriptive names indicating the domain
-        - Reflect the business purpose or use case
-        - Avoid conflicts with collection names
+        - 'social_network' - for user relationships
+        - 'product_catalog' - for product hierarchies
+        - 'smart_supply_chain' - for a SmartGraph supply-chain model
         """
     ),
     edge_definitions: List[Dict[str, Any]] = Field(
         description="""List of relationship definitions between vertex collections.
-        
+
         Each edge definition specifies:
         - edge_collection: Name of collection storing relationships
         - from_vertex_collections: Source entity types
         - to_vertex_collections: Target entity types
-        
-        Examples:
-        
-        Social network:
+
+        Example:
         [{
           "edge_collection": "follows",
           "from_vertex_collections": ["users"],
           "to_vertex_collections": ["users"]
-        }, {
-          "edge_collection": "likes",
-          "from_vertex_collections": ["users"],
-          "to_vertex_collections": ["posts", "comments"]
         }]
-        
-        E-commerce:
-        [{
-          "edge_collection": "purchases",
-          "from_vertex_collections": ["customers"],
-          "to_vertex_collections": ["products"]
-        }, {
-          "edge_collection": "belongs_to",
-          "from_vertex_collections": ["products"],
-          "to_vertex_collections": ["categories"]
-        }]
-        
-        Edge collections will be created as 'edge' type automatically.
         """
     ),
     orphan_collections: Optional[List[str]] = Field(
         default=None,
-        description="""Additional vertex collections included in the graph but not connected by edges.
-        
+        description="Additional vertex collections not connected by edges.",
+    ),
+    smart: Optional[bool] = Field(
+        default=None,
+        description="""Create a SmartGraph (Enterprise, cluster only).
+        Requires smart_field to be set. Vertices are distributed across
+        shards by smart_field value, and edges are co-located with their
+        vertices for optimal traversal performance.
+        """,
+    ),
+    disjoint: Optional[bool] = Field(
+        default=None,
+        description="""Create a Disjoint SmartGraph (Enterprise, cluster only).
+        Requires smart=true. Guarantees that vertices with different
+        smart_field values belong to separate connected components,
+        enabling further query optimizations.
+        """,
+    ),
+    smart_field: Optional[str] = Field(
+        default=None,
+        description="""Document attribute used for smart sharding (Enterprise, cluster only).
+        All vertices must contain this field. Edges are automatically
+        co-located with their source vertex's smart_field value.
+
         Examples:
-        - ['archived_users'] - users without current relationships
-        - ['product_templates'] - products not yet in catalog
-        - ['draft_content'] - content not yet published
-        
-        Orphan collections can be connected later by adding edge definitions.
-        Optional - most graphs don't need orphan collections initially.
+        - 'region' — co-locate users by region
+        - 'tenant_id' — multi-tenant graph isolation
+        - 'country' — geographic partitioning
+        """,
+    ),
+    shard_count: Optional[int] = Field(
+        default=None,
+        description="Number of shards for the graph's collections (cluster only).",
+    ),
+    replication_factor: Optional[int] = Field(
+        default=None,
+        description="Number of shard replicas for the graph's collections (cluster only).",
+    ),
+    write_concern: Optional[int] = Field(
+        default=None,
+        description="Minimum replicas that must confirm a write (cluster only).",
+    ),
+    satellite_collections: Optional[List[str]] = Field(
+        default=None,
+        description="""Collections to replicate to all DB servers (Enterprise, cluster only).
+        Useful for small lookup tables referenced during traversals.
+        These collections avoid network hops during joins.
+        """,
+    ),
+    is_satellite: Optional[bool] = Field(
+        default=None,
+        description="""Create a SatelliteGraph (Enterprise, cluster only).
+        All collections in the graph are replicated to every DB server.
+        Ideal for small reference graphs that are read frequently.
         """,
     ),
     database_name: Optional[str] = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
-    return await graph_agent.arun(
-        {
-            "operation": "create_graph",
-            "database_name": database_name,
-            "graph_name": graph_name,
-            "edge_definitions": edge_definitions,
-            "orphan_collections": orphan_collections,
-        }
-    )
+    payload: Dict[str, Any] = {
+        "operation": "create_graph",
+        "database_name": database_name,
+        "graph_name": graph_name,
+        "edge_definitions": edge_definitions,
+        "orphan_collections": orphan_collections,
+    }
+    for key in (
+        "smart", "disjoint", "smart_field", "shard_count",
+        "replication_factor", "write_concern", "satellite_collections",
+        "is_satellite",
+    ):
+        val = locals()[key]
+        if val is not None:
+            payload[key] = val
+    return await graph_agent.arun(payload)
 
 
 @mcp_app.tool(
@@ -352,5 +366,36 @@ async def create_edge(
             "from_vertex_id": from_vertex_id,
             "to_vertex_id": to_vertex_id,
             "edge_data": edge_data,
+        }
+    )
+
+
+@mcp_app.tool(
+    name="get-graph-properties",
+    description="""Returns detailed properties of a named graph.
+
+    Shows the graph's configuration including:
+    - Edge definitions and vertex collections
+    - Whether it is a SmartGraph, Disjoint SmartGraph, or SatelliteGraph
+    - smart_field, shard count, replication factor, write concern
+    - Orphan collections
+    - Number of shards and sharding strategy
+
+    Use this to inspect an existing graph's structure and cluster settings.
+    """,
+)
+async def get_graph_properties(
+    graph_name: str = Field(
+        description="Name of the graph to inspect."
+    ),
+    database_name: Optional[str] = Field(
+        default=None, description="Target database name. Uses default if not specified."
+    ),
+) -> Dict[str, Any]:
+    return await graph_agent.arun(
+        {
+            "operation": "get_graph_properties",
+            "database_name": database_name,
+            "graph_name": graph_name,
         }
     )
