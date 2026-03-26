@@ -66,32 +66,33 @@ async def list_indexes(
 @mcp_app.tool(
     name="create-index",
     description="""Creates a new index to optimize query performance for specific access patterns.
-    
+
     Index types and use cases:
-    
+
     Persistent indexes (most common):
     - Single field: Fast lookups on one field
     - Multi-field: Compound queries and sorting
     - Unique: Enforce data uniqueness constraints
     - Sparse: Skip null values to save space
-    
+
     Specialized indexes:
     - TTL: Automatic document expiration
     - Inverted: Full-text search capabilities
     - Geo: Location-based queries
-    - Multi-dimensional: Complex data structures
-    
-    Performance considerations:
-    - Indexes speed up queries but slow down writes
-    - Choose fields based on actual query patterns
-    - Monitor index usage and effectiveness
-    - Remove unused indexes to improve write performance
-    
+    - Multi-dimensional (mdi): Complex data structures
+
+    Vector indexes (3.12.4+, requires --vector-index startup option):
+    - ANN (Approximate Nearest Neighbor) search using FAISS
+    - Metrics: cosine, l2 (Euclidean), innerProduct (3.12.6+)
+    - Documents MUST have vector data before index creation
+    - Use with APPROX_NEAR_COSINE/L2/INNER_PRODUCT AQL functions
+    - Or use the dedicated 'vector-search' tool for convenience
+
     Best practices:
     - Analyze query patterns before creating indexes
+    - For vector indexes, populate data BEFORE creating the index
     - Use compound indexes for multi-field queries
-    - Consider selectivity (unique values vs duplicates)
-    - Test performance impact in production-like environments
+    - Monitor index usage and remove unused indexes
     """,
 )
 async def create_index(
@@ -107,59 +108,46 @@ async def create_index(
     ),
     index_definition: Dict[str, Any] = Field(
         description="""Index configuration specifying type, fields, and options.
-        
+
         Common index definitions:
-        
+
         Single field index:
-        {
-          "type": "persistent",
-          "fields": ["email"],
-          "unique": true,
-          "name": "unique_email_idx"
-        }
-        
+        {"type": "persistent", "fields": ["email"], "unique": true,
+         "name": "unique_email_idx"}
+
         Multi-field compound index:
-        {
-          "type": "persistent",
-          "fields": ["category", "price", "created_at"],
-          "sparse": false,
-          "name": "product_search_idx"
-        }
-        
+        {"type": "persistent", "fields": ["category", "price", "created_at"],
+         "name": "product_search_idx"}
+
         Full-text search index:
-        {
-          "type": "inverted",
-          "fields": [
-            {"name": "title", "analyzer": "text_en"},
-            {"name": "description", "analyzer": "text_en"}
-          ],
-          "name": "content_search_idx"
-        }
-        
+        {"type": "inverted",
+         "fields": [{"name": "title", "analyzer": "text_en"},
+                    {"name": "description", "analyzer": "text_en"}],
+         "name": "content_search_idx"}
+
         TTL index for automatic cleanup:
-        {
-          "type": "ttl",
-          "fields": ["expires_at"],
-          "expireAfterSeconds": 0,
-          "name": "auto_expire_idx"
-        }
-        
+        {"type": "ttl", "fields": ["expires_at"], "expireAfterSeconds": 0,
+         "name": "auto_expire_idx"}
+
         Geospatial index:
-        {
-          "type": "geo",
-          "fields": ["location"],
-          "geoJson": true,
-          "name": "location_idx"
-        }
-        
+        {"type": "geo", "fields": ["location"], "geoJson": true,
+         "name": "location_idx"}
+
+        Vector (ANN) index (3.12.4+):
+        {"type": "vector", "fields": ["embedding"],
+         "params": {"metric": "cosine", "dimension": 768, "nLists": 100},
+         "name": "embedding_cosine_idx"}
+
+        Vector index params:
+        - metric: "cosine" | "l2" | "innerProduct"
+        - dimension: number of elements in the embedding array
+        - nLists: Voronoi cells (~15 * sqrt(N) recommended)
+        - defaultNProbe: centroids to search (default 1, higher = better recall)
+        - trainingIterations: (default 25)
+
         Required fields:
-        - type: Index algorithm (persistent, inverted, ttl, geo)
+        - type: persistent, inverted, ttl, geo, vector, mdi, mdi-prefixed
         - fields: Array of field names to index
-        
-        Optional fields:
-        - unique: Enforce uniqueness (default: false)
-        - sparse: Skip null values (default: false)
-        - name: Custom index name (auto-generated if not provided)
         """
     ),
     database_name: Optional[str] = Field(

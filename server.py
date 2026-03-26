@@ -48,5 +48,6 @@ from mcp_tools import (
     graph_tools,
     index_tools,
     manual_tools,
+    vector_tools,
     view_tools,
 )
