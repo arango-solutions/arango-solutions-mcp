@@ -39,7 +39,7 @@ from arango.database import StandardDatabase
 _PASSWORD = os.environ.get("ARANGO_ROOT_PASSWORD", "test_root_password")
 _USERNAME = os.environ.get("ARANGO_ROOT_USERNAME", "root")
 _IMAGE = os.environ.get("ARANGO_IMAGE", "arangodb/arangodb:3.12")
-_TIMEOUT = int(os.environ.get("ARANGO_TEST_TIMEOUT", "60"))
+_TIMEOUT = int(os.environ.get("ARANGO_TEST_TIMEOUT", "120"))
 
 
 def _free_port() -> int:
@@ -125,6 +125,7 @@ def arango_container():
         "-p", f"{port}:8529",
         "-e", f"ARANGO_ROOT_PASSWORD={_PASSWORD}",
         _IMAGE,
+        "--experimental-vector-index",
     )
 
     handle = _ContainerHandle(container_id, port)
@@ -234,3 +235,31 @@ def patch_connector(
     monkeypatch.setenv("ARANGO_DEFAULT_DB_NAME", test_db_name)
 
     return test_db_name
+
+
+# ── Vector index support detection ────────────────────────────────────
+
+@pytest.fixture(scope="session")
+def vector_index_supported(system_db: StandardDatabase, arango_version: str) -> bool:
+    """Detect whether the server supports vector indexes (3.12.4+ with --vector-index)."""
+    major, minor = [int(x) for x in arango_version.split(".")[:2]]
+    if major < 3 or (major == 3 and minor < 12):
+        return False
+    probe_col = f"vec_probe_{uuid.uuid4().hex[:6]}"
+    try:
+        system_db.create_collection(probe_col)
+        col = system_db.collection(probe_col)
+        col.insert({"embedding": [0.0] * 4})
+        col.add_index({
+            "type": "vector",
+            "fields": ["embedding"],
+            "params": {"metric": "l2", "dimension": 4, "nLists": 1},
+        })
+        system_db.delete_collection(probe_col)
+        return True
+    except Exception:
+        try:
+            system_db.delete_collection(probe_col, ignore_missing=True)
+        except Exception:
+            pass
+        return False
