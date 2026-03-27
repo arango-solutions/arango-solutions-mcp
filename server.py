@@ -13,7 +13,7 @@ ArangoDB MCP Server — comprehensive multi-model database operations.
 4. Use 'explain-aql-query' to verify index usage
 5. Execute with 'execute-aql-query'
 
-**CAPABILITIES (55 tools):**
+**CAPABILITIES (65 tools):**
 
 Document operations:
   create/read/update/delete/replace documents, bulk operations, upsert
@@ -47,6 +47,13 @@ Cluster administration:
   health, server role/count/endpoints/statistics, shard imbalance,
   rebalance, maintenance mode, collection shard distribution
 
+Stream transactions:
+  begin, status, commit, abort, list running transactions,
+  execute server-side JS transactions — for multi-document ACID atomicity
+
+Hot backup (Enterprise Edition):
+  create, list, restore, delete — point-in-time deployment snapshots
+
 **Default database:** '{settings.arango.default_db_name}'
 All operations accept an optional database_name parameter.
 
@@ -57,6 +64,8 @@ All operations accept an optional database_name parameter.
 - Use 'vector-search' instead of writing APPROX_NEAR_* AQL manually
 - Create indexes on frequently filtered/sorted fields
 - In clusters: choose shard keys matching query patterns
+- Use stream transactions for multi-document atomicity
+- Hot backup operations require Enterprise Edition
 """
 # Create the FastMCP application instance
 mcp_app = FastMCP(name=_server_name, instructions=_server_instructions, lifespan=arango_db_lifespan)
@@ -65,6 +74,7 @@ mcp_app = FastMCP(name=_server_name, instructions=_server_instructions, lifespan
 from mcp_tools import (
     analyzer_tools,
     aql_tools,
+    backup_tools,
     cluster_tools,
     collection_tools,
     database_tools,
@@ -72,6 +82,7 @@ from mcp_tools import (
     graph_tools,
     index_tools,
     manual_tools,
+    transaction_tools,
     traversal_tools,
     vector_tools,
     view_tools,
