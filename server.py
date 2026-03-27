@@ -4,35 +4,59 @@ from config import settings
 # Explicitly define the server name and instructions
 _server_name = "ArangoDB_MCP_Server"
 _server_instructions = f"""
-Interact with ArangoDB multi-model database for document, graph, and search operations.
-**CRITICAL WORKFLOW REQUIREMENT**
-**ALWAYS use 'get-aql-manual' tool FIRST before ANY AQL query operations!**
-This tool provides essential AQL syntax, functions, and optimization patterns needed for correct and performant query formation.
-**MANDATORY SEQUENCE for AQL queries:**
-1. **FIRST**: Call 'get-aql-manual' with manual_name="aql_ref"
-2. **SECOND**: Call 'get-aql-manual' with manual_name="optimization"
-3. **STUDY**: Review both manuals - AQL syntax AND optimization patterns
-4. **THEN**: Write your optimized AQL query using proper syntax and performance patterns
-5. **FINALLY**: Execute using 'execute-aql-query' tool
-This server provides comprehensive access to ArangoDB functionality including:
-- AQL query execution for complex data retrieval (REQUIRES manual consultation first!)
-- Document CRUD operations with collections
-- Graph management with vertices and edges
-- Full-text search and analyzers
-- Database and collection management
-- Index management for performance optimization
-- View management for search and aggregation
-Default database: '{settings.arango.default_db_name}'
-All operations support optional database selection. When no database is specified,
-the default database will be used. The server maintains persistent connections
-and handles authentication automatically.
-For best results:
-- **ALWAYS consult BOTH AQL manuals (aql_ref + optimization) before writing queries**
-- Apply optimization patterns to avoid vertex-centric filtering and use edge-index queries
-- Specify collection names clearly
-- Use descriptive field names in document operations
-- Leverage AQL for complex queries and data relationships
-- Consider indexing for frequently queried fields and query performance
+ArangoDB MCP Server — comprehensive multi-model database operations.
+
+**AQL WORKFLOW (MANDATORY for raw AQL queries):**
+1. Call 'get-aql-manual' with manual_name="aql_ref" for syntax
+2. Call 'get-aql-manual' with manual_name="optimization" for performance
+3. Use 'validate-aql-query' to check syntax before execution
+4. Use 'explain-aql-query' to verify index usage
+5. Execute with 'execute-aql-query'
+
+**CAPABILITIES (55 tools):**
+
+Document operations:
+  create/read/update/delete/replace documents, bulk operations, upsert
+
+Collection management:
+  create (with sharding, replication, computed values), list, delete, properties
+
+Database management:
+  create, list, delete, info
+
+Graph management:
+  create named graphs (standard, SmartGraph, SatelliteGraph), edges, properties
+  Graph traversals: traverse, shortest-path, k-shortest-paths, neighbors
+
+AQL query engine:
+  execute, explain (plan analysis), validate (syntax check)
+
+Index management:
+  create (persistent, inverted, geo, ttl, vector/ANN, mdi), list, delete
+
+Vector / semantic search (3.12.4+):
+  vector-search (ANN with cosine/l2/innerProduct), hybrid-search (vector + BM25)
+
+Search views:
+  ArangoSearch and search-alias views — create, update, replace, delete
+
+Analyzers:
+  create, list, delete, properties
+
+Cluster administration:
+  health, server role/count/endpoints/statistics, shard imbalance,
+  rebalance, maintenance mode, collection shard distribution
+
+**Default database:** '{settings.arango.default_db_name}'
+All operations accept an optional database_name parameter.
+
+**Best practices:**
+- Consult AQL manuals before writing raw queries
+- Use 'explain-aql-query' to verify index usage before executing
+- Use dedicated graph traversal tools instead of hand-writing traversal AQL
+- Use 'vector-search' instead of writing APPROX_NEAR_* AQL manually
+- Create indexes on frequently filtered/sorted fields
+- In clusters: choose shard keys matching query patterns
 """
 # Create the FastMCP application instance
 mcp_app = FastMCP(name=_server_name, instructions=_server_instructions, lifespan=arango_db_lifespan)
@@ -48,6 +72,7 @@ from mcp_tools import (
     graph_tools,
     index_tools,
     manual_tools,
+    traversal_tools,
     vector_tools,
     view_tools,
 )

@@ -8,6 +8,7 @@ from . import (
     graph_tools,
     index_tools,
     manual_tools,
+    traversal_tools,
     vector_tools,
     view_tools,
 )
