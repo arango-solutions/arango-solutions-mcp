@@ -1,32 +1,33 @@
 # ArangoDB MCP Server
 
-A comprehensive Model Context Protocol (MCP) server for ArangoDB multi-model database operations. This server provides document, graph, and search capabilities through a clean, Poetry-managed Python environment with zero hardcoded configuration.
+A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for ArangoDB, providing **65 tools** covering document CRUD, graph traversals, AQL queries, vector/semantic search, cluster administration, stream transactions, hot backup, and more.
 
+Built for AI assistants (Cursor, Claude Desktop, etc.) that need full-spectrum access to ArangoDB's multi-model capabilities.
 
+## Supported ArangoDB Versions
 
-### Prerequisites
+- **ArangoDB 3.12+** (vector search requires 3.12.4+ with `--vector-index`)
+- **ArangoDB 4.0** (under development — forward-compatible)
 
-- Python 3.10 or higher
+## Prerequisites
+
+- Python 3.10+
 - [Poetry](https://python-poetry.org/docs/#installation) for dependency management
-- ArangoDB instance (local or remote)
+- ArangoDB instance (local, Docker, or remote)
 
-### 1. Installation
+## Quick Start
+
+### 1. Install
 
 ```bash
-# Clone or extract the project
-cd mcp_server
-
-# Install dependencies with Poetry
+git clone https://github.com/arangoml/arango-mcp-server.git
+cd arango-mcp-server
 poetry install
 ```
 
-### 2. Configuration
+### 2. Configure Your MCP Client
 
-The server uses environment variables configured through your MCP client's `mcp.json` file. **No hardcoded credentials!**
-
-#### For Cursor IDE:
-
-Edit your `.cursor/mcp.json` file:
+**Cursor IDE** — edit `.cursor/mcp.json`:
 
 ```json
 {
@@ -34,6 +35,7 @@ Edit your `.cursor/mcp.json` file:
     "arangodb-mcp": {
       "command": "poetry",
       "args": ["run", "python", "main.py"],
+      "cwd": "/path/to/arango-mcp-server",
       "env": {
         "ARANGO_HOSTS": "http://localhost:8529",
         "ARANGO_ROOT_USERNAME": "root",
@@ -45,9 +47,7 @@ Edit your `.cursor/mcp.json` file:
 }
 ```
 
-#### For Claude Desktop:
-
-Add to your `claude_desktop_config.json`:
+**Claude Desktop** — edit `claude_desktop_config.json`:
 
 ```json
 {
@@ -55,7 +55,7 @@ Add to your `claude_desktop_config.json`:
     "arangodb-mcp": {
       "command": "poetry",
       "args": ["run", "python", "main.py"],
-      "cwd": "/path/to/mcp_server",
+      "cwd": "/path/to/arango-mcp-server",
       "env": {
         "ARANGO_HOSTS": "http://localhost:8529",
         "ARANGO_ROOT_USERNAME": "root",
@@ -71,105 +71,269 @@ Add to your `claude_desktop_config.json`:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ARANGO_HOSTS` | Yes | - | ArangoDB server URL(s) |
-| `ARANGO_ROOT_USERNAME` | Yes | - | ArangoDB username |
-| `ARANGO_ROOT_PASSWORD` | Yes | - | ArangoDB password |
+| `ARANGO_HOSTS` | Yes | — | ArangoDB server URL(s) |
+| `ARANGO_ROOT_USERNAME` | Yes | — | ArangoDB username |
+| `ARANGO_ROOT_PASSWORD` | Yes | — | ArangoDB password |
 | `ARANGO_DEFAULT_DB_NAME` | No | `_system` | Default database name |
 
+All tools accept an optional `database_name` parameter to override the default.
+
+---
+
+## Tools (65)
+
+### Document Operations (10)
+
+| Tool | Description |
+|------|-------------|
+| `create-document` | Insert a single document |
+| `create-documents-bulk` | Bulk insert an array of documents |
+| `read-document` | Get a document by key or ID |
+| `read-documents-with-filter` | Query documents with filters, pagination |
+| `update-document` | Partial update by key |
+| `delete-document` | Remove a document by key |
+| `replace-document` | Full document replacement |
+| `upsert-document` | Insert or update based on search criteria |
+| `update-documents-bulk` | Bulk partial updates via AQL |
+| `delete-documents-bulk` | Bulk deletes via AQL filter |
+
+### Collection Management (4)
+
+| Tool | Description |
+|------|-------------|
+| `list-collections` | List all collections in a database |
+| `create-collection` | Create document/edge collections (with sharding, replication, computed values) |
+| `delete-collection` | Drop a collection |
+| `get-collection-properties` | Collection stats, shard config, key type |
+
+### Database Management (4)
+
+| Tool | Description |
+|------|-------------|
+| `list-databases` | List all databases |
+| `create-database` | Create a new database |
+| `delete-database` | Drop a database |
+| `get-database-info` | Database properties and stats |
+
+### Graph Management (5)
+
+| Tool | Description |
+|------|-------------|
+| `list-graphs` | List named graphs |
+| `create-graph` | Create graphs (standard, SmartGraph, SatelliteGraph, EnterpriseGraph) |
+| `delete-graph` | Drop a graph (optionally drop collections) |
+| `create-edge` | Insert an edge between two vertices |
+| `get-graph-properties` | Edge definitions, orphan collections, cluster config |
+
+### Graph Traversals (4)
+
+| Tool | Description |
+|------|-------------|
+| `graph-traverse` | Multi-depth traversal with vertex/edge filters, path return |
+| `graph-shortest-path` | Single shortest path (optionally weighted) |
+| `graph-k-shortest-paths` | K alternative shortest paths |
+| `graph-neighbors` | Deduplicated neighbor discovery at a given depth |
+
+### AQL Query Engine (3)
+
+| Tool | Description |
+|------|-------------|
+| `execute-aql-query` | Execute AQL with bind variables, stats |
+| `explain-aql-query` | Execution plan analysis (indexes, costs, optimizer rules) |
+| `validate-aql-query` | Syntax check without execution |
+
+### Index Management (3)
+
+| Tool | Description |
+|------|-------------|
+| `list-indexes` | List indexes on a collection |
+| `create-index` | Create persistent, inverted, geo, TTL, vector (ANN), MDI indexes |
+| `delete-index` | Remove an index by ID |
+
+### Vector & Semantic Search (2)
+
+*Requires ArangoDB 3.12.4+ with `--vector-index` enabled.*
+
+| Tool | Description |
+|------|-------------|
+| `vector-search` | Approximate nearest-neighbor search (cosine, L2, inner product) |
+| `hybrid-search` | Combined vector + BM25 text search with weighted fusion |
+
+### Search Views (6)
+
+| Tool | Description |
+|------|-------------|
+| `list-views` | List ArangoSearch / search-alias views |
+| `create-view` | Create an ArangoSearch or search-alias view |
+| `get-view-properties` | View configuration details |
+| `update-view-properties` | Modify view settings (partial) |
+| `replace-view-properties` | Replace view configuration |
+| `delete-view` | Drop a view |
+
+### Analyzers (4)
+
+| Tool | Description |
+|------|-------------|
+| `list-analyzers` | List text analyzers |
+| `create-analyzer` | Create a custom analyzer (text, ngram, stem, etc.) |
+| `delete-analyzer` | Remove an analyzer |
+| `get-analyzer-properties` | Analyzer type and configuration |
+
+### Cluster Administration (9)
+
+| Tool | Description |
+|------|-------------|
+| `cluster-health` | Overall cluster health status |
+| `cluster-server-role` | Role of the connected server (Coordinator, DBServer, Single) |
+| `cluster-server-count` | Number of coordinators + DB servers |
+| `cluster-endpoints` | List all coordinator endpoints |
+| `cluster-server-statistics` | CPU, memory, request stats for a server |
+| `cluster-calculate-imbalance` | Shard distribution imbalance report |
+| `cluster-rebalance` | Trigger automatic shard rebalancing |
+| `cluster-toggle-maintenance` | Enable/disable cluster maintenance mode |
+| `collection-shard-distribution` | Shard → server mapping for a collection |
+
+### Stream Transactions (6)
+
+| Tool | Description |
+|------|-------------|
+| `begin-transaction` | Start a stream transaction (declare read/write/exclusive collections) |
+| `transaction-status` | Check if a transaction is running, committed, or aborted |
+| `commit-transaction` | Commit and persist all changes |
+| `abort-transaction` | Roll back all changes |
+| `list-transactions` | List currently running stream transactions |
+| `execute-transaction` | Execute a server-side JavaScript transaction atomically |
+
+### Hot Backup (4) — Enterprise Edition
+
+| Tool | Description |
+|------|-------------|
+| `create-backup` | Create a point-in-time hot backup of the deployment |
+| `list-backups` | List available backups |
+| `restore-backup` | Restore from a backup (server restarts) |
+| `delete-backup` | Permanently remove a backup |
+
+### AQL Reference (1)
+
+| Tool | Description |
+|------|-------------|
+| `get-aql-manual` | Retrieve AQL syntax, optimization, or Cypher→AQL migration guides |
+
+---
+
+## Architecture
 
 ```
-
-## Project Structure
-
-mcp_server/
-├── pyproject.toml           # Poetry configuration (no hardcoding!)
-├── poetry.lock             # Dependency lock file (auto-generated)
-├── README.md               # This file
-├── .cursor/
-│   └── mcp.json           # Cursor MCP configuration
-├── main.py                # Entry point
-├── server.py              # FastMCP server setup
-├── config.py              # Pydantic settings (env-based)
-├── arango_connector.py    # Database connection management
-├── agents/                # Business logic agents
-│   ├── __init__.py
-│   ├── agent_base.py
-│   ├── database_management_agent.py
-│   ├── collection_management_agent.py
-│   ├── document_crud_agent.py
-│   ├── graph_management_agent.py
-│   ├── aql_execution_agent.py
-│   ├── index_management_agent.py
-│   ├── analyzer_management_agent.py
-│   └── view_management_agent.py
-├── mcp_tools/             # MCP tool definitions
-│   ├── __init__.py
+arango-mcp-server/
+├── main.py                  # Entry point, event loop setup
+├── server.py                # FastMCP app, server instructions
+├── config.py                # Pydantic settings (env-based, zero hardcoding)
+├── arango_connector.py      # Connection pool, SSL, lifespan management
+│
+├── agents/                  # Business logic layer
+│   ├── agent_base.py                    # Abstract base class
+│   ├── database_management_agent.py     # DB create/list/delete
+│   ├── collection_management_agent.py   # Collections + sharding config
+│   ├── document_crud_agent.py           # Full document lifecycle
+│   ├── graph_management_agent.py        # Named graphs, SmartGraphs
+│   ├── graph_traversal_agent.py         # Traversals, shortest paths
+│   ├── aql_execution_agent.py           # Execute, explain, validate AQL
+│   ├── index_management_agent.py        # All index types incl. vector
+│   ├── vector_search_agent.py           # ANN search, hybrid search
+│   ├── view_management_agent.py         # ArangoSearch, search-alias views
+│   ├── analyzer_management_agent.py     # Text analyzers
+│   ├── cluster_management_agent.py      # Cluster health, shards, rebalance
+│   ├── transaction_management_agent.py  # Stream transactions
+│   ├── backup_management_agent.py       # Hot backups (Enterprise)
+│   └── manual_management_agent.py       # AQL reference manuals
+│
+├── mcp_tools/               # MCP tool definitions (thin wrappers → agents)
 │   ├── database_tools.py
 │   ├── collection_tools.py
 │   ├── document_tools.py
 │   ├── graph_tools.py
+│   ├── traversal_tools.py
 │   ├── aql_tools.py
 │   ├── index_tools.py
+│   ├── vector_tools.py
+│   ├── view_tools.py
 │   ├── analyzer_tools.py
-│   └── view_tools.py
-
+│   ├── cluster_tools.py
+│   ├── transaction_tools.py
+│   ├── backup_tools.py
+│   └── manual_tools.py
+│
+├── tests/                   # Pytest suite (126 tests)
+│   ├── conftest.py          # Auto-provisions Docker containers
+│   ├── test_connectivity.py
+│   ├── test_agents.py
+│   ├── test_vector_search.py
+│   ├── test_traversal.py
+│   ├── test_transactions.py
+│   └── test_cluster.py
+│
+└── manuals/                 # AQL reference documents
 ```
 
-##  Available Tools
+The codebase follows a two-layer pattern:
 
-### Database Management
-- `list-databases` - List all databases
-- `create-database` - Create new database
-- `delete-database` - Delete database 
-- `get-database-info` - Get database properties
+- **MCP Tools** (`mcp_tools/`) — thin FastMCP-decorated functions that validate inputs and delegate to agents.
+- **Agents** (`agents/`) — business logic classes inheriting from `ArangoAgentBase` that interact with ArangoDB via `python-arango`.
 
-### Collection Management
-- `list-collections` - List collections in database
-- `create-collection` - Create document or edge collections
-- `delete-collection` - Delete collection
-- `get-collection-properties` - Get collection statistics
+---
 
-### Document Operations
-- `create-document` - Insert single document
-- `create-documents-bulk` - Bulk insert documents
-- `read-document` - Get document by key/ID
-- `read-documents-with-filter` - Query with filters
-- `update-document` - Partial document update
+## Development
 
-### Graph Operations
-- `list-graphs` - List named graphs
-- `create-graph` - Create graph with edge definitions
-- `delete-graph` - Remove graph structure
-- `create-edge` - Create relationships between vertices
+### Running Tests
 
-### AQL Queries
-- `execute-aql-query` - Run AQL queries with bind variables
+Tests automatically spin up a Docker container with ArangoDB on a random port, run the suite, and tear it down:
 
-### Index Management
-- `list-indexes` - Show collection indexes
-- `create-index` - Create performance indexes
-- `delete-index` - Remove indexes
+```bash
+poetry install --with dev
+poetry run pytest tests/ -v --ignore=tests/test_cluster.py
+```
 
-### Text Analysis
-- `list-analyzers` - Show text analyzers
-- `create-analyzer` - Create custom analyzers
-- `delete-analyzer` - Remove analyzers
-- `get-analyzer-properties` - Analyzer configuration
+To test against an existing ArangoDB instance (skips Docker):
 
-### Search Views
-- `list-views` - Show ArangoSearch views
-- `create-view` - Create search views
-- `get-view-properties` - View configuration
-- `update-view-properties` - Modify view settings
-- `replace-view-properties` - Replace view configuration
-- `delete-view` - Remove search views
+```bash
+ARANGO_HOSTS=http://localhost:8529 \
+ARANGO_ROOT_PASSWORD=your_password \
+  poetry run pytest tests/ -v
+```
 
-##  Development
+Cluster-specific tests require a multi-server deployment:
 
-### Adding New Tools
+```bash
+poetry run pytest tests/test_cluster.py -v
+```
 
-1. Create agent in `agents/` directory
-2. Create tool definitions in `mcp_tools/` directory
-3. Import in `server.py`
+### Linting
 
+```bash
+poetry run ruff check .
+```
 
+### Adding a New Tool
+
+1. Create an agent in `agents/` inheriting from `ArangoAgentBase`
+2. Create tool definitions in `mcp_tools/` using `@mcp_app.tool`
+3. Import the new tool module in `mcp_tools/__init__.py` and `server.py`
+4. Add tests in `tests/`
+
+---
+
+## Key Features
+
+- **Zero hardcoded config** — all credentials via environment variables or `.env`
+- **Multi-model coverage** — documents, graphs, search, vectors in one server
+- **Cluster-aware** — sharding, replication, SmartGraphs, shard rebalancing
+- **ACID transactions** — stream transactions for multi-document atomicity
+- **Vector search** — approximate nearest-neighbor with cosine/L2/inner-product metrics
+- **Hybrid search** — combine vector similarity with BM25 text relevance
+- **AQL-first** — built-in manuals, explain plans, and syntax validation
+- **Self-testing** — 126 automated tests with ephemeral Docker containers
+- **Cross-platform** — runs on macOS, Linux, Windows (via Docker)
+
+## License
+
+See [LICENSE](LICENSE) for details.

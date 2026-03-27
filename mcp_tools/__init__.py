@@ -1,4 +1,4 @@
-from . import (
+from . import (  # noqa: F401 — side-effect imports register MCP tools
     analyzer_tools,
     aql_tools,
     backup_tools,

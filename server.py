@@ -71,7 +71,7 @@ All operations accept an optional database_name parameter.
 mcp_app = FastMCP(name=_server_name, instructions=_server_instructions, lifespan=arango_db_lifespan)
 # Import tool and resource modules to register them
 # These imports MUST happen AFTER mcp_app is defined.
-from mcp_tools import (
+from mcp_tools import (  # noqa: F401, E402 — side-effect imports register MCP tools
     analyzer_tools,
     aql_tools,
     backup_tools,

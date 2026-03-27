@@ -39,7 +39,7 @@ class ManualManagementAgent(ArangoAgentBase):
 
         except FileNotFoundError:
             logger.error(f"ManualManagementAgent: Manual file not found: {file_path}")
-            return {"error": f"Manual not found."}
+            return {"error": "Manual not found."}
         except Exception as e:
             logger.error(f"ManualManagementAgent: Error retrieving manual: {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}

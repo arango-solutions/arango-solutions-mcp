@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from arango.exceptions import (
     ArangoServerError,
@@ -66,7 +66,6 @@ class ViewManagementAgent(ArangoAgentBase):
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
         view_name: Optional[str] = mcp_tool_inputs.get("view_name")
-        new_view_name: Optional[str] = mcp_tool_inputs.get("new_view_name")
         view_type: Optional[str] = mcp_tool_inputs.get("view_type")
         properties: Dict[str, Any] = (
             mcp_tool_inputs.get("properties")

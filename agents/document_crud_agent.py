@@ -29,8 +29,6 @@ class DocumentCRUDAgent(ArangoAgentBase):
         document_key_or_id: Optional[str] = mcp_tool_inputs.get("document_key_or_id")
 
         filters: Optional[Dict[str, Any]] = mcp_tool_inputs.get("filters")
-        sort_by: Optional[str] = mcp_tool_inputs.get("sort_by")
-        sort_order: str = mcp_tool_inputs.get("sort_order", "ASC").upper()
         limit: int = mcp_tool_inputs.get("limit", 100)
         skip: int = mcp_tool_inputs.get("skip", 0)
 
