@@ -1,6 +1,7 @@
 from . import (
     analyzer_tools,
     aql_tools,
+    backup_tools,
     cluster_tools,
     collection_tools,
     database_tools,
@@ -8,6 +9,7 @@ from . import (
     graph_tools,
     index_tools,
     manual_tools,
+    transaction_tools,
     traversal_tools,
     vector_tools,
     view_tools,
