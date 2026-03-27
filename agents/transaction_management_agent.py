@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Union
 
 from arango.exceptions import (
     ArangoServerError,

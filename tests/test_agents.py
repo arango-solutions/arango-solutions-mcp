@@ -5,7 +5,6 @@ that agents produce correct results against an ephemeral test database.
 """
 
 import pytest
-from arango.database import StandardDatabase
 
 from agents.cluster_management_agent import ClusterManagementAgent
 from agents.collection_management_agent import CollectionManagementAgent

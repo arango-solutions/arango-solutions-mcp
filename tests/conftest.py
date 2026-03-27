@@ -29,12 +29,12 @@ os.environ.setdefault("ARANGO_HOSTS", "http://localhost:8529")
 os.environ.setdefault("ARANGO_ROOT_USERNAME", "root")
 os.environ.setdefault("ARANGO_ROOT_PASSWORD", "test_root_password")
 
-import pytest
-import urllib.request
-import urllib.error
+import pytest  # noqa: E402
+import urllib.request  # noqa: E402
+import urllib.error  # noqa: E402
 
-from arango import ArangoClient
-from arango.database import StandardDatabase
+from arango import ArangoClient  # noqa: E402
+from arango.database import StandardDatabase  # noqa: E402
 
 _PASSWORD = os.environ.get("ARANGO_ROOT_PASSWORD", "test_root_password")
 _USERNAME = os.environ.get("ARANGO_ROOT_USERNAME", "root")

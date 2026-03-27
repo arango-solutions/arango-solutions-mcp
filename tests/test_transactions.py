@@ -1,8 +1,6 @@
 """Tests for stream transactions and hot backup operations."""
 
 import pytest
-import uuid
-
 from arango.database import StandardDatabase
 
 from agents.transaction_management_agent import TransactionManagementAgent

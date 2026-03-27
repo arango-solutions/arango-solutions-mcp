@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from arango.exceptions import AQLQueryExecuteError, AQLQueryExplainError, AQLQueryValidateError, ArangoServerError
 

@@ -6,7 +6,6 @@ They are skipped automatically if the feature is unavailable.
 
 import math
 import pytest
-from arango.database import StandardDatabase
 
 from agents.index_management_agent import IndexManagementAgent
 from agents.vector_search_agent import VectorSearchAgent

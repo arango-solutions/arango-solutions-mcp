@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional
 
 from arango.exceptions import ArangoServerError, GraphCreateError, GraphDeleteError, GraphListError
 
