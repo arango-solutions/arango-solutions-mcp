@@ -1,0 +1,126 @@
+# ArangoDB Docker environments for development and manual testing.
+#
+# Ports are configurable via environment variables to avoid conflicts.
+# Set to 0 to let Docker pick a random free port.
+#
+# Usage:
+#   Single server:  docker compose up -d arangodb-single
+#   Cluster:        docker compose --profile cluster up -d
+#   Random port:    ARANGO_SINGLE_PORT=0 docker compose up -d arangodb-single
+#   Find port:      docker compose port arangodb-single 8529
+#   Tear down:      docker compose --profile cluster down -v
+#
+# Note: The pytest test suite does NOT use docker-compose. It manages its own
+# containers with dynamic port allocation via the conftest.py fixtures.
+
+x-arango-env: &arango-env
+  ARANGO_ROOT_PASSWORD: ${ARANGO_ROOT_PASSWORD:-test_root_password}
+
+services:
+  # ── Single-server (default) ─────────────────────────────────────────
+  arangodb-single:
+    image: ${ARANGO_IMAGE:-arangodb/arangodb:3.12}
+    container_name: arango-mcp-single
+    environment:
+      <<: *arango-env
+    ports:
+      - "${ARANGO_SINGLE_PORT:-0}:8529"
+    volumes:
+      - arango-single-data:/var/lib/arangodb3
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8529/_api/version"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Cluster mode (activated with --profile cluster) ─────────────────
+  # 1 Agency, 2 DB-Servers, 1 Coordinator — minimal viable cluster for
+  # testing sharding, replication, SmartGraphs, SatelliteCollections.
+
+  agency:
+    image: ${ARANGO_IMAGE:-arangodb/arangodb:3.12}
+    container_name: arango-mcp-agency
+    command: >
+      arangod
+      --server.endpoint tcp://0.0.0.0:8531
+      --agency.my-address tcp://agency:8531
+      --agency.size 1
+      --agency.activate true
+      --agency.supervision true
+      --database.directory /var/lib/arangodb3
+    environment:
+      <<: *arango-env
+    profiles: ["cluster"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8531/_api/version"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+
+  dbserver1:
+    image: ${ARANGO_IMAGE:-arangodb/arangodb:3.12}
+    container_name: arango-mcp-dbserver1
+    command: >
+      arangod
+      --server.endpoint tcp://0.0.0.0:8530
+      --cluster.my-address tcp://dbserver1:8530
+      --cluster.agency-endpoint tcp://agency:8531
+      --cluster.my-role DBSERVER
+      --database.directory /var/lib/arangodb3
+    environment:
+      <<: *arango-env
+    depends_on:
+      agency:
+        condition: service_healthy
+    profiles: ["cluster"]
+
+  dbserver2:
+    image: ${ARANGO_IMAGE:-arangodb/arangodb:3.12}
+    container_name: arango-mcp-dbserver2
+    command: >
+      arangod
+      --server.endpoint tcp://0.0.0.0:8530
+      --cluster.my-address tcp://dbserver2:8530
+      --cluster.agency-endpoint tcp://agency:8531
+      --cluster.my-role DBSERVER
+      --database.directory /var/lib/arangodb3
+    environment:
+      <<: *arango-env
+    depends_on:
+      agency:
+        condition: service_healthy
+    profiles: ["cluster"]
+
+  coordinator:
+    image: ${ARANGO_IMAGE:-arangodb/arangodb:3.12}
+    container_name: arango-mcp-coordinator
+    command: >
+      arangod
+      --server.endpoint tcp://0.0.0.0:8529
+      --cluster.my-address tcp://coordinator:8529
+      --cluster.agency-endpoint tcp://agency:8531
+      --cluster.my-role COORDINATOR
+      --database.directory /var/lib/arangodb3
+    environment:
+      <<: *arango-env
+    depends_on:
+      agency:
+        condition: service_healthy
+      dbserver1:
+        condition: service_started
+      dbserver2:
+        condition: service_started
+    ports:
+      - "${ARANGO_CLUSTER_PORT:-0}:8529"
+    profiles: ["cluster"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8529/_api/version"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  arango-single-data:
