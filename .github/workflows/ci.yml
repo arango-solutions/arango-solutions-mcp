@@ -45,20 +45,6 @@ jobs:
       matrix:
         arango-version: ["3.12"]
 
-    services:
-      arangodb:
-        image: arangodb/arangodb:${{ matrix.arango-version }}
-        env:
-          ARANGO_ROOT_PASSWORD: test_root_password
-        ports:
-          - 8529:8529
-        options: >-
-          --health-cmd "wget -qO- http://localhost:8529/_api/version || exit 1"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 30
-          --health-start-period 60s
-
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +69,28 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev --no-interaction
 
+      - name: Start ArangoDB
+        run: |
+          docker run -d \
+            --name arangodb-test \
+            -p 8529:8529 \
+            -e ARANGO_ROOT_PASSWORD=test_root_password \
+            arangodb/arangodb:${{ matrix.arango-version }}
+
+          echo "Waiting for ArangoDB to become healthy..."
+          for i in $(seq 1 90); do
+            if curl -sf -u root:test_root_password http://localhost:8529/_api/version > /dev/null 2>&1; then
+              echo "ArangoDB is ready (attempt $i)"
+              break
+            fi
+            if [ "$i" -eq 90 ]; then
+              echo "ArangoDB failed to start"
+              docker logs arangodb-test
+              exit 1
+            fi
+            sleep 2
+          done
+
       - name: Run tests
         env:
           ARANGO_HOSTS: http://localhost:8529
@@ -93,6 +101,10 @@ jobs:
           --ignore=tests/test_cluster.py
           --ignore=tests/test_vector_search.py
           -x
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f arangodb-test || true
 
   test-vector:
     name: Test Vector Search (ArangoDB ${{ matrix.arango-version }})
