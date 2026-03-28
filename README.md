@@ -1,6 +1,6 @@
 # ArangoDB MCP Server
 
-A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for ArangoDB, providing **65 tools** covering document CRUD, graph traversals, AQL queries, vector/semantic search, cluster administration, stream transactions, hot backup, and more.
+A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for ArangoDB, providing **74 tools** covering document CRUD, graph traversals, AQL queries, vector/semantic search, cluster administration, stream transactions, hot backup, user/permission management, and more.
 
 Built for AI assistants (Cursor, Claude Desktop, etc.) that need full-spectrum access to ArangoDB's multi-model capabilities.
 
@@ -80,7 +80,7 @@ All tools accept an optional `database_name` parameter to override the default.
 
 ---
 
-## Tools (65)
+## Tools (74)
 
 ### Document Operations (10)
 
@@ -213,6 +213,20 @@ All tools accept an optional `database_name` parameter to override the default.
 | `restore-backup` | Restore from a backup (server restarts) |
 | `delete-backup` | Permanently remove a backup |
 
+### User & Permission Management (9)
+
+| Tool | Description |
+|------|-------------|
+| `list-users` | List all server users |
+| `get-user` | Get user details and metadata |
+| `create-user` | Create a new user with password, active flag, extra data |
+| `update-user` | Update password, active status, or metadata |
+| `delete-user` | Remove a user and all permission grants |
+| `list-permissions` | All database/collection permission grants for a user |
+| `get-permission` | Effective permission level on a database or collection |
+| `grant-permission` | Grant rw/ro/none access at database or collection level |
+| `revoke-permission` | Remove a permission grant (falls back to parent level) |
+
 ### AQL Reference (1)
 
 | Tool | Description |
@@ -245,6 +259,7 @@ arango-mcp-server/
 │   ├── cluster_management_agent.py      # Cluster health, shards, rebalance
 │   ├── transaction_management_agent.py  # Stream transactions
 │   ├── backup_management_agent.py       # Hot backups (Enterprise)
+│   ├── user_management_agent.py         # Users and permissions
 │   └── manual_management_agent.py       # AQL reference manuals
 │
 ├── mcp_tools/               # MCP tool definitions (thin wrappers → agents)
@@ -261,15 +276,17 @@ arango-mcp-server/
 │   ├── cluster_tools.py
 │   ├── transaction_tools.py
 │   ├── backup_tools.py
+│   ├── user_tools.py
 │   └── manual_tools.py
 │
-├── tests/                   # Pytest suite (126 tests)
+├── tests/                   # Pytest suite (151 tests)
 │   ├── conftest.py          # Auto-provisions Docker containers
 │   ├── test_connectivity.py
 │   ├── test_agents.py
 │   ├── test_vector_search.py
 │   ├── test_traversal.py
 │   ├── test_transactions.py
+│   ├── test_users.py
 │   └── test_cluster.py
 │
 └── manuals/                 # AQL reference documents
@@ -331,7 +348,7 @@ poetry run ruff check .
 - **Vector search** — approximate nearest-neighbor with cosine/L2/inner-product metrics
 - **Hybrid search** — combine vector similarity with BM25 text relevance
 - **AQL-first** — built-in manuals, explain plans, and syntax validation
-- **Self-testing** — 126 automated tests with ephemeral Docker containers
+- **Self-testing** — 151 automated tests with ephemeral Docker containers
 - **Cross-platform** — runs on macOS, Linux, Windows (via Docker)
 
 ## License

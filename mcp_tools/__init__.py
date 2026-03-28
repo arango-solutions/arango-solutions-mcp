@@ -11,6 +11,7 @@ from . import (  # noqa: F401 — side-effect imports register MCP tools
     manual_tools,
     transaction_tools,
     traversal_tools,
+    user_tools,
     vector_tools,
     view_tools,
 )
