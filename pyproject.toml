@@ -1,0 +1,55 @@
+[tool.poetry]
+name = "arangodb-mcp-server"
+version = "2.0.0"
+description = "ArangoDB MCP Server - Document, Graph, Search, Sharding & Cluster Operations"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+python-arango = "^8.1.0"
+mcp = "^1.0.0"
+fastmcp = "^0.2.0"
+pydantic = "^2.0.0"
+pydantic-settings = "^2.0.0"
+anyio = "^4.5.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.24.0"
+pytest-timeout = "^2.2.0"
+black = "^24.0.0"
+isort = "^5.13.0"
+mypy = "^1.0.0"
+ruff = "^0.8.0"
+
+[tool.poetry.scripts]
+arangodb-mcp = "main:run_server_cli"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "cluster: tests requiring a cluster deployment (deselect with '-m not cluster')",
+    "slow: tests that take a long time to run",
+]
+timeout = 120
+timeout_func_only = true
