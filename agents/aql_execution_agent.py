@@ -1,7 +1,12 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from arango.exceptions import AQLQueryExecuteError, AQLQueryExplainError, AQLQueryValidateError, ArangoServerError
+from arango.exceptions import (
+    AQLQueryExecuteError,
+    AQLQueryExplainError,
+    AQLQueryValidateError,
+    ArangoServerError,
+)
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
@@ -29,7 +34,8 @@ class AQLExecutionAgent(ArangoAgentBase):
         # Default: execute
 
         logger.info(
-            f"AQLExecutionAgent: Executing AQL in DB '{database_name}': {aql_query[:100]}... with bind_vars: {bind_vars}"
+            f"AQLExecutionAgent: Executing AQL in DB '{database_name}': "
+            f"{aql_query[:100]}... bind_vars_keys={list(bind_vars.keys()) if bind_vars else []}"
         )
 
         try:
@@ -87,7 +93,9 @@ class AQLExecutionAgent(ArangoAgentBase):
         max_plans: Optional[int] = inputs.get("max_plans")
         opt_rules: Optional[List[str]] = inputs.get("opt_rules")
 
-        logger.info(f"AQLExecutionAgent: Explaining AQL in DB '{database_name}': {aql_query[:100]}...")
+        logger.info(
+            f"AQLExecutionAgent: Explaining AQL in DB '{database_name}': {aql_query[:100]}..."
+        )
 
         try:
             db = arango_connector.get_db(database_name)
@@ -118,7 +126,9 @@ class AQLExecutionAgent(ArangoAgentBase):
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
     async def _validate(self, aql_query: str, database_name: Optional[str]) -> Dict[str, Any]:
-        logger.info(f"AQLExecutionAgent: Validating AQL in DB '{database_name}': {aql_query[:100]}...")
+        logger.info(
+            f"AQLExecutionAgent: Validating AQL in DB '{database_name}': {aql_query[:100]}..."
+        )
 
         try:
             db = arango_connector.get_db(database_name)

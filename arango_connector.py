@@ -108,7 +108,8 @@ class ArangoDBConnector:
                 return False
             self._default_db.properties()
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Health check failed: {e}")
             return False
 
 

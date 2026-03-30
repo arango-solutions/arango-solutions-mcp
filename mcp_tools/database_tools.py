@@ -1,4 +1,3 @@
-# mcp_server/mcp_tools/database_tools.py
 from typing import Any, Dict, Optional
 
 from pydantic import Field
@@ -32,7 +31,7 @@ db_agent = DatabaseManagementAgent()
     System databases (like '_system') are included and contain ArangoDB metadata.
     """,
 )
-async def list_databases_tool_func() -> Dict[str, Any]:
+async def list_databases() -> Dict[str, Any]:
     """Lists all ArangoDB databases with descriptions and metadata."""
     return await db_agent.arun({"operation": "list_databases"})
 
@@ -60,7 +59,7 @@ async def list_databases_tool_func() -> Dict[str, Any]:
     - Microservice data isolation
     """,
 )
-async def create_database_tool_func(
+async def create_database(
     database_name: str = Field(
         description="""Name for the new database. Should be descriptive and follow conventions.
         
@@ -114,7 +113,7 @@ async def create_database_tool_func(
     - Database migration and restructuring
     """,
 )
-async def delete_database_tool_func(
+async def delete_database(
     database_name: str = Field(
         description="""Name of the database to permanently delete.
         
@@ -164,7 +163,7 @@ async def delete_database_tool_func(
     - Compliance and auditing
     """,
 )
-async def get_database_info_tool_func(
+async def get_database_info(
     database_name: Optional[str] = Field(
         default=None,
         description="""Name of the database to analyze. Uses default database if not specified.
@@ -180,7 +179,7 @@ async def get_database_info_tool_func(
         - Collection count and types
         - System and version information
         """,
-    )
+    ),
 ) -> Dict[str, Any]:
     """Retrieves comprehensive information about an ArangoDB database."""
     return await db_agent.arun({"operation": "get_database_info", "database_name": database_name})

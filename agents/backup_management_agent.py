@@ -21,9 +21,7 @@ class BackupManagementAgent(ArangoAgentBase):
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
-        logger.info(
-            f"BackupManagementAgent: Op='{operation}', DB='{database_name}'"
-        )
+        logger.info(f"BackupManagementAgent: Op='{operation}', DB='{database_name}'")
 
         try:
             db = arango_connector.get_db(database_name)
@@ -66,9 +64,7 @@ class BackupManagementAgent(ArangoAgentBase):
                         "This ArangoDB instance does not support it."
                     )
                 }
-            logger.error(
-                f"BackupManagementAgent: Unexpected error - {e}", exc_info=True
-            )
+            logger.error(f"BackupManagementAgent: Unexpected error - {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
     def _create(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:

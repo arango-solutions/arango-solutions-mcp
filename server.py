@@ -1,8 +1,10 @@
 from mcp.server.fastmcp import FastMCP
+
 from arango_connector import arango_db_lifespan
 from config import settings
+
 # Explicitly define the server name and instructions
-_server_name = "ArangoDB_MCP_Server"
+_server_name = settings.server.server_name
 _server_instructions = f"""
 ArangoDB MCP Server — comprehensive multi-model database operations.
 
@@ -13,7 +15,7 @@ ArangoDB MCP Server — comprehensive multi-model database operations.
 4. Use 'explain-aql-query' to verify index usage
 5. Execute with 'execute-aql-query'
 
-**CAPABILITIES (65 tools):**
+**CAPABILITIES (74 tools):**
 
 Document operations:
   create/read/update/delete/replace documents, bulk operations, upsert
@@ -54,6 +56,10 @@ Stream transactions:
 Hot backup (Enterprise Edition):
   create, list, restore, delete — point-in-time deployment snapshots
 
+User & permission management:
+  list/get/create/update/delete users, list/get/grant/revoke permissions
+  at database and collection level (rw, ro, none)
+
 **Default database:** '{settings.arango.default_db_name}'
 All operations accept an optional database_name parameter.
 
@@ -84,6 +90,7 @@ from mcp_tools import (  # noqa: F401, E402 — side-effect imports register MCP
     manual_tools,
     transaction_tools,
     traversal_tools,
+    user_tools,
     vector_tools,
     view_tools,
 )

@@ -2,7 +2,7 @@
 name = "arangodb-mcp-server"
 version = "2.0.0"
 description = "ArangoDB MCP Server - Document, Graph, Search, Sharding & Cluster Operations"
-authors = ["Your Name <you@example.com>"]
+authors = ["ArangoDB GmbH <info@arangodb.com>"]
 readme = "README.md"
 package-mode = false
 
@@ -23,6 +23,7 @@ black = "^24.0.0"
 isort = "^5.13.0"
 mypy = "^1.0.0"
 ruff = "^0.8.0"
+pytest-cov = "^5.0.0"
 
 [tool.poetry.scripts]
 arangodb-mcp = "main:run_server_cli"
@@ -44,6 +45,22 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "B008",   # function-call-in-default-argument — standard Pydantic Field() pattern
+    "E402",   # module-import-not-at-top-of-file — side-effect imports in server.py/conftest
+    "E501",   # line-too-long — enforced by formatter, not linter
+    "UP006",  # non-pep585-annotation — project uses typing.Dict/List
+    "UP007",  # non-pep604-annotation — project uses Optional[X]
+    "UP035",  # deprecated-import — project uses typing imports
+    "W293",   # whitespace-before-comment — in multiline Field descriptions
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

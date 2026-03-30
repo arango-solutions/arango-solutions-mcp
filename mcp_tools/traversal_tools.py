@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field
 
@@ -46,19 +46,21 @@ async def graph_traverse(
         default=None,
         description="Edge collection(s) to traverse. Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="OUTBOUND",
         description="Traversal direction: 'OUTBOUND', 'INBOUND', or 'ANY'.",
     ),
     min_depth: int = Field(
-        default=1, description="Minimum traversal depth (default 1).",
+        default=1,
+        description="Minimum traversal depth (default 1).",
     ),
     max_depth: int = Field(
         default=1,
         description="Maximum traversal depth. Set to 2+ for multi-hop traversals.",
     ),
     limit: int = Field(
-        default=100, description="Maximum number of results to return.",
+        default=100,
+        description="Maximum number of results to return.",
     ),
     vertex_filters: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -78,25 +80,28 @@ async def graph_traverse(
     return_edges: bool = Field(default=True, description="Include edges in results."),
     return_paths: bool = Field(default=False, description="Include full paths in results."),
     database_name: Optional[str] = Field(
-        default=None, description="Target database. Uses default if not specified.",
+        default=None,
+        description="Target database. Uses default if not specified.",
     ),
 ) -> Dict[str, Any]:
-    return await traversal_agent.arun({
-        "operation": "traverse",
-        "database_name": database_name,
-        "start_vertex": start_vertex,
-        "graph_name": graph_name,
-        "edge_collections": edge_collections,
-        "direction": direction,
-        "min_depth": min_depth,
-        "max_depth": max_depth,
-        "limit": limit,
-        "vertex_filters": vertex_filters,
-        "edge_filters": edge_filters,
-        "return_vertices": return_vertices,
-        "return_edges": return_edges,
-        "return_paths": return_paths,
-    })
+    return await traversal_agent.arun(
+        {
+            "operation": "traverse",
+            "database_name": database_name,
+            "start_vertex": start_vertex,
+            "graph_name": graph_name,
+            "edge_collections": edge_collections,
+            "direction": direction,
+            "min_depth": min_depth,
+            "max_depth": max_depth,
+            "limit": limit,
+            "vertex_filters": vertex_filters,
+            "edge_filters": edge_filters,
+            "return_vertices": return_vertices,
+            "return_edges": return_edges,
+            "return_paths": return_paths,
+        }
+    )
 
 
 @mcp_app.tool(
@@ -119,19 +124,17 @@ async def graph_traverse(
     """,
 )
 async def graph_shortest_path(
-    start_vertex: str = Field(
-        description="Starting vertex ID (format: 'collection/key')."
-    ),
-    target_vertex: str = Field(
-        description="Target vertex ID (format: 'collection/key')."
-    ),
+    start_vertex: str = Field(description="Starting vertex ID (format: 'collection/key')."),
+    target_vertex: str = Field(description="Target vertex ID (format: 'collection/key')."),
     graph_name: Optional[str] = Field(
-        default=None, description="Named graph. Provide this OR edge_collections.",
+        default=None,
+        description="Named graph. Provide this OR edge_collections.",
     ),
     edge_collections: Optional[List[str]] = Field(
-        default=None, description="Edge collection(s). Alternative to graph_name.",
+        default=None,
+        description="Edge collection(s). Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="OUTBOUND",
         description="Edge direction: 'OUTBOUND', 'INBOUND', or 'ANY'.",
     ),
@@ -144,19 +147,22 @@ async def graph_shortest_path(
         """,
     ),
     database_name: Optional[str] = Field(
-        default=None, description="Target database. Uses default if not specified.",
+        default=None,
+        description="Target database. Uses default if not specified.",
     ),
 ) -> Dict[str, Any]:
-    return await traversal_agent.arun({
-        "operation": "shortest_path",
-        "database_name": database_name,
-        "start_vertex": start_vertex,
-        "target_vertex": target_vertex,
-        "graph_name": graph_name,
-        "edge_collections": edge_collections,
-        "direction": direction,
-        "weight_attribute": weight_attribute,
-    })
+    return await traversal_agent.arun(
+        {
+            "operation": "shortest_path",
+            "database_name": database_name,
+            "start_vertex": start_vertex,
+            "target_vertex": target_vertex,
+            "graph_name": graph_name,
+            "edge_collections": edge_collections,
+            "direction": direction,
+            "weight_attribute": weight_attribute,
+        }
+    )
 
 
 @mcp_app.tool(
@@ -174,44 +180,46 @@ async def graph_shortest_path(
     """,
 )
 async def graph_k_shortest_paths(
-    start_vertex: str = Field(
-        description="Starting vertex ID (format: 'collection/key')."
-    ),
-    target_vertex: str = Field(
-        description="Target vertex ID (format: 'collection/key')."
-    ),
+    start_vertex: str = Field(description="Starting vertex ID (format: 'collection/key')."),
+    target_vertex: str = Field(description="Target vertex ID (format: 'collection/key')."),
     graph_name: Optional[str] = Field(
-        default=None, description="Named graph. Provide this OR edge_collections.",
+        default=None,
+        description="Named graph. Provide this OR edge_collections.",
     ),
     edge_collections: Optional[List[str]] = Field(
-        default=None, description="Edge collection(s). Alternative to graph_name.",
+        default=None,
+        description="Edge collection(s). Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="OUTBOUND",
         description="Edge direction: 'OUTBOUND', 'INBOUND', or 'ANY'.",
     ),
     limit: int = Field(
-        default=5, description="Maximum number of paths to return (K).",
+        default=5,
+        description="Maximum number of paths to return (K).",
     ),
     weight_attribute: Optional[str] = Field(
         default=None,
         description="Edge attribute for weighted path calculation.",
     ),
     database_name: Optional[str] = Field(
-        default=None, description="Target database. Uses default if not specified.",
+        default=None,
+        description="Target database. Uses default if not specified.",
     ),
 ) -> Dict[str, Any]:
-    return await traversal_agent.arun({
-        "operation": "k_shortest_paths",
-        "database_name": database_name,
-        "start_vertex": start_vertex,
-        "target_vertex": target_vertex,
-        "graph_name": graph_name,
-        "edge_collections": edge_collections,
-        "direction": direction,
-        "limit": limit,
-        "weight_attribute": weight_attribute,
-    })
+    return await traversal_agent.arun(
+        {
+            "operation": "k_shortest_paths",
+            "database_name": database_name,
+            "start_vertex": start_vertex,
+            "target_vertex": target_vertex,
+            "graph_name": graph_name,
+            "edge_collections": edge_collections,
+            "direction": direction,
+            "limit": limit,
+            "weight_attribute": weight_attribute,
+        }
+    )
 
 
 @mcp_app.tool(
@@ -231,24 +239,26 @@ async def graph_k_shortest_paths(
     """,
 )
 async def graph_neighbors(
-    start_vertex: str = Field(
-        description="Starting vertex ID (format: 'collection/key')."
-    ),
+    start_vertex: str = Field(description="Starting vertex ID (format: 'collection/key')."),
     graph_name: Optional[str] = Field(
-        default=None, description="Named graph. Provide this OR edge_collections.",
+        default=None,
+        description="Named graph. Provide this OR edge_collections.",
     ),
     edge_collections: Optional[List[str]] = Field(
-        default=None, description="Edge collection(s). Alternative to graph_name.",
+        default=None,
+        description="Edge collection(s). Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="ANY",
         description="Edge direction: 'OUTBOUND', 'INBOUND', or 'ANY' (default: ANY).",
     ),
     depth: int = Field(
-        default=1, description="How many hops away to look (default: 1 = direct neighbors).",
+        default=1,
+        description="How many hops away to look (default: 1 = direct neighbors).",
     ),
     limit: int = Field(
-        default=100, description="Maximum number of neighbors to return.",
+        default=100,
+        description="Maximum number of neighbors to return.",
     ),
     vertex_filters: Optional[Dict[str, Any]] = Field(
         default=None,
@@ -259,18 +269,21 @@ async def graph_neighbors(
         description="Return each neighbor only once (default: true).",
     ),
     database_name: Optional[str] = Field(
-        default=None, description="Target database. Uses default if not specified.",
+        default=None,
+        description="Target database. Uses default if not specified.",
     ),
 ) -> Dict[str, Any]:
-    return await traversal_agent.arun({
-        "operation": "neighbors",
-        "database_name": database_name,
-        "start_vertex": start_vertex,
-        "graph_name": graph_name,
-        "edge_collections": edge_collections,
-        "direction": direction,
-        "depth": depth,
-        "limit": limit,
-        "vertex_filters": vertex_filters,
-        "deduplicate": deduplicate,
-    })
+    return await traversal_agent.arun(
+        {
+            "operation": "neighbors",
+            "database_name": database_name,
+            "start_vertex": start_vertex,
+            "graph_name": graph_name,
+            "edge_collections": edge_collections,
+            "direction": direction,
+            "depth": depth,
+            "limit": limit,
+            "vertex_filters": vertex_filters,
+            "deduplicate": deduplicate,
+        }
+    )
