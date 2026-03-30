@@ -78,16 +78,22 @@ class TestAQLBasics:
 class TestIndexBasics:
     def test_persistent_index(self, test_db: StandardDatabase, test_collection: str):
         col = test_db.collection(test_collection)
-        idx = col.add_index({"type": "persistent", "fields": ["email"], "unique": True, "name": "idx_email"})
+        idx = col.add_index(
+            {"type": "persistent", "fields": ["email"], "unique": True, "name": "idx_email"}
+        )
         assert idx["type"] == "persistent"
         indexes = col.indexes()
         names = [i.get("name") for i in indexes]
         assert "idx_email" in names
 
-    def test_inverted_index(self, test_db: StandardDatabase, test_collection: str, arango_version: str):
+    def test_inverted_index(
+        self, test_db: StandardDatabase, test_collection: str, arango_version: str
+    ):
         major, minor = [int(x) for x in arango_version.split(".")[:2]]
         if major < 3 or (major == 3 and minor < 10):
             pytest.skip("Inverted indexes require ArangoDB 3.10+")
         col = test_db.collection(test_collection)
-        idx = col.add_index({"type": "inverted", "fields": [{"name": "description"}], "name": "idx_inv_desc"})
+        idx = col.add_index(
+            {"type": "inverted", "fields": [{"name": "description"}], "name": "idx_inv_desc"}
+        )
         assert idx["type"] == "inverted"

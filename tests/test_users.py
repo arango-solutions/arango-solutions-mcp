@@ -90,9 +90,7 @@ class TestUserManagement:
             {"operation": "create_user", "username": username, "password": "test123"}
         )
 
-        result = await self.agent.arun(
-            {"operation": "get_user", "username": username}
-        )
+        result = await self.agent.arun({"operation": "get_user", "username": username})
         assert "error" not in result
         assert result["user"]["username"] == username
 
@@ -109,7 +107,12 @@ class TestUserManagement:
         self._track(username)
 
         await self.agent.arun(
-            {"operation": "create_user", "username": username, "password": "test123", "active": True}
+            {
+                "operation": "create_user",
+                "username": username,
+                "password": "test123",
+                "active": True,
+            }
         )
 
         result = await self.agent.arun(
@@ -145,15 +148,11 @@ class TestUserManagement:
             {"operation": "create_user", "username": username, "password": "test123"}
         )
 
-        result = await self.agent.arun(
-            {"operation": "delete_user", "username": username}
-        )
+        result = await self.agent.arun({"operation": "delete_user", "username": username})
         assert "error" not in result
         assert "deleted" in result["status"].lower()
 
-        get_result = await self.agent.arun(
-            {"operation": "get_user", "username": username}
-        )
+        get_result = await self.agent.arun({"operation": "get_user", "username": username})
         assert "error" in get_result
 
     @pytest.mark.asyncio
@@ -314,9 +313,7 @@ class TestPermissionManagement:
             }
         )
 
-        result = await self.agent.arun(
-            {"operation": "list_permissions", "username": self.username}
-        )
+        result = await self.agent.arun({"operation": "list_permissions", "username": self.username})
         assert "error" not in result
         assert "permissions" in result
         assert self.db_name in result["permissions"]

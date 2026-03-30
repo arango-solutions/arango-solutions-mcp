@@ -36,8 +36,12 @@ class ArangoDBSettings(BaseSettings):
     default_db_name: str = Field(default="_system", description="Default database name")
 
     # Connection pool settings
-    max_connections: int = Field(default=50, description="Maximum concurrent connections (reserved, not yet wired)")
-    timeout: int = Field(default=30, description="Connection timeout in seconds (reserved, not yet wired)")
+    max_connections: int = Field(
+        default=50, description="Maximum concurrent connections (reserved, not yet wired)"
+    )
+    timeout: int = Field(
+        default=30, description="Connection timeout in seconds (reserved, not yet wired)"
+    )
 
     # SSL settings
     verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
@@ -78,7 +82,9 @@ class ServerSettings(BaseSettings):
     server_name: str = "ArangoDB MCP Server"
     server_version: str = "2.0.0"
     log_level: str = "INFO"
-    enable_metrics: bool = Field(default=False, description="Enable metrics collection (reserved, not yet wired)")
+    enable_metrics: bool = Field(
+        default=False, description="Enable metrics collection (reserved, not yet wired)"
+    )
     enable_js_transactions: bool = Field(
         default=False,
         description="Enable server-side JavaScript transaction execution (execute-transaction tool). "

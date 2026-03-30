@@ -51,9 +51,7 @@ class AnalyzerManagementAgent(ArangoAgentBase):
                 and isinstance(properties, dict)
                 and ("minN" not in properties or "maxN" not in properties)
             ):
-                return {
-                    "error": "For N-Gram analyzer, properties must include 'minN' and 'maxN'."
-                }
+                return {"error": "For N-Gram analyzer, properties must include 'minN' and 'maxN'."}
 
             analyzer_info = db.create_analyzer(
                 name=analyzer_name,
@@ -73,9 +71,7 @@ class AnalyzerManagementAgent(ArangoAgentBase):
             if success:  # delete_analyzer returns True/False
                 return {"status": f"Analyzer '{analyzer_name}' deleted successfully."}
             else:
-                return {
-                    "status": f"Analyzer '{analyzer_name}' not found or could not be deleted."
-                }
+                return {"status": f"Analyzer '{analyzer_name}' not found or could not be deleted."}
 
         elif operation == "get_analyzer_properties":
             if not analyzer_name:

@@ -44,7 +44,7 @@ async def list_collections(
         If not specified, uses the server's default database.
         Use 'list-databases' tool to see available databases.
         """,
-    )
+    ),
 ) -> Dict[str, Any]:
     return await collection_agent.arun(
         {"operation": "list_collections", "database_name": database_name}

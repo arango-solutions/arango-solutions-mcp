@@ -33,9 +33,7 @@ async def cluster_health(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
-    return await cluster_agent.arun(
-        {"operation": "cluster_health", "database_name": database_name}
-    )
+    return await cluster_agent.arun({"operation": "cluster_health", "database_name": database_name})
 
 
 @mcp_app.tool(
@@ -257,9 +255,7 @@ async def cluster_toggle_maintenance(
     """,
 )
 async def collection_shard_distribution(
-    collection_name: str = Field(
-        description="Name of the collection to inspect."
-    ),
+    collection_name: str = Field(description="Name of the collection to inspect."),
     database_name: Optional[str] = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),

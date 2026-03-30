@@ -27,10 +27,7 @@ class TestClusterHealth:
     def test_server_count(self, system_db: StandardDatabase):
         """Cluster should have at least 2 DB servers."""
         health = system_db.cluster.health()
-        db_servers = [
-            v for v in health.get("Health", {}).values()
-            if v.get("Role") == "DBServer"
-        ]
+        db_servers = [v for v in health.get("Health", {}).values() if v.get("Role") == "DBServer"]
         assert len(db_servers) >= 2, f"Expected >=2 DB servers, got {len(db_servers)}"
 
 

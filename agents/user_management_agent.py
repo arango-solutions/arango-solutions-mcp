@@ -69,9 +69,7 @@ class UserManagementAgent(ArangoAgentBase):
                 "error": f"ArangoDB Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"
             }
         except Exception as e:
-            logger.error(
-                f"UserManagementAgent: Unexpected error - {e}", exc_info=True
-            )
+            logger.error(f"UserManagementAgent: Unexpected error - {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
     def _list_users(self, db) -> Dict[str, Any]:
@@ -178,9 +176,7 @@ class UserManagementAgent(ArangoAgentBase):
         if permission not in ("rw", "ro", "none"):
             return {"error": f"Invalid permission '{permission}'. Must be 'rw', 'ro', or 'none'."}
 
-        db.update_permission(
-            username, permission, database, collection=collection
-        )
+        db.update_permission(username, permission, database, collection=collection)
 
         target = f"database '{database}'"
         if collection:

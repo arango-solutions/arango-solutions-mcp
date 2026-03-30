@@ -62,9 +62,9 @@ def _wait_for_arango(url: str, timeout: int) -> None:
     while time.time() < deadline:
         try:
             req = urllib.request.Request(version_url)
-            base64_creds = __import__("base64").b64encode(
-                f"{_USERNAME}:{_PASSWORD}".encode()
-            ).decode()
+            base64_creds = (
+                __import__("base64").b64encode(f"{_USERNAME}:{_PASSWORD}".encode()).decode()
+            )
             req.add_header("Authorization", f"Basic {base64_creds}")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 if resp.status == 200:
@@ -121,10 +121,14 @@ def arango_container():
     container_name = f"mcp-test-{uuid.uuid4().hex[:8]}"
 
     container_id = _docker(
-        "run", "-d",
-        "--name", container_name,
-        "-p", f"{port}:8529",
-        "-e", f"ARANGO_ROOT_PASSWORD={_PASSWORD}",
+        "run",
+        "-d",
+        "--name",
+        container_name,
+        "-p",
+        f"{port}:8529",
+        "-e",
+        f"ARANGO_ROOT_PASSWORD={_PASSWORD}",
         _IMAGE,
         "--experimental-vector-index",
     )
@@ -171,6 +175,7 @@ def arango_version(system_db: StandardDatabase) -> str:
 
 # ── Per-test ephemeral database ───────────────────────────────────────
 
+
 @pytest.fixture()
 def test_db_name() -> str:
     return f"mcp_test_{uuid.uuid4().hex[:8]}"
@@ -207,6 +212,7 @@ def test_edge_collection(test_db: StandardDatabase) -> str:
 
 # ── Connector / Agent wiring ──────────────────────────────────────────
 
+
 @pytest.fixture()
 def patch_connector(
     arango_client: ArangoClient,
@@ -240,6 +246,7 @@ def patch_connector(
 
 # ── Vector index support detection ────────────────────────────────────
 
+
 @pytest.fixture(scope="session")
 def vector_index_supported(system_db: StandardDatabase, arango_version: str) -> bool:
     """Detect whether the server supports vector indexes (3.12.4+ with --vector-index)."""
@@ -251,11 +258,13 @@ def vector_index_supported(system_db: StandardDatabase, arango_version: str) -> 
         system_db.create_collection(probe_col)
         col = system_db.collection(probe_col)
         col.insert({"embedding": [0.0] * 4})
-        col.add_index({
-            "type": "vector",
-            "fields": ["embedding"],
-            "params": {"metric": "l2", "dimension": 4, "nLists": 1},
-        })
+        col.add_index(
+            {
+                "type": "vector",
+                "fields": ["embedding"],
+                "params": {"metric": "l2", "dimension": 4, "nLists": 1},
+            }
+        )
         system_db.delete_collection(probe_col)
         return True
     except Exception:

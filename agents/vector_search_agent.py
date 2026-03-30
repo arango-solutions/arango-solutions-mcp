@@ -57,9 +57,7 @@ class VectorSearchAgent(ArangoAgentBase):
             logger.error(f"VectorSearchAgent: Unexpected error - {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
-    def _execute_vector_search(
-        self, db, inputs: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _execute_vector_search(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
         collection_name: str = inputs.get("collection_name", "")
         vector_field: str = inputs.get("vector_field", "")
         query_vector: List[float] = inputs.get("query_vector", [])
@@ -93,7 +91,11 @@ class VectorSearchAgent(ArangoAgentBase):
         sort_clause = f"SORT similarity {sort_dir}" if sort_dir else "SORT similarity"
 
         options_str = ""
-        bind_vars: Dict[str, Any] = {"@collection": collection_name, "qvec": query_vector, "lim": int(limit)}
+        bind_vars: Dict[str, Any] = {
+            "@collection": collection_name,
+            "qvec": query_vector,
+            "lim": int(limit),
+        }
         if n_probe is not None:
             options_str = ", { nProbe: @nprobe }"
             bind_vars["nprobe"] = int(n_probe)
@@ -110,13 +112,11 @@ class VectorSearchAgent(ArangoAgentBase):
 
         # Build return clause
         if return_fields:
-            field_projections = ", ".join(
-                f'"{f}": doc.`{f}`' for f in return_fields
-            )
+            field_projections = ", ".join(f'"{f}": doc.`{f}`' for f in return_fields)
             if include_similarity:
-                return_expr = f'MERGE({{ similarity, {field_projections} }}, {{ _key: doc._key, _id: doc._id }})'
+                return_expr = f"MERGE({{ similarity, {field_projections} }}, {{ _key: doc._key, _id: doc._id }})"
             else:
-                return_expr = f'{{ {field_projections}, _key: doc._key, _id: doc._id }}'
+                return_expr = f"{{ {field_projections}, _key: doc._key, _id: doc._id }}"
         else:
             return_expr = "MERGE({ similarity }, doc)" if include_similarity else "doc"
 
@@ -143,9 +143,7 @@ class VectorSearchAgent(ArangoAgentBase):
             "aql_generated": aql,
         }
 
-    def _execute_hybrid_search(
-        self, db, inputs: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _execute_hybrid_search(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Hybrid search combining vector similarity with ArangoSearch text filters."""
         collection_name: str = inputs.get("collection_name", "")
         vector_field: str = inputs.get("vector_field", "")
@@ -207,7 +205,7 @@ class VectorSearchAgent(ArangoAgentBase):
                 f")\n"
                 f"LET text_results = (\n"
                 f"  FOR doc IN `{view_name}`\n"
-                f"    SEARCH ANALYZER(doc.`{text_field}` IN TOKENS(@text_query, \"{text_analyzer}\"), \"{text_analyzer}\")\n"
+                f'    SEARCH ANALYZER(doc.`{text_field}` IN TOKENS(@text_query, "{text_analyzer}"), "{text_analyzer}")\n'
                 f"    SORT BM25(doc) DESC\n"
                 f"    LIMIT @lim3\n"
                 f"    RETURN {{ _key: doc._key, text_score: BM25(doc) }}\n"

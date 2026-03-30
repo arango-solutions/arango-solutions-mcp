@@ -107,9 +107,7 @@ class TestStreamTransactions:
         assert "error" not in result
         txn_id = result["transaction_id"]
 
-        await self.agent.arun(
-            {"operation": "abort_transaction", "transaction_id": txn_id}
-        )
+        await self.agent.arun({"operation": "abort_transaction", "transaction_id": txn_id})
 
     @pytest.mark.asyncio
     async def test_begin_with_exclusive(self):
@@ -122,9 +120,7 @@ class TestStreamTransactions:
         assert "error" not in result
         txn_id = result["transaction_id"]
 
-        await self.agent.arun(
-            {"operation": "abort_transaction", "transaction_id": txn_id}
-        )
+        await self.agent.arun({"operation": "abort_transaction", "transaction_id": txn_id})
 
     # ── List transactions ────────────────────────────────────────────
 
@@ -145,9 +141,7 @@ class TestStreamTransactions:
         txn_ids = [t.get("id") for t in listed["transactions"]]
         assert txn_id in txn_ids
 
-        await self.agent.arun(
-            {"operation": "abort_transaction", "transaction_id": txn_id}
-        )
+        await self.agent.arun({"operation": "abort_transaction", "transaction_id": txn_id})
 
     # ── Bad transaction ID ───────────────────────────────────────────
 
@@ -273,16 +267,12 @@ class TestHotBackup:
 
     @pytest.mark.asyncio
     async def test_delete_backup_community(self):
-        result = await self.agent.arun(
-            {"operation": "delete_backup", "backup_id": "nonexistent"}
-        )
+        result = await self.agent.arun({"operation": "delete_backup", "backup_id": "nonexistent"})
         assert "error" in result
 
     @pytest.mark.asyncio
     async def test_restore_backup_community(self):
-        result = await self.agent.arun(
-            {"operation": "restore_backup", "backup_id": "nonexistent"}
-        )
+        result = await self.agent.arun({"operation": "restore_backup", "backup_id": "nonexistent"})
         assert "error" in result
 
     @pytest.mark.asyncio

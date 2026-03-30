@@ -22,7 +22,13 @@ class DocumentCRUDAgent(ArangoAgentBase):
     @handle_arango_errors(
         "DocumentCRUDAgent",
         "ArangoDB Document",
-        (DocumentInsertError, DocumentGetError, DocumentUpdateError, DocumentDeleteError, DocumentReplaceError),
+        (
+            DocumentInsertError,
+            DocumentGetError,
+            DocumentUpdateError,
+            DocumentDeleteError,
+            DocumentReplaceError,
+        ),
     )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
@@ -84,12 +90,8 @@ class DocumentCRUDAgent(ArangoAgentBase):
             }
 
         elif operation == "update_document":
-            if not document_data or not (
-                "_key" in document_data or "_id" in document_data
-            ):
-                return {
-                    "error": "Document data with _key or _id is required."
-                }
+            if not document_data or not ("_key" in document_data or "_id" in document_data):
+                return {"error": "Document data with _key or _id is required."}
             meta = collection.update(document_data, merge=True)
             return {"status": "Document updated successfully.", "metadata": meta}
 
@@ -100,12 +102,8 @@ class DocumentCRUDAgent(ArangoAgentBase):
             return {"status": "Document deleted successfully.", "metadata": meta}
 
         elif operation == "replace_document":
-            if not document_data or not (
-                "_key" in document_data or "_id" in document_data
-            ):
-                return {
-                    "error": "Complete document data with _key or _id is required."
-                }
+            if not document_data or not ("_key" in document_data or "_id" in document_data):
+                return {"error": "Complete document data with _key or _id is required."}
             meta = collection.replace(document_data)
             return {"status": "Document replaced successfully.", "metadata": meta}
 
@@ -123,12 +121,15 @@ class DocumentCRUDAgent(ArangoAgentBase):
                 "IN @@collection "
                 "RETURN { old: OLD, new: NEW }"
             )
-            cursor = db.aql.execute(aql, bind_vars={
-                "@collection": collection_name,
-                "search": search_fields,
-                "insert": document_data,
-                "update": update_data,
-            })
+            cursor = db.aql.execute(
+                aql,
+                bind_vars={
+                    "@collection": collection_name,
+                    "search": search_fields,
+                    "insert": document_data,
+                    "update": update_data,
+                },
+            )
             result_doc = next(cursor, None)
             was_insert = result_doc["old"] is None if result_doc else None
             return {

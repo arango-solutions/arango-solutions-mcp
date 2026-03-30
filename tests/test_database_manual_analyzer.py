@@ -10,6 +10,7 @@ from agents.manual_management_agent import ManualManagementAgent
 
 # ── Database Agent ────────────────────────────────────────────────────
 
+
 class TestDatabaseAgent:
     @pytest.fixture(autouse=True)
     def _setup(self, patch_connector):
@@ -29,25 +30,31 @@ class TestDatabaseAgent:
         with contextlib.suppress(Exception):
             system_db.delete_database(db_name, ignore_missing=True)
 
-        result = await self.agent.arun({
-            "operation": "create_database",
-            "database_name": db_name,
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "create_database",
+                "database_name": db_name,
+            }
+        )
         assert "error" not in result
         assert "created" in result.get("status", "").lower()
 
         # Create again should report already exists
-        result2 = await self.agent.arun({
-            "operation": "create_database",
-            "database_name": db_name,
-        })
+        result2 = await self.agent.arun(
+            {
+                "operation": "create_database",
+                "database_name": db_name,
+            }
+        )
         assert "already exists" in result2.get("status", "").lower()
 
         # Delete
-        result3 = await self.agent.arun({
-            "operation": "delete_database",
-            "database_name": db_name,
-        })
+        result3 = await self.agent.arun(
+            {
+                "operation": "delete_database",
+                "database_name": db_name,
+            }
+        )
         assert "error" not in result3
         assert "deleted" in result3.get("status", "").lower()
 
@@ -58,26 +65,32 @@ class TestDatabaseAgent:
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_database(self):
-        result = await self.agent.arun({
-            "operation": "delete_database",
-            "database_name": "nonexistent_db_xyz_12345",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "delete_database",
+                "database_name": "nonexistent_db_xyz_12345",
+            }
+        )
         assert "error" in result
 
     @pytest.mark.asyncio
     async def test_delete_system_database_blocked(self):
-        result = await self.agent.arun({
-            "operation": "delete_database",
-            "database_name": "_system",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "delete_database",
+                "database_name": "_system",
+            }
+        )
         assert "error" in result
         assert "_system" in result["error"]
 
     @pytest.mark.asyncio
     async def test_get_database_info(self):
-        result = await self.agent.arun({
-            "operation": "get_database_info",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "get_database_info",
+            }
+        )
         assert "error" not in result
         assert "database_info" in result
 
@@ -89,48 +102,58 @@ class TestDatabaseAgent:
 
 # ── Manual Agent ──────────────────────────────────────────────────────
 
+
 class TestManualAgent:
     @pytest.fixture(autouse=True)
     def _setup(self, patch_connector, monkeypatch):
         self.agent = ManualManagementAgent()
         # Ensure working directory is project root so manuals/ is accessible
         import os
+
         monkeypatch.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     @pytest.mark.asyncio
     async def test_get_aql_ref_manual(self):
-        result = await self.agent.arun({
-            "operation": "get_aql_manual",
-            "manual_name": "aql_ref",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "get_aql_manual",
+                "manual_name": "aql_ref",
+            }
+        )
         assert "error" not in result
         assert "manual_content" in result
         assert len(result["manual_content"]) > 100
 
     @pytest.mark.asyncio
     async def test_get_optimization_manual(self):
-        result = await self.agent.arun({
-            "operation": "get_aql_manual",
-            "manual_name": "optimization",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "get_aql_manual",
+                "manual_name": "optimization",
+            }
+        )
         assert "error" not in result
         assert "manual_content" in result
 
     @pytest.mark.asyncio
     async def test_get_cypher2aql_manual(self):
-        result = await self.agent.arun({
-            "operation": "get_aql_manual",
-            "manual_name": "cypher2aql",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "get_aql_manual",
+                "manual_name": "cypher2aql",
+            }
+        )
         assert "error" not in result
         assert "manual_content" in result
 
     @pytest.mark.asyncio
     async def test_unknown_manual_name(self):
-        result = await self.agent.arun({
-            "operation": "get_aql_manual",
-            "manual_name": "nonexistent",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "get_aql_manual",
+                "manual_name": "nonexistent",
+            }
+        )
         assert "error" in result
         assert "unknown manual" in result["error"].lower() or "available" in result["error"].lower()
 
@@ -141,6 +164,7 @@ class TestManualAgent:
 
 
 # ── Analyzer Agent ────────────────────────────────────────────────────
+
 
 class TestAnalyzerAgent:
     @pytest.fixture(autouse=True)
@@ -155,65 +179,79 @@ class TestAnalyzerAgent:
 
     @pytest.mark.asyncio
     async def test_create_and_delete_analyzer(self):
-        result = await self.agent.arun({
-            "operation": "create_analyzer",
-            "analyzer_name": "test_text_analyzer",
-            "analyzer_type": "text",
-            "properties": {"locale": "en", "stemming": True},
-            "features": ["frequency", "norm", "position"],
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "create_analyzer",
+                "analyzer_name": "test_text_analyzer",
+                "analyzer_type": "text",
+                "properties": {"locale": "en", "stemming": True},
+                "features": ["frequency", "norm", "position"],
+            }
+        )
         assert "error" not in result
         assert "created" in result.get("status", "").lower()
 
         # Get properties
-        props_result = await self.agent.arun({
-            "operation": "get_analyzer_properties",
-            "analyzer_name": "test_text_analyzer",
-        })
+        props_result = await self.agent.arun(
+            {
+                "operation": "get_analyzer_properties",
+                "analyzer_name": "test_text_analyzer",
+            }
+        )
         assert "error" not in props_result
         assert "analyzer_definition" in props_result
 
         # Delete
-        del_result = await self.agent.arun({
-            "operation": "delete_analyzer",
-            "analyzer_name": "test_text_analyzer",
-        })
+        del_result = await self.agent.arun(
+            {
+                "operation": "delete_analyzer",
+                "analyzer_name": "test_text_analyzer",
+            }
+        )
         assert "error" not in del_result
         assert "deleted" in del_result.get("status", "").lower()
 
     @pytest.mark.asyncio
     async def test_create_analyzer_missing_name(self):
-        result = await self.agent.arun({
-            "operation": "create_analyzer",
-            "analyzer_type": "text",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "create_analyzer",
+                "analyzer_type": "text",
+            }
+        )
         assert "error" in result
 
     @pytest.mark.asyncio
     async def test_create_analyzer_missing_type(self):
-        result = await self.agent.arun({
-            "operation": "create_analyzer",
-            "analyzer_name": "test_analyzer_no_type",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "create_analyzer",
+                "analyzer_name": "test_analyzer_no_type",
+            }
+        )
         assert "error" in result
 
     @pytest.mark.asyncio
     async def test_create_ngram_missing_params(self):
-        result = await self.agent.arun({
-            "operation": "create_analyzer",
-            "analyzer_name": "test_bad_ngram",
-            "analyzer_type": "ngram",
-            "properties": {"streamType": "utf8"},
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "create_analyzer",
+                "analyzer_name": "test_bad_ngram",
+                "analyzer_type": "ngram",
+                "properties": {"streamType": "utf8"},
+            }
+        )
         assert "error" in result
         assert "minN" in result["error"] or "maxN" in result["error"]
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_analyzer(self):
-        result = await self.agent.arun({
-            "operation": "delete_analyzer",
-            "analyzer_name": "nonexistent_analyzer_xyz",
-        })
+        result = await self.agent.arun(
+            {
+                "operation": "delete_analyzer",
+                "analyzer_name": "nonexistent_analyzer_xyz",
+            }
+        )
         # ignore_missing=True means this returns success-ish
         assert "error" not in result
 

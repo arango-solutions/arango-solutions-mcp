@@ -63,7 +63,7 @@ async def get_aql_manuals(
         - cypher2aql: Guide to translating Cypher.
         - optimization: AQL query optimization guide.
         """,
-    )
+    ),
 ) -> Dict[str, Any]:
     """Retrieves a specific AQL manual."""
     return await manual_agent.arun({"operation": "get_aql_manual", "manual_name": manual_name})
