@@ -118,10 +118,7 @@ class VectorSearchAgent(ArangoAgentBase):
             else:
                 return_expr = f'{{ {field_projections}, _key: doc._key, _id: doc._id }}'
         else:
-            if include_similarity:
-                return_expr = "MERGE({ similarity }, doc)"
-            else:
-                return_expr = "doc"
+            return_expr = "MERGE({ similarity }, doc)" if include_similarity else "doc"
 
         filter_block = f"\n  {filter_lines}" if filter_lines else ""
 

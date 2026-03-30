@@ -1,7 +1,12 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from arango.exceptions import AQLQueryExecuteError, AQLQueryExplainError, AQLQueryValidateError, ArangoServerError
+from arango.exceptions import (
+    AQLQueryExecuteError,
+    AQLQueryExplainError,
+    AQLQueryValidateError,
+    ArangoServerError,
+)
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector

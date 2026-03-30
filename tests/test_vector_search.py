@@ -5,6 +5,7 @@ They are skipped automatically if the feature is unavailable.
 """
 
 import math
+
 import pytest
 
 from agents.index_management_agent import IndexManagementAgent

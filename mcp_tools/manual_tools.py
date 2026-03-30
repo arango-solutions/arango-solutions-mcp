@@ -20,7 +20,7 @@ manual_agent = ManualManagementAgent()
     
     **Why this tool is required first:**
     - Provides the complete AQL reference manual with syntax rules
-    - Contains function definitions and usage examples  
+    - Contains function definitions and usage examples
     - Includes Cypher-to-AQL translation patterns
     - Provides critical optimization guidance for performant queries
     - Ensures queries are properly formatted, functional, and optimized
@@ -43,8 +43,8 @@ manual_agent = ManualManagementAgent()
         - Replacing vertex-centric patterns with edge-index filtering
         - Best practices for query performance tuning
     
-    **WARNING: Attempting to write AQL queries without consulting these manuals first 
-    will likely result in syntax errors, poor performance, and failed executions! **
+    **WARNING: Attempting to write AQL queries without consulting these manuals first
+    will likely result in syntax errors, poor performance, and failed executions!**
     
     **PROPER WORKFLOW:**
     1. **FIRST**: Call this tool with manual_name="aql_ref"

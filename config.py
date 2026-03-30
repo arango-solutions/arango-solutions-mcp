@@ -40,7 +40,7 @@ class ArangoDBSettings(BaseSettings):
     timeout: int = Field(default=30, description="Connection timeout in seconds (reserved, not yet wired)")
 
     # SSL settings
-    verify_ssl: bool = Field(default=False, description="Verify SSL certificates")
+    verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
     ssl_cert_path: str = Field(
         default="", description="Path to SSL certificate file (supports cross-platform paths)"
     )
@@ -79,6 +79,11 @@ class ServerSettings(BaseSettings):
     server_version: str = "2.0.0"
     log_level: str = "INFO"
     enable_metrics: bool = Field(default=False, description="Enable metrics collection (reserved, not yet wired)")
+    enable_js_transactions: bool = Field(
+        default=False,
+        description="Enable server-side JavaScript transaction execution (execute-transaction tool). "
+        "Disabled by default because it allows arbitrary JS on the database server.",
+    )
 
 
 class AppSettings(BaseSettings):

@@ -1,4 +1,3 @@
-# mcp_server/mcp_tools/view_tools.py
 from typing import Any, Dict, Optional
 
 from pydantic import Field

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field
 
@@ -46,7 +46,7 @@ async def graph_traverse(
         default=None,
         description="Edge collection(s) to traverse. Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="OUTBOUND",
         description="Traversal direction: 'OUTBOUND', 'INBOUND', or 'ANY'.",
     ),
@@ -131,7 +131,7 @@ async def graph_shortest_path(
     edge_collections: Optional[List[str]] = Field(
         default=None, description="Edge collection(s). Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="OUTBOUND",
         description="Edge direction: 'OUTBOUND', 'INBOUND', or 'ANY'.",
     ),
@@ -186,7 +186,7 @@ async def graph_k_shortest_paths(
     edge_collections: Optional[List[str]] = Field(
         default=None, description="Edge collection(s). Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="OUTBOUND",
         description="Edge direction: 'OUTBOUND', 'INBOUND', or 'ANY'.",
     ),
@@ -240,7 +240,7 @@ async def graph_neighbors(
     edge_collections: Optional[List[str]] = Field(
         default=None, description="Edge collection(s). Alternative to graph_name.",
     ),
-    direction: str = Field(
+    direction: Literal["OUTBOUND", "INBOUND", "ANY"] = Field(
         default="ANY",
         description="Edge direction: 'OUTBOUND', 'INBOUND', or 'ANY' (default: ANY).",
     ),

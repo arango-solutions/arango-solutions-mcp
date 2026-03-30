@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import Field
 
@@ -167,7 +167,7 @@ async def get_permission(
 )
 async def grant_permission(
     username: str = Field(description="Username to grant permission to."),
-    permission: str = Field(description="Permission level: 'rw', 'ro', or 'none'."),
+    permission: Literal["rw", "ro", "none"] = Field(description="Permission level: 'rw', 'ro', or 'none'."),
     database: str = Field(description="Target database."),
     collection: Optional[str] = Field(
         default=None,
