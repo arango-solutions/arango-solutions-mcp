@@ -10,9 +10,10 @@ Environment variables (all optional):
     ARANGO_ROOT_USERNAME     default: root
     ARANGO_ROOT_PASSWORD     default: test_root_password
     ARANGO_IMAGE             default: arangodb/arangodb:3.12
-    ARANGO_TEST_TIMEOUT      seconds to wait for container health (default: 60)
+    ARANGO_TEST_TIMEOUT      seconds to wait for container health (default: 120)
 """
 
+import contextlib
 import os
 import socket
 import subprocess
@@ -29,10 +30,10 @@ os.environ.setdefault("ARANGO_HOSTS", "http://localhost:8529")
 os.environ.setdefault("ARANGO_ROOT_USERNAME", "root")
 os.environ.setdefault("ARANGO_ROOT_PASSWORD", "test_root_password")
 
-import pytest  # noqa: E402
-import urllib.request  # noqa: E402
 import urllib.error  # noqa: E402
+import urllib.request  # noqa: E402
 
+import pytest  # noqa: E402
 from arango import ArangoClient  # noqa: E402
 from arango.database import StandardDatabase  # noqa: E402
 
@@ -258,8 +259,6 @@ def vector_index_supported(system_db: StandardDatabase, arango_version: str) -> 
         system_db.delete_collection(probe_col)
         return True
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             system_db.delete_collection(probe_col, ignore_missing=True)
-        except Exception:
-            pass
         return False

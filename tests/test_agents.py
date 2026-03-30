@@ -6,13 +6,12 @@ that agents produce correct results against an ephemeral test database.
 
 import pytest
 
+from agents.aql_execution_agent import AQLExecutionAgent
 from agents.cluster_management_agent import ClusterManagementAgent
 from agents.collection_management_agent import CollectionManagementAgent
 from agents.document_crud_agent import DocumentCRUDAgent
 from agents.graph_management_agent import GraphManagementAgent
 from agents.index_management_agent import IndexManagementAgent
-from agents.aql_execution_agent import AQLExecutionAgent
-
 
 # ── Collection Agent ──────────────────────────────────────────────────
 

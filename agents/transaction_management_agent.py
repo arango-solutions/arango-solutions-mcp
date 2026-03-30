@@ -12,6 +12,7 @@ from arango.exceptions import (
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,12 @@ class TransactionManagementAgent(ArangoAgentBase):
 
     def _execute_js(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a server-side JavaScript transaction."""
+        if not settings.server.enable_js_transactions:
+            return {
+                "error": "Server-side JavaScript transactions are disabled. "
+                "Set ENABLE_JS_TRANSACTIONS=true to enable this feature."
+            }
+
         command: Optional[str] = inputs.get("command")
         params: Optional[Dict[str, Any]] = inputs.get("params")
         read_collections: Optional[List[str]] = inputs.get("read")

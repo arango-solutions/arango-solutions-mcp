@@ -1,5 +1,6 @@
 """Tests for user and permission management."""
 
+import contextlib
 import uuid
 
 import pytest
@@ -21,7 +22,7 @@ class TestUserManagement:
         self.created_users: list[str] = []
 
         from arango_connector import arango_connector
-        from tests.conftest import _USERNAME, _PASSWORD
+        from tests.conftest import _PASSWORD, _USERNAME
 
         monkeypatch.setattr(arango_connector, "client", arango_client)
 
@@ -33,10 +34,8 @@ class TestUserManagement:
         yield
 
         for u in self.created_users:
-            try:
+            with contextlib.suppress(Exception):
                 system_db.delete_user(u, ignore_missing=True)
-            except Exception:
-                pass
 
     def _track(self, username: str):
         self.created_users.append(username)
@@ -199,7 +198,7 @@ class TestPermissionManagement:
         self.username = _unique_user()
 
         from arango_connector import arango_connector
-        from tests.conftest import _USERNAME, _PASSWORD
+        from tests.conftest import _PASSWORD, _USERNAME
 
         monkeypatch.setattr(arango_connector, "client", arango_client)
 
@@ -212,10 +211,8 @@ class TestPermissionManagement:
 
         yield
 
-        try:
+        with contextlib.suppress(Exception):
             system_db.delete_user(self.username, ignore_missing=True)
-        except Exception:
-            pass
 
     @pytest.mark.asyncio
     async def test_grant_database_permission(self):

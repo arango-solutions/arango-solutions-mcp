@@ -1,6 +1,8 @@
 from mcp.server.fastmcp import FastMCP
+
 from arango_connector import arango_db_lifespan
 from config import settings
+
 # Explicitly define the server name and instructions
 _server_name = settings.server.server_name
 _server_instructions = f"""

@@ -1,5 +1,5 @@
 import logging
-import os
+from pathlib import Path
 from typing import Any, Dict
 
 from agents.agent_base import ArangoAgentBase
@@ -21,20 +21,20 @@ class ManualManagementAgent(ArangoAgentBase):
                 return {"error": f"Unknown manual operation: {operation}"}
 
             # Construct the correct path to the manuals
-            manuals_dir = "manuals"
+            _BASE_DIR = Path(__file__).resolve().parent.parent
+            manuals_dir = _BASE_DIR / "manuals"
             if manual_name == "aql_ref":
-                file_path = os.path.join(manuals_dir, "aql_ref.md")
+                file_path = manuals_dir / "aql_ref.md"
             elif manual_name == "cypher2aql":
-                file_path = os.path.join(manuals_dir, "cypher2aql.md")
+                file_path = manuals_dir / "cypher2aql.md"
             elif manual_name == "optimization":
-                file_path = os.path.join(manuals_dir, "optimization.md")
+                file_path = manuals_dir / "optimization.md"
             else:
                 return {
                     "error": f"Unknown manual name: {manual_name}.  Available manuals: aql_ref, cypher2aql, optimization"
                 }
 
-            with open(file_path, "r", encoding="utf-8") as f:
-                manual_content = f.read()
+            manual_content = file_path.read_text(encoding="utf-8")
             return {"manual_content": manual_content}
 
         except FileNotFoundError:

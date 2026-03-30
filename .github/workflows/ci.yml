@@ -37,12 +37,19 @@ jobs:
       - name: Ruff check
         run: poetry run ruff check .
 
+      - name: Ruff format check
+        run: poetry run ruff format --check .
+
+      - name: Mypy type check
+        run: poetry run mypy --ignore-missing-imports --no-error-summary agents/ mcp_tools/ aql_utils.py config.py arango_connector.py server.py main.py
+
   test:
-    name: Test (ArangoDB ${{ matrix.arango-version }})
+    name: Test (Python ${{ matrix.python-version }}, ArangoDB ${{ matrix.arango-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        python-version: ["3.10", "3.11"]
         arango-version: ["3.12"]
 
     steps:
@@ -51,7 +58,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -64,7 +71,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+          key: venv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --with dev --no-interaction
@@ -76,4 +83,5 @@ jobs:
         run: >-
           poetry run pytest tests/ -v
           --ignore=tests/test_cluster.py
-          -x
+          --cov=agents --cov=mcp_tools --cov=aql_utils
+          --cov-report=term-missing

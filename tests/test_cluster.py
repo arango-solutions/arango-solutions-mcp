@@ -11,7 +11,6 @@ These tests require the docker-compose cluster profile:
 import pytest
 from arango.database import StandardDatabase
 
-
 pytestmark = pytest.mark.cluster
 
 

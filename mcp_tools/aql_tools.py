@@ -29,8 +29,8 @@ aql_agent = AQLExecutionAgent()
     This tool *does not* provide any assistance with writing or debugging AQL queries.
     It only executes the query that you provide in the 'aql_query' parameter.
     
-    **WARNING: Attempting to write AQL queries without consulting both manuals first 
-    will likely result in syntax errors, poor performance, and failed executions! **
+    **WARNING: Attempting to write AQL queries without consulting both manuals first
+    will likely result in syntax errors, poor performance, and failed executions!**
     """,
 )
 async def execute_aql(

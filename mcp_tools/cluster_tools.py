@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import Field
 
@@ -225,7 +225,7 @@ async def cluster_rebalance(
     """,
 )
 async def cluster_toggle_maintenance(
-    mode: str = Field(
+    mode: Literal["on", "off"] = Field(
         description="'on' to enable maintenance mode, 'off' to disable it."
     ),
     database_name: Optional[str] = Field(
