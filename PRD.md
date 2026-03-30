@@ -3,7 +3,7 @@
 **Version:** 2.0.0
 **Last Updated:** March 29, 2026
 **Status:** Implemented
-**Repository:** [arangoml/arango-mcp-server](https://github.com/arangoml/arango-mcp-server)
+**Repository:** [arango-solutions/arango-solutions-mcp](https://github.com/arango-solutions/arango-solutions-mcp)
 
 ---
 
