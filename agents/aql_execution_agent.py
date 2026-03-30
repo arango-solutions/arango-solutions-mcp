@@ -29,7 +29,8 @@ class AQLExecutionAgent(ArangoAgentBase):
         # Default: execute
 
         logger.info(
-            f"AQLExecutionAgent: Executing AQL in DB '{database_name}': {aql_query[:100]}... with bind_vars: {bind_vars}"
+            f"AQLExecutionAgent: Executing AQL in DB '{database_name}': "
+            f"{aql_query[:100]}... bind_vars_keys={list(bind_vars.keys()) if bind_vars else []}"
         )
 
         try:

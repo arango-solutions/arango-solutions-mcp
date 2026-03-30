@@ -128,10 +128,6 @@ class ViewManagementAgent(ArangoAgentBase):
                 logger.info(f"View '{view_name}' created successfully.")
                 return {"status": "View created successfully.", "view_info": view_info}
 
-            # ... (rest of the operations, ensuring they also use self._view_exists correctly) ...
-            # Make sure all paths that check for view existence use self._view_exists(db, view_name)
-            # and handle the boolean return appropriately.
-
             elif operation == "get_view_properties":
                 if not view_name:
                     return {"error": "View name is required to get properties."}

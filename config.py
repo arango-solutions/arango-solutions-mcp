@@ -36,8 +36,8 @@ class ArangoDBSettings(BaseSettings):
     default_db_name: str = Field(default="_system", description="Default database name")
 
     # Connection pool settings
-    max_connections: int = Field(default=50, description="Maximum concurrent connections")
-    timeout: int = Field(default=30, description="Connection timeout in seconds")
+    max_connections: int = Field(default=50, description="Maximum concurrent connections (reserved, not yet wired)")
+    timeout: int = Field(default=30, description="Connection timeout in seconds (reserved, not yet wired)")
 
     # SSL settings
     verify_ssl: bool = Field(default=False, description="Verify SSL certificates")
@@ -76,9 +76,9 @@ class ServerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     server_name: str = "ArangoDB MCP Server"
-    server_version: str = "1.0.0"
+    server_version: str = "2.0.0"
     log_level: str = "INFO"
-    enable_metrics: bool = False
+    enable_metrics: bool = Field(default=False, description="Enable metrics collection (reserved, not yet wired)")
 
 
 class AppSettings(BaseSettings):
