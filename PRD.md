@@ -204,7 +204,7 @@ Multi-document ACID transactions with both stream and server-side JavaScript exe
 | TX-3 | `commit-transaction` | Commit all changes | `transaction_id` |
 | TX-4 | `abort-transaction` | Roll back all changes | `transaction_id` |
 | TX-5 | `list-transactions` | List currently running transactions | — |
-| TX-6 | `execute-transaction` | Execute server-side JavaScript transaction | `command`, `params`, `read`, `write` |
+| TX-6 | `execute-transaction` | Execute server-side JS transaction (**disabled by default** — requires `ENABLE_JS_TRANSACTIONS=true`) | `command`, `params`, `read`, `write` |
 
 **Implementation:** `agents/transaction_management_agent.py` → `mcp_tools/transaction_tools.py`
 
@@ -260,7 +260,8 @@ Serve built-in AQL documentation to the AI assistant.
 | **No hardcoded credentials** | All connection parameters via `ARANGO_*` environment variables; validated by Pydantic settings |
 | **AQL injection prevention** | `aql_utils.py` validates all identifiers before AQL interpolation; values use bind variables (`@param`) |
 | **Log redaction** | Bind variable values are never logged; only parameter keys appear in log output |
-| **SSL/TLS support** | Configurable via `ARANGO_VERIFY_SSL` and `ARANGO_SSL_CERT_PATH` with cross-platform path validation |
+| **SSL/TLS by default** | `ARANGO_VERIFY_SSL` defaults to `true`; optional `ARANGO_SSL_CERT_PATH` with cross-platform path validation |
+| **JS transaction gating** | `execute-transaction` disabled by default; requires `ENABLE_JS_TRANSACTIONS=true` to allow arbitrary JS execution on the server |
 | **Defense-in-depth** | `_system` database deletion blocked at agent level (in addition to tool level) |
 
 ### 3.2 Reliability
@@ -376,9 +377,12 @@ Serve built-in AQL documentation to the AI assistant.
 | `ARANGO_DEFAULT_DB_NAME` | No | `_system` | `ARANGO_` | Default database for all operations |
 | `ARANGO_MAX_CONNECTIONS` | No | `50` | `ARANGO_` | Connection pool size (reserved) |
 | `ARANGO_TIMEOUT` | No | `30` | `ARANGO_` | Connection timeout in seconds (reserved) |
-| `ARANGO_VERIFY_SSL` | No | `false` | `ARANGO_` | Enable SSL certificate verification |
+| `ARANGO_VERIFY_SSL` | No | `true` | `ARANGO_` | Enable SSL certificate verification |
 | `ARANGO_SSL_CERT_PATH` | No | `""` | `ARANGO_` | Path to SSL certificate file |
 | `LOG_LEVEL` | No | `INFO` | — | Server log level |
+| `ENABLE_JS_TRANSACTIONS` | No | `false` | — | Enable server-side JavaScript transactions (security-sensitive) |
+| `SERVER_NAME` | No | `ArangoDB MCP Server` | — | MCP server display name |
+| `SERVER_VERSION` | No | `2.0.0` | — | MCP server version string |
 
 ### 5.2 MCP Client Configuration
 
@@ -422,11 +426,12 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 |-----------|------------------------|
 | `test_connectivity.py` | Raw driver smoke tests (version, collections, docs, AQL, indexes) |
 | `test_agents.py` | CollectionManagement, DocumentCRUD, IndexManagement, AQLExecution, ClusterManagement, GraphManagement |
+| `test_aql_utils.py` | AQL identifier validation functions (53 test cases incl. injection vectors) |
+| `test_database_manual_analyzer.py` | DatabaseManagementAgent, ManualManagementAgent, AnalyzerManagementAgent |
 | `test_vector_search.py` | VectorSearchAgent, ViewManagementAgent, IndexManagement (vector paths) |
 | `test_traversal.py` | GraphTraversalAgent, AQL explain/validate |
 | `test_transactions.py` | TransactionManagementAgent, BackupManagementAgent |
 | `test_users.py` | UserManagementAgent (users + permissions) |
-| `test_database_manual_analyzer.py` | DatabaseManagementAgent, ManualManagementAgent, AnalyzerManagementAgent |
 | `test_cluster.py` | Cluster-specific tests (manual; excluded from CI) |
 
 ### 6.3 CI/CD
@@ -435,8 +440,9 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 |-----------|---------------|
 | **Platform** | GitHub Actions (`ci.yml`) |
 | **Triggers** | Push/PR to `main` |
-| **Lint job** | Ruff check |
-| **Test job** | pytest with ArangoDB 3.12 Docker matrix |
+| **Lint job** | Ruff check + Ruff format check + Mypy type check |
+| **Test job** | pytest with coverage across Python 3.10 and 3.11, ArangoDB 3.12 Docker |
+| **Coverage** | `pytest-cov` reports on `agents/`, `mcp_tools/`, `aql_utils.py` |
 | **Exclusions** | `test_cluster.py` excluded (requires multi-server deployment) |
 
 ---
@@ -465,7 +471,8 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 | `black` | ^24.0 | Code formatter |
 | `isort` | ^5.13 | Import sorter |
 | `mypy` | ^1.0 | Static type checker |
-| `ruff` | ^0.8 | Fast linter |
+| `ruff` | ^0.8 | Fast linter and formatter |
+| `pytest-cov` | ^5.0 | Test coverage reporting |
 
 ---
 
@@ -517,12 +524,11 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 
 | Feature | Branch | Status |
 |---------|--------|--------|
+| User & permission management | `feature/user-permission-management` | **Merged** to `main` |
 | HTTP transport mode | `feature/http-mode` | In progress |
 | Performance profiling | `feature/profiling` | In progress |
-| Reasoner pod integration | `feature/reasoner_pod` | Experimental |
 | SSL implementation enhancements | `Implemented_SSL` | In progress |
 | Query optimization tools | `MCP_Server_Optimization_Query` | In progress |
-| Domain-specific templates | `feature/add-domyn-template`, `feature/add-matpriskollen-template` | In progress |
 
 ---
 
