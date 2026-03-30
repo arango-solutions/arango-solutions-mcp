@@ -267,8 +267,6 @@ async def read_documents_with_filter(
             "database_name": database_name,
             "collection_name": collection_name,
             "filters": filters,
-            # "sort_by": sort_by,
-            # "sort_order": sort_order,
             "limit": limit,
             "skip": skip,
         }
@@ -429,9 +427,7 @@ async def replace_document(
     """,
 )
 async def upsert_document(
-    collection_name: str = Field(
-        description="Name of the collection for the upsert operation."
-    ),
+    collection_name: str = Field(description="Name of the collection for the upsert operation."),
     search_fields: Dict[str, Any] = Field(
         description="""Fields to match when looking for an existing document.
 

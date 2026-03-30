@@ -12,6 +12,7 @@ from arango.exceptions import (
 
 from agents.agent_base import ArangoAgentBase
 from arango_connector import arango_connector
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,7 @@ class TransactionManagementAgent(ArangoAgentBase):
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
-        logger.info(
-            f"TransactionManagementAgent: Op='{operation}', DB='{database_name}'"
-        )
+        logger.info(f"TransactionManagementAgent: Op='{operation}', DB='{database_name}'")
 
         try:
             db = arango_connector.get_db(database_name)
@@ -67,9 +66,7 @@ class TransactionManagementAgent(ArangoAgentBase):
                 "error": f"ArangoDB Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"
             }
         except Exception as e:
-            logger.error(
-                f"TransactionManagementAgent: Unexpected error - {e}", exc_info=True
-            )
+            logger.error(f"TransactionManagementAgent: Unexpected error - {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
     def _begin(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -153,6 +150,12 @@ class TransactionManagementAgent(ArangoAgentBase):
 
     def _execute_js(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a server-side JavaScript transaction."""
+        if not settings.server.enable_js_transactions:
+            return {
+                "error": "Server-side JavaScript transactions are disabled. "
+                "Set ENABLE_JS_TRANSACTIONS=true to enable this feature."
+            }
+
         command: Optional[str] = inputs.get("command")
         params: Optional[Dict[str, Any]] = inputs.get("params")
         read_collections: Optional[List[str]] = inputs.get("read")

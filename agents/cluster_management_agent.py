@@ -67,9 +67,7 @@ class ClusterManagementAgent(ArangoAgentBase):
                 move_followers: Optional[bool] = mcp_tool_inputs.get("move_followers")
                 leader_changes: Optional[bool] = mcp_tool_inputs.get("leader_changes")
                 pi_factor: Optional[float] = mcp_tool_inputs.get("pi_factor")
-                exclude_system: Optional[bool] = mcp_tool_inputs.get(
-                    "exclude_system_collections"
-                )
+                exclude_system: Optional[bool] = mcp_tool_inputs.get("exclude_system_collections")
 
                 kwargs: Dict[str, Any] = {}
                 if max_moves is not None:
@@ -98,9 +96,7 @@ class ClusterManagementAgent(ArangoAgentBase):
             elif operation == "collection_shard_distribution":
                 collection_name: Optional[str] = mcp_tool_inputs.get("collection_name")
                 if not collection_name:
-                    return {
-                        "error": "collection_name is required for shard distribution."
-                    }
+                    return {"error": "collection_name is required for shard distribution."}
                 col = db.collection(collection_name)
                 props = col.properties()
                 shard_info = {
@@ -122,21 +118,14 @@ class ClusterManagementAgent(ArangoAgentBase):
             error_msg = e.error_message if hasattr(e, "error_message") else str(e)
             lower_msg = str(error_msg).lower()
             if any(
-                phrase in lower_msg
-                for phrase in ("not a cluster", "not running", "not supported")
+                phrase in lower_msg for phrase in ("not a cluster", "not running", "not supported")
             ):
-                return {
-                    "error": f"This operation requires a cluster deployment: {error_msg}"
-                }
+                return {"error": f"This operation requires a cluster deployment: {error_msg}"}
             logger.error(f"ClusterManagementAgent: ArangoDB error - {e}")
             return {"error": f"ArangoDB Cluster Error: {error_msg}"}
         except Exception as e:
             err_str = str(e).lower()
             if "500 error" in err_str or "max retries" in err_str:
-                return {
-                    "error": f"This operation is not available on this deployment: {e}"
-                }
-            logger.error(
-                f"ClusterManagementAgent: Unexpected error - {e}", exc_info=True
-            )
+                return {"error": f"This operation is not available on this deployment: {e}"}
+            logger.error(f"ClusterManagementAgent: Unexpected error - {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}

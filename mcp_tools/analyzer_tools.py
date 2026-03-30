@@ -44,7 +44,7 @@ async def list_analyzers(
         
         Analyzers are database-specific configurations.
         """,
-    )
+    ),
 ) -> Dict[str, Any]:
     return await analyzer_agent.arun(
         {"operation": "list_analyzers", "database_name": database_name}

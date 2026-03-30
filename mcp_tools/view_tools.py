@@ -1,4 +1,3 @@
-# mcp_server/mcp_tools/view_tools.py
 from typing import Any, Dict, Optional
 
 from pydantic import Field
@@ -81,7 +80,7 @@ async def list_views(
         
         Views are database-specific and tied to collections in that database.
         """,
-    )
+    ),
 ) -> Dict[str, Any]:
     return await view_agent.arun({"operation": "list_views", "database_name": database_name})
 

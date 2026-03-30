@@ -34,9 +34,7 @@ vector_agent = VectorSearchAgent()
     """,
 )
 async def vector_search(
-    collection_name: str = Field(
-        description="Name of the collection with a vector index."
-    ),
+    collection_name: str = Field(description="Name of the collection with a vector index."),
     vector_field: str = Field(
         description="""Attribute name storing the vector embedding.
         Must be indexed by a vector index.
@@ -142,12 +140,8 @@ async def hybrid_search(
     collection_name: str = Field(
         description="Name of the collection (must have both vector index and search view)."
     ),
-    vector_field: str = Field(
-        description="Attribute name storing the vector embedding."
-    ),
-    query_vector: List[float] = Field(
-        description="The query vector for similarity matching."
-    ),
+    vector_field: str = Field(description="Attribute name storing the vector embedding."),
+    query_vector: List[float] = Field(description="The query vector for similarity matching."),
     view_name: str = Field(
         description="Name of the ArangoSearch or search-alias view for text search."
     ),
@@ -192,19 +186,21 @@ async def hybrid_search(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
-    return await vector_agent.arun({
-        "operation": "hybrid_search",
-        "database_name": database_name,
-        "collection_name": collection_name,
-        "vector_field": vector_field,
-        "query_vector": query_vector,
-        "metric": metric,
-        "limit": limit,
-        "n_probe": n_probe,
-        "view_name": view_name,
-        "text_field": text_field,
-        "text_query": text_query,
-        "text_analyzer": text_analyzer,
-        "vector_weight": vector_weight,
-        "text_weight": text_weight,
-    })
+    return await vector_agent.arun(
+        {
+            "operation": "hybrid_search",
+            "database_name": database_name,
+            "collection_name": collection_name,
+            "vector_field": vector_field,
+            "query_vector": query_vector,
+            "metric": metric,
+            "limit": limit,
+            "n_probe": n_probe,
+            "view_name": view_name,
+            "text_field": text_field,
+            "text_query": text_query,
+            "text_analyzer": text_analyzer,
+            "vector_weight": vector_weight,
+            "text_weight": text_weight,
+        }
+    )

@@ -183,6 +183,9 @@ async def list_transactions(
     name="execute-transaction",
     description="""Executes a server-side JavaScript transaction atomically.
 
+    **IMPORTANT:** This tool is disabled by default for security.
+    Set the ENABLE_JS_TRANSACTIONS=true environment variable to enable it.
+
     Unlike stream transactions (begin/commit/abort), this runs a
     self-contained JavaScript function on the server in a single request.
     The function receives 'params' and must return a result.

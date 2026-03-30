@@ -29,8 +29,8 @@ aql_agent = AQLExecutionAgent()
     This tool *does not* provide any assistance with writing or debugging AQL queries.
     It only executes the query that you provide in the 'aql_query' parameter.
     
-    **WARNING: Attempting to write AQL queries without consulting both manuals first 
-    will likely result in syntax errors, poor performance, and failed executions! **
+    **WARNING: Attempting to write AQL queries without consulting both manuals first
+    will likely result in syntax errors, poor performance, and failed executions!**
     """,
 )
 async def execute_aql(
@@ -98,11 +98,10 @@ async def execute_aql(
     """,
 )
 async def explain_aql_query(
-    aql_query: str = Field(
-        description="The AQL query to analyze (not executed)."
-    ),
+    aql_query: str = Field(description="The AQL query to analyze (not executed)."),
     bind_vars: Optional[Dict[str, Any]] = Field(
-        default=None, description="Bind variables (needed if query uses @params).",
+        default=None,
+        description="Bind variables (needed if query uses @params).",
     ),
     all_plans: bool = Field(
         default=False,
@@ -113,17 +112,20 @@ async def explain_aql_query(
         description="Maximum number of plans to generate (only with all_plans=true).",
     ),
     database_name: Optional[str] = Field(
-        default=None, description="Target database. Uses default if not specified.",
+        default=None,
+        description="Target database. Uses default if not specified.",
     ),
 ) -> Dict[str, Any]:
-    return await aql_agent.arun({
-        "operation": "explain",
-        "aql_query": aql_query,
-        "bind_vars": bind_vars or {},
-        "database_name": database_name,
-        "all_plans": all_plans,
-        "max_plans": max_plans,
-    })
+    return await aql_agent.arun(
+        {
+            "operation": "explain",
+            "aql_query": aql_query,
+            "bind_vars": bind_vars or {},
+            "database_name": database_name,
+            "all_plans": all_plans,
+            "max_plans": max_plans,
+        }
+    )
 
 
 @mcp_app.tool(
@@ -137,15 +139,16 @@ async def explain_aql_query(
     """,
 )
 async def validate_aql_query(
-    aql_query: str = Field(
-        description="The AQL query to validate."
-    ),
+    aql_query: str = Field(description="The AQL query to validate."),
     database_name: Optional[str] = Field(
-        default=None, description="Target database. Uses default if not specified.",
+        default=None,
+        description="Target database. Uses default if not specified.",
     ),
 ) -> Dict[str, Any]:
-    return await aql_agent.arun({
-        "operation": "validate",
-        "aql_query": aql_query,
-        "database_name": database_name,
-    })
+    return await aql_agent.arun(
+        {
+            "operation": "validate",
+            "aql_query": aql_query,
+            "database_name": database_name,
+        }
+    )
