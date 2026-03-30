@@ -20,8 +20,8 @@ Built for AI assistants (Cursor, Claude Desktop, etc.) that need full-spectrum a
 ### 1. Install
 
 ```bash
-git clone https://github.com/arangoml/arango-mcp-server.git
-cd arango-mcp-server
+git clone https://github.com/arango-solutions/arango-solutions-mcp.git
+cd arango-solutions-mcp
 poetry install
 ```
 
