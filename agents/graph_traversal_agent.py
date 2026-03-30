@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 from arango.exceptions import AQLQueryExecuteError, ArangoServerError
 
 from agents.agent_base import ArangoAgentBase
+from aql_utils import validate_aql_identifier, validate_aql_identifiers
 from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,10 @@ class GraphTraversalAgent(ArangoAgentBase):
         graph_name = inputs.get("graph_name")
         edge_collections = inputs.get("edge_collections")
         if graph_name:
+            validate_aql_identifier(graph_name, "graph_name")
             return f"GRAPH '{graph_name}'"
         elif edge_collections:
+            validate_aql_identifiers(edge_collections, "edge_collection")
             return ", ".join(f"`{ec}`" for ec in edge_collections)
         return None
 
@@ -91,7 +94,17 @@ class GraphTraversalAgent(ArangoAgentBase):
         if not graph_source:
             return {"error": "Either graph_name or edge_collections is required."}
 
-        bind_vars: Dict[str, Any] = {"start": start_vertex}
+        if vertex_filters:
+            validate_aql_identifiers(list(vertex_filters.keys()), "vertex_filter_key")
+        if edge_filters:
+            validate_aql_identifiers(list(edge_filters.keys()), "edge_filter_key")
+
+        bind_vars: Dict[str, Any] = {
+            "start": start_vertex,
+            "minD": int(min_depth),
+            "maxD": int(max_depth),
+            "lim": int(limit),
+        }
 
         # Build filter clauses
         filter_lines = []
@@ -122,9 +135,9 @@ class GraphTraversalAgent(ArangoAgentBase):
         return_expr = "{ " + ", ".join(return_parts) + " }"
 
         aql = (
-            f"FOR v, e, p IN {min_depth}..{max_depth} {dir_str} @start {graph_source}"
+            f"FOR v, e, p IN @minD..@maxD {dir_str} @start {graph_source}"
             f"{filters_str}\n"
-            f"  LIMIT {limit}\n"
+            f"  LIMIT @lim\n"
             f"  RETURN {return_expr}"
         )
 
@@ -159,6 +172,7 @@ class GraphTraversalAgent(ArangoAgentBase):
 
         options_str = ""
         if weight_attribute:
+            validate_aql_identifier(weight_attribute, "weight_attribute")
             options_str = f' OPTIONS {{weightAttribute: "{weight_attribute}", defaultWeight: 1}}'
 
         aql = (
@@ -195,16 +209,21 @@ class GraphTraversalAgent(ArangoAgentBase):
         if not graph_source:
             return {"error": "Either graph_name or edge_collections is required."}
 
-        bind_vars: Dict[str, Any] = {"start": start_vertex, "target": target_vertex}
+        bind_vars: Dict[str, Any] = {
+            "start": start_vertex,
+            "target": target_vertex,
+            "lim": int(limit),
+        }
 
         options_str = ""
         if weight_attribute:
+            validate_aql_identifier(weight_attribute, "weight_attribute")
             options_str = f' OPTIONS {{weightAttribute: "{weight_attribute}", defaultWeight: 1}}'
 
         aql = (
             f"FOR path IN {dir_str} K_SHORTEST_PATHS @start TO @target "
             f"{graph_source}{options_str}\n"
-            f"  LIMIT {limit}\n"
+            f"  LIMIT @lim\n"
             f"  RETURN path"
         )
 
@@ -237,7 +256,14 @@ class GraphTraversalAgent(ArangoAgentBase):
         if not graph_source:
             return {"error": "Either graph_name or edge_collections is required."}
 
-        bind_vars: Dict[str, Any] = {"start": start_vertex}
+        if vertex_filters:
+            validate_aql_identifiers(list(vertex_filters.keys()), "vertex_filter_key")
+
+        bind_vars: Dict[str, Any] = {
+            "start": start_vertex,
+            "depthVal": int(depth),
+            "lim": int(limit),
+        }
 
         filter_lines = []
         if vertex_filters:
@@ -253,9 +279,9 @@ class GraphTraversalAgent(ArangoAgentBase):
         return_expr = "DISTINCT v" if deduplicate else "v"
 
         aql = (
-            f"FOR v IN {depth}..{depth} {dir_str} @start {graph_source}"
+            f"FOR v IN @depthVal..@depthVal {dir_str} @start {graph_source}"
             f"{filters_str}\n"
-            f"  LIMIT {limit}\n"
+            f"  LIMIT @lim\n"
             f"  RETURN {return_expr}"
         )
 

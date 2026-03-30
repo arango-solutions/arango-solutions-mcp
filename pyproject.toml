@@ -45,6 +45,14 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E402", "UP006", "UP035", "UP045"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 markers = [
