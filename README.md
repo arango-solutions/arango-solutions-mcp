@@ -75,6 +75,10 @@ poetry install
 | `ARANGO_ROOT_USERNAME` | Yes | — | ArangoDB username |
 | `ARANGO_ROOT_PASSWORD` | Yes | — | ArangoDB password |
 | `ARANGO_DEFAULT_DB_NAME` | No | `_system` | Default database name |
+| `ARANGO_VERIFY_SSL` | No | `true` | Verify SSL certificates |
+| `ARANGO_SSL_CERT_PATH` | No | — | Path to SSL certificate file |
+| `LOG_LEVEL` | No | `INFO` | Server log level |
+| `ENABLE_JS_TRANSACTIONS` | No | `false` | Enable server-side JavaScript transactions (security-sensitive) |
 
 All tools accept an optional `database_name` parameter to override the default.
 
@@ -202,7 +206,7 @@ All tools accept an optional `database_name` parameter to override the default.
 | `commit-transaction` | Commit and persist all changes |
 | `abort-transaction` | Roll back all changes |
 | `list-transactions` | List currently running stream transactions |
-| `execute-transaction` | Execute a server-side JavaScript transaction atomically |
+| `execute-transaction` | Execute a server-side JS transaction atomically (**disabled by default** — set `ENABLE_JS_TRANSACTIONS=true`) |
 
 ### Hot Backup (4) — Enterprise Edition
 
@@ -279,10 +283,12 @@ arango-mcp-server/
 │   ├── user_tools.py
 │   └── manual_tools.py
 │
-├── tests/                   # Pytest suite (151 tests)
+├── tests/                   # Pytest suite (223 tests)
 │   ├── conftest.py          # Auto-provisions Docker containers
 │   ├── test_connectivity.py
 │   ├── test_agents.py
+│   ├── test_aql_utils.py
+│   ├── test_database_manual_analyzer.py
 │   ├── test_vector_search.py
 │   ├── test_traversal.py
 │   ├── test_transactions.py
@@ -324,10 +330,21 @@ Cluster-specific tests require a multi-server deployment:
 poetry run pytest tests/test_cluster.py -v
 ```
 
-### Linting
+### Linting & Formatting
 
 ```bash
-poetry run ruff check .
+poetry run ruff check .         # lint
+poetry run ruff format --check . # format check (use without --check to auto-fix)
+poetry run mypy --ignore-missing-imports agents/ mcp_tools/ aql_utils.py config.py arango_connector.py server.py main.py
+```
+
+### Pre-commit Hooks
+
+The project includes a `.pre-commit-config.yaml` for automated checks on commit:
+
+```bash
+pip install pre-commit
+pre-commit install
 ```
 
 ### Adding a New Tool
@@ -336,6 +353,19 @@ poetry run ruff check .
 2. Create tool definitions in `mcp_tools/` using `@mcp_app.tool`
 3. Import the new tool module in `mcp_tools/__init__.py` and `server.py`
 4. Add tests in `tests/`
+
+---
+
+## Security
+
+| Feature | Description |
+|---------|-------------|
+| **Zero hardcoded credentials** | All connection parameters via `ARANGO_*` environment variables or `.env`; validated by Pydantic settings |
+| **AQL injection prevention** | All identifiers validated by `aql_utils.py` before interpolation; all values use bind variables (`@param`) |
+| **JS transaction gating** | `execute-transaction` disabled by default; requires explicit `ENABLE_JS_TRANSACTIONS=true` to enable arbitrary JS execution on the server |
+| **SSL by default** | `ARANGO_VERIFY_SSL` defaults to `true`; optional `ARANGO_SSL_CERT_PATH` for custom certs |
+| **Log redaction** | Bind variable values are never logged; only parameter keys appear in log output |
+| **Destructive operation guards** | `_system` database deletion blocked at both tool and agent levels |
 
 ---
 
@@ -348,7 +378,8 @@ poetry run ruff check .
 - **Vector search** — approximate nearest-neighbor with cosine/L2/inner-product metrics
 - **Hybrid search** — combine vector similarity with BM25 text relevance
 - **AQL-first** — built-in manuals, explain plans, and syntax validation
-- **Self-testing** — 151 automated tests with ephemeral Docker containers
+- **Security by default** — AQL injection prevention, JS transaction gating, SSL verification, log redaction
+- **Self-testing** — 223 automated tests with ephemeral Docker containers
 - **Cross-platform** — runs on macOS, Linux, Windows (via Docker)
 
 ## License
