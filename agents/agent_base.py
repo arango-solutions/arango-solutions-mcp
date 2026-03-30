@@ -37,9 +37,7 @@ def handle_arango_errors(
                     "error_code": getattr(e, "error_code", None),
                 }
             except Exception as e:
-                _logger.error(
-                    f"{agent_name}: Unexpected error - {e}", exc_info=True
-                )
+                _logger.error(f"{agent_name}: Unexpected error - {e}", exc_info=True)
                 return {"error": f"An unexpected error occurred: {str(e)}"}
 
         return wrapper

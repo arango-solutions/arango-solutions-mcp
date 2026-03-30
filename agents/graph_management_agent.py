@@ -53,9 +53,7 @@ class GraphManagementAgent(ArangoAgentBase):
 
         elif operation == "create_graph":
             if not graph_name or not edge_definitions:
-                return {
-                    "error": "Graph name and edge definitions are required for graph creation."
-                }
+                return {"error": "Graph name and edge definitions are required for graph creation."}
             if db.has_graph(graph_name):
                 return {
                     "status": f"Graph '{graph_name}' already exists in database '{database_name}'."
@@ -95,9 +93,7 @@ class GraphManagementAgent(ArangoAgentBase):
             if not graph_name:
                 return {"error": "Graph name is required."}
             if not db.has_graph(graph_name):
-                return {
-                    "error": f"Graph '{graph_name}' not found in database '{database_name}'."
-                }
+                return {"error": f"Graph '{graph_name}' not found in database '{database_name}'."}
             graph_obj = db.graph(graph_name)
             return {"properties": graph_obj.properties()}
 
@@ -105,9 +101,7 @@ class GraphManagementAgent(ArangoAgentBase):
             if not graph_name:
                 return {"error": "Graph name is required for deletion."}
             if not db.has_graph(graph_name):
-                return {
-                    "error": f"Graph '{graph_name}' not found in database '{database_name}'."
-                }
+                return {"error": f"Graph '{graph_name}' not found in database '{database_name}'."}
 
             db.delete_graph(
                 graph_name,
@@ -117,12 +111,7 @@ class GraphManagementAgent(ArangoAgentBase):
             return {"status": f"Graph '{graph_name}' deleted successfully."}
 
         elif operation == "create_edge":
-            if (
-                not graph_name
-                or not edge_collection_name
-                or not from_vertex_id
-                or not to_vertex_id
-            ):
+            if not graph_name or not edge_collection_name or not from_vertex_id or not to_vertex_id:
                 return {
                     "error": "Graph name, edge collection name, from_vertex_id, and to_vertex_id are required to create an edge."
                 }

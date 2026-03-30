@@ -427,9 +427,7 @@ async def replace_document(
     """,
 )
 async def upsert_document(
-    collection_name: str = Field(
-        description="Name of the collection for the upsert operation."
-    ),
+    collection_name: str = Field(description="Name of the collection for the upsert operation."),
     search_fields: Dict[str, Any] = Field(
         description="""Fields to match when looking for an existing document.
 

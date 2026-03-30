@@ -74,15 +74,9 @@ async def create_user(
 )
 async def update_user(
     username: str = Field(description="Username to update."),
-    password: Optional[str] = Field(
-        default=None, description="New password."
-    ),
-    active: Optional[bool] = Field(
-        default=None, description="Set active status."
-    ),
-    extra: Optional[Dict[str, Any]] = Field(
-        default=None, description="Extra metadata to merge."
-    ),
+    password: Optional[str] = Field(default=None, description="New password."),
+    active: Optional[bool] = Field(default=None, description="Set active status."),
+    extra: Optional[Dict[str, Any]] = Field(default=None, description="Extra metadata to merge."),
 ) -> Dict[str, Any]:
     return await user_agent.arun(
         {
@@ -105,9 +99,7 @@ async def update_user(
 async def delete_user(
     username: str = Field(description="Username to delete."),
 ) -> Dict[str, Any]:
-    return await user_agent.arun(
-        {"operation": "delete_user", "username": username}
-    )
+    return await user_agent.arun({"operation": "delete_user", "username": username})
 
 
 @mcp_app.tool(
@@ -121,9 +113,7 @@ async def delete_user(
 async def list_permissions(
     username: str = Field(description="Username to list permissions for."),
 ) -> Dict[str, Any]:
-    return await user_agent.arun(
-        {"operation": "list_permissions", "username": username}
-    )
+    return await user_agent.arun({"operation": "list_permissions", "username": username})
 
 
 @mcp_app.tool(
@@ -167,7 +157,9 @@ async def get_permission(
 )
 async def grant_permission(
     username: str = Field(description="Username to grant permission to."),
-    permission: Literal["rw", "ro", "none"] = Field(description="Permission level: 'rw', 'ro', or 'none'."),
+    permission: Literal["rw", "ro", "none"] = Field(
+        description="Permission level: 'rw', 'ro', or 'none'."
+    ),
     database: str = Field(description="Target database."),
     collection: Optional[str] = Field(
         default=None,

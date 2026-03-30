@@ -28,9 +28,7 @@ class TransactionManagementAgent(ArangoAgentBase):
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
-        logger.info(
-            f"TransactionManagementAgent: Op='{operation}', DB='{database_name}'"
-        )
+        logger.info(f"TransactionManagementAgent: Op='{operation}', DB='{database_name}'")
 
         try:
             db = arango_connector.get_db(database_name)
@@ -68,9 +66,7 @@ class TransactionManagementAgent(ArangoAgentBase):
                 "error": f"ArangoDB Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"
             }
         except Exception as e:
-            logger.error(
-                f"TransactionManagementAgent: Unexpected error - {e}", exc_info=True
-            )
+            logger.error(f"TransactionManagementAgent: Unexpected error - {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
     def _begin(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:

@@ -55,8 +55,14 @@ class IndexManagementAgent(ArangoAgentBase):
             fields = index_definition.get("fields", [])
 
             supported_types = {
-                "persistent", "inverted", "geo", "ttl", "fulltext",
-                "mdi", "mdi-prefixed", "vector",
+                "persistent",
+                "inverted",
+                "geo",
+                "ttl",
+                "fulltext",
+                "mdi",
+                "mdi-prefixed",
+                "vector",
             }
             if index_type not in supported_types:
                 return {

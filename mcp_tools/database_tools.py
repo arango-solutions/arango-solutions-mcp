@@ -179,7 +179,7 @@ async def get_database_info(
         - Collection count and types
         - System and version information
         """,
-    )
+    ),
 ) -> Dict[str, Any]:
     """Retrieves comprehensive information about an ArangoDB database."""
     return await db_agent.arun({"operation": "get_database_info", "database_name": database_name})

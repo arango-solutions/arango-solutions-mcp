@@ -21,7 +21,13 @@ class CollectionManagementAgent(ArangoAgentBase):
     @handle_arango_errors(
         "CollectionManagementAgent",
         "ArangoDB Collection",
-        (CollectionListError, CollectionCreateError, CollectionDeleteError, CollectionPropertiesError, CollectionConfigureError),
+        (
+            CollectionListError,
+            CollectionCreateError,
+            CollectionDeleteError,
+            CollectionPropertiesError,
+            CollectionConfigureError,
+        ),
     )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")

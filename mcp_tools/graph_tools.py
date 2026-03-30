@@ -46,7 +46,7 @@ async def list_graphs(
         
         Graphs are database-specific configurations.
         """,
-    )
+    ),
 ) -> Dict[str, Any]:
     return await graph_agent.arun({"operation": "list_graphs", "database_name": database_name})
 
@@ -166,8 +166,13 @@ async def create_graph(
         "orphan_collections": orphan_collections,
     }
     for key in (
-        "smart", "disjoint", "smart_field", "shard_count",
-        "replication_factor", "write_concern", "satellite_collections",
+        "smart",
+        "disjoint",
+        "smart_field",
+        "shard_count",
+        "replication_factor",
+        "write_concern",
+        "satellite_collections",
         "is_satellite",
     ):
         val = locals()[key]
@@ -385,9 +390,7 @@ async def create_edge(
     """,
 )
 async def get_graph_properties(
-    graph_name: str = Field(
-        description="Name of the graph to inspect."
-    ),
+    graph_name: str = Field(description="Name of the graph to inspect."),
     database_name: Optional[str] = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
