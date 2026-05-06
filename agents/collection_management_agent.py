@@ -10,7 +10,6 @@ from arango.exceptions import (
 )
 
 from agents.agent_base import ArangoAgentBase, handle_arango_errors
-from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +46,10 @@ class CollectionManagementAgent(ArangoAgentBase):
             f"CollectionManagementAgent: Op='{operation}', DB='{database_name}', Collection='{collection_name}'"
         )
 
-        db = arango_connector.get_db(database_name)
-        database_name = database_name or db.name
+        db, database_name = self.resolve_db(database_name)
 
         if operation == "list_collections":
-            all_collections_info = db.collections()
+            all_collections_info = await self.run_sync(db.collections)
             user_collections_info = [
                 col_info
                 for col_info in all_collections_info
@@ -72,7 +70,7 @@ class CollectionManagementAgent(ArangoAgentBase):
             return {"error": f"Collection name is required for operation '{operation}'."}
 
         if operation == "create_collection":
-            if db.has_collection(collection_name):  # type: ignore
+            if await self.run_sync(db.has_collection, collection_name):  # type: ignore
                 return {
                     "status": f"Collection '{collection_name}' already exists in database '{database_name}'."
                 }
@@ -94,34 +92,36 @@ class CollectionManagementAgent(ArangoAgentBase):
             if computed_values is not None:
                 create_kwargs["computedValues"] = computed_values
 
-            created_collection = db.create_collection(collection_name, **create_kwargs)  # type: ignore
+            created_collection = await self.run_sync(
+                db.create_collection, collection_name, **create_kwargs
+            )  # type: ignore
             return {
                 "status": f"Collection '{collection_name}' (type: {'edge' if is_edge else 'document'}) created successfully in database '{database_name}'.",
-                "collection_info": created_collection.properties(),
+                "collection_info": await self.run_sync(created_collection.properties),
             }
 
         elif operation == "delete_collection":
-            if not db.has_collection(collection_name):  # type: ignore
+            if not await self.run_sync(db.has_collection, collection_name):  # type: ignore
                 return {
                     "error": f"Collection '{collection_name}' not found in database '{database_name}'."
                 }
 
-            db.delete_collection(collection_name, ignore_missing=False)  # type: ignore
+            await self.run_sync(db.delete_collection, collection_name, ignore_missing=False)  # type: ignore
             return {
                 "status": f"Collection '{collection_name}' deleted successfully from database '{database_name}'."
             }
 
         elif operation == "get_collection_properties":
-            if not db.has_collection(collection_name):  # type: ignore
+            if not await self.run_sync(db.has_collection, collection_name):  # type: ignore
                 return {
                     "error": f"Collection '{collection_name}' not found in database '{database_name}'."
                 }
 
-            collection_obj = db.collection(collection_name)  # type: ignore
-            properties = collection_obj.properties()
-            count = collection_obj.count()
-            statistics = collection_obj.statistics()
-            revision = collection_obj.revision()
+            collection_obj = await self.run_sync(db.collection, collection_name)  # type: ignore
+            properties = await self.run_sync(collection_obj.properties)
+            count = await self.run_sync(collection_obj.count)
+            statistics = await self.run_sync(collection_obj.statistics)
+            revision = await self.run_sync(collection_obj.revision)
             return {
                 "database_name": database_name,
                 "collection_name": collection_name,

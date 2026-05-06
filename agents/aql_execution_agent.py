@@ -1,15 +1,14 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from arango.exceptions import (
     AQLQueryExecuteError,
     AQLQueryExplainError,
     AQLQueryValidateError,
-    ArangoServerError,
 )
 
-from agents.agent_base import ArangoAgentBase
-from arango_connector import arango_connector
+from agents.agent_base import ArangoAgentBase, handle_arango_errors
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +16,12 @@ logger = logging.getLogger(__name__)
 class AQLExecutionAgent(ArangoAgentBase):
     """Agent for executing, explaining, and validating AQL queries."""
 
+    @handle_arango_errors("AQLExecutionAgent", "AQL", specific_exceptions=(AQLQueryExecuteError,))
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "execute")
         aql_query: str = mcp_tool_inputs.get("aql_query", "")
         bind_vars: Dict[str, Any] = mcp_tool_inputs.get("bind_vars", {})
-        database_name: Optional[str] = mcp_tool_inputs.get("database_name")
+        database_name: str | None = mcp_tool_inputs.get("database_name")
 
         if not aql_query:
             return {"error": "AQL query string cannot be empty."}
@@ -38,67 +38,58 @@ class AQLExecutionAgent(ArangoAgentBase):
             f"{aql_query[:100]}... bind_vars_keys={list(bind_vars.keys()) if bind_vars else []}"
         )
 
-        try:
-            db_to_query = arango_connector.get_db(database_name)
-            database_name = database_name or db_to_query.name
+        db_to_query, database_name = self.resolve_db(database_name)
 
-            cursor = db_to_query.aql.execute(
-                aql_query, bind_vars=bind_vars, count=True, full_count=True
-            )
-            results = [document for document in cursor]
+        configured_max_runtime = mcp_tool_inputs.get("max_runtime")
+        if configured_max_runtime is None:
+            configured_max_runtime = settings.server.default_aql_max_runtime
 
-            response = {
-                "query_executed": aql_query,
-                "bind_vars_used": bind_vars,
-                "database_queried": database_name,
-                "count": cursor.count(),  # Number of documents returned in the current batch (if paginated)
-                "full_count": (
-                    cursor.full_count() if hasattr(cursor, "full_count") else None
-                ),  # Total documents matching (if applicable)
-                "results": results,
-                "extra_stats": cursor.statistics(),
-            }
-            logger.info(f"AQLExecutionAgent: Query successful, returned {len(results)} documents.")
-            return response
+        execute_kwargs: Dict[str, Any] = dict(
+            bind_vars=bind_vars, count=True, full_count=True
+        )
+        if configured_max_runtime and configured_max_runtime > 0:
+            execute_kwargs["max_runtime"] = float(configured_max_runtime)
 
-        except AQLQueryExecuteError as e:
-            logger.error(f"AQLExecutionAgent: AQL execution error in DB '{database_name}': {e}")
-            return {
-                "error": f"AQL Execution Error: {e.error_message}",
-                "error_code": e.error_code,
-                "details": str(e),
-            }
-        except ArangoServerError as e:  # Catch other server errors like DB not found
-            logger.error(f"AQLExecutionAgent: ArangoServerError in DB '{database_name}': {e}")
-            return {
-                "error": f"ArangoDB Server Error: {e.error_message}",
-                "error_code": e.error_code,
-                "details": str(e),
-            }
-        except Exception as e:
-            logger.error(
-                f"AQLExecutionAgent: Unexpected error during AQL execution in DB '{database_name}': {e}",
-                exc_info=True,
-            )
-            return {"error": f"An unexpected error occurred: {str(e)}"}
+        cursor = await self.run_sync(
+            db_to_query.aql.execute, aql_query, **execute_kwargs
+        )
+        results = list(cursor)
+
+        response = {
+            "query_executed": aql_query,
+            "database_queried": database_name,
+            "max_runtime": (
+                configured_max_runtime
+                if configured_max_runtime and configured_max_runtime > 0
+                else None
+            ),
+            "count": cursor.count(),
+            "full_count": (
+                cursor.full_count() if hasattr(cursor, "full_count") else None
+            ),
+            "results": results,
+            "extra_stats": cursor.statistics(),
+        }
+        logger.info(f"AQLExecutionAgent: Query successful, returned {len(results)} documents.")
+        return response
 
     async def _explain(
         self,
         aql_query: str,
         bind_vars: Dict[str, Any],
-        database_name: Optional[str],
+        database_name: str | None,
         inputs: Dict[str, Any],
     ) -> Dict[str, Any]:
         all_plans: bool = inputs.get("all_plans", False)
-        max_plans: Optional[int] = inputs.get("max_plans")
-        opt_rules: Optional[List[str]] = inputs.get("opt_rules")
+        max_plans: int | None = inputs.get("max_plans")
+        opt_rules: List[str] | None = inputs.get("opt_rules")
 
         logger.info(
             f"AQLExecutionAgent: Explaining AQL in DB '{database_name}': {aql_query[:100]}..."
         )
 
         try:
-            db = arango_connector.get_db(database_name)
+            db, _ = self.resolve_db(database_name)
 
             kwargs: Dict[str, Any] = {"all_plans": all_plans}
             if bind_vars:
@@ -108,7 +99,7 @@ class AQLExecutionAgent(ArangoAgentBase):
             if opt_rules is not None:
                 kwargs["opt_rules"] = opt_rules
 
-            plan = db.aql.explain(aql_query, **kwargs)
+            plan = await self.run_sync(db.aql.explain, aql_query, **kwargs)
 
             return {
                 "query": aql_query,
@@ -125,14 +116,14 @@ class AQLExecutionAgent(ArangoAgentBase):
             logger.error(f"AQLExecutionAgent: Explain unexpected error - {e}", exc_info=True)
             return {"error": f"An unexpected error occurred: {str(e)}"}
 
-    async def _validate(self, aql_query: str, database_name: Optional[str]) -> Dict[str, Any]:
+    async def _validate(self, aql_query: str, database_name: str | None) -> Dict[str, Any]:
         logger.info(
             f"AQLExecutionAgent: Validating AQL in DB '{database_name}': {aql_query[:100]}..."
         )
 
         try:
-            db = arango_connector.get_db(database_name)
-            result = db.aql.validate(aql_query)
+            db, _ = self.resolve_db(database_name)
+            result = await self.run_sync(db.aql.validate, aql_query)
 
             return {
                 "query": aql_query,

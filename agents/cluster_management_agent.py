@@ -3,129 +3,117 @@ from typing import Any, Dict, Optional
 
 from arango.exceptions import ArangoServerError
 
-from agents.agent_base import ArangoAgentBase
-from arango_connector import arango_connector
+from agents.agent_base import ArangoAgentBase, handle_arango_errors
 
 logger = logging.getLogger(__name__)
+
+
+def _cluster_error_hint(exc: Exception) -> dict | None:
+    """Rewrite ArangoDB errors that indicate a non-cluster deployment."""
+    msg = getattr(exc, "error_message", None) or str(exc)
+    msg_lower = msg.lower()
+    if isinstance(exc, ArangoServerError) and any(
+        phrase in msg_lower for phrase in ("not a cluster", "not running", "not supported")
+    ):
+        return {"error": f"This operation requires a cluster deployment: {msg}"}
+    if "500 error" in msg_lower or "max retries" in msg_lower:
+        return {"error": f"This operation is not available on this deployment: {exc}"}
+    return None
 
 
 class ClusterManagementAgent(ArangoAgentBase):
     """Agent for ArangoDB cluster introspection and shard administration."""
 
+    @handle_arango_errors(
+        "ClusterManagementAgent",
+        "ArangoDB Cluster",
+        on_arango_error=_cluster_error_hint,
+    )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
         logger.info(f"ClusterManagementAgent: Op='{operation}', DB='{database_name}'")
 
-        try:
-            db = arango_connector.get_db(database_name)
-            database_name = database_name or db.name
-            cluster = db.cluster
+        db, database_name = self.resolve_db(database_name)
+        cluster = db.cluster
 
-            if operation == "cluster_health":
-                health = cluster.health()
-                return {"health": health}
+        if operation == "cluster_health":
+            health = await self.run_sync(cluster.health)
+            return {"health": health}
 
-            elif operation == "cluster_server_role":
-                role = cluster.server_role()
-                return {"role": role}
+        elif operation == "cluster_server_role":
+            role = await self.run_sync(cluster.server_role)
+            return {"role": role}
 
-            elif operation == "cluster_server_count":
-                count = cluster.server_count()
-                return {"server_count": count}
+        elif operation == "cluster_server_count":
+            count = await self.run_sync(cluster.server_count)
+            return {"server_count": count}
 
-            elif operation == "cluster_endpoints":
-                endpoints = cluster.endpoints()
-                return {"endpoints": endpoints}
+        elif operation == "cluster_endpoints":
+            endpoints = await self.run_sync(cluster.endpoints)
+            return {"endpoints": endpoints}
 
-            elif operation == "cluster_server_id":
-                sid = cluster.server_id()
-                return {"server_id": sid}
+        elif operation == "cluster_server_id":
+            sid = await self.run_sync(cluster.server_id)
+            return {"server_id": sid}
 
-            elif operation == "cluster_server_statistics":
-                server_id: Optional[str] = mcp_tool_inputs.get("server_id")
-                if not server_id:
-                    return {"error": "server_id is required for server statistics."}
-                stats = cluster.server_statistics(server_id)
-                return {"statistics": stats}
+        elif operation == "cluster_server_statistics":
+            server_id: Optional[str] = mcp_tool_inputs.get("server_id")
+            if not server_id:
+                return {"error": "server_id is required for server statistics."}
+            stats = await self.run_sync(cluster.server_statistics, server_id)
+            return {"statistics": stats}
 
-            elif operation == "cluster_server_engine":
-                server_id = mcp_tool_inputs.get("server_id")
-                if not server_id:
-                    return {"error": "server_id is required for server engine info."}
-                engine = cluster.server_engine(server_id)
-                return {"engine": engine}
+        elif operation == "cluster_server_engine":
+            server_id = mcp_tool_inputs.get("server_id")
+            if not server_id:
+                return {"error": "server_id is required for server engine info."}
+            engine = await self.run_sync(cluster.server_engine, server_id)
+            return {"engine": engine}
 
-            elif operation == "cluster_calculate_imbalance":
-                imbalance = cluster.calculate_imbalance()
-                return {"imbalance": imbalance}
+        elif operation == "cluster_calculate_imbalance":
+            imbalance = await self.run_sync(cluster.calculate_imbalance)
+            return {"imbalance": imbalance}
 
-            elif operation == "cluster_rebalance":
-                max_moves: Optional[int] = mcp_tool_inputs.get("max_moves")
-                move_leaders: Optional[bool] = mcp_tool_inputs.get("move_leaders")
-                move_followers: Optional[bool] = mcp_tool_inputs.get("move_followers")
-                leader_changes: Optional[bool] = mcp_tool_inputs.get("leader_changes")
-                pi_factor: Optional[float] = mcp_tool_inputs.get("pi_factor")
-                exclude_system: Optional[bool] = mcp_tool_inputs.get("exclude_system_collections")
+        elif operation == "cluster_rebalance":
+            kwargs: Dict[str, Any] = self.pack_optional(
+                {},
+                max_moves=mcp_tool_inputs.get("max_moves"),
+                move_leaders=mcp_tool_inputs.get("move_leaders"),
+                move_followers=mcp_tool_inputs.get("move_followers"),
+                leader_changes=mcp_tool_inputs.get("leader_changes"),
+                pi_factor=mcp_tool_inputs.get("pi_factor"),
+                exclude_system_collections=mcp_tool_inputs.get("exclude_system_collections"),
+            )
 
-                kwargs: Dict[str, Any] = {}
-                if max_moves is not None:
-                    kwargs["max_moves"] = max_moves
-                if move_leaders is not None:
-                    kwargs["move_leaders"] = move_leaders
-                if move_followers is not None:
-                    kwargs["move_followers"] = move_followers
-                if leader_changes is not None:
-                    kwargs["leader_changes"] = leader_changes
-                if pi_factor is not None:
-                    kwargs["pi_factor"] = pi_factor
-                if exclude_system is not None:
-                    kwargs["exclude_system_collections"] = exclude_system
+            result = await self.run_sync(cluster.rebalance, **kwargs)
+            return {"rebalance_result": result}
 
-                result = cluster.rebalance(**kwargs)
-                return {"rebalance_result": result}
+        elif operation == "cluster_toggle_maintenance":
+            mode: Optional[str] = mcp_tool_inputs.get("mode")
+            if mode not in ("on", "off"):
+                return {"error": "mode must be 'on' or 'off'."}
+            result = await self.run_sync(cluster.toggle_maintenance_mode, mode)
+            return {"maintenance": result}
 
-            elif operation == "cluster_toggle_maintenance":
-                mode: Optional[str] = mcp_tool_inputs.get("mode")
-                if mode not in ("on", "off"):
-                    return {"error": "mode must be 'on' or 'off'."}
-                result = cluster.toggle_maintenance_mode(mode)
-                return {"maintenance": result}
+        elif operation == "collection_shard_distribution":
+            collection_name: Optional[str] = mcp_tool_inputs.get("collection_name")
+            if not collection_name:
+                return {"error": "collection_name is required for shard distribution."}
+            col = await self.run_sync(db.collection, collection_name)
+            props = await self.run_sync(col.properties)
+            shard_info = {
+                "collection": collection_name,
+                "numberOfShards": props.get("numberOfShards"),
+                "shardKeys": props.get("shardKeys"),
+                "replicationFactor": props.get("replicationFactor"),
+                "writeConcern": props.get("writeConcern"),
+                "shardingStrategy": props.get("shardingStrategy"),
+                "isSmart": props.get("isSmart", False),
+                "status": props.get("status"),
+            }
+            return {"shard_distribution": shard_info}
 
-            elif operation == "collection_shard_distribution":
-                collection_name: Optional[str] = mcp_tool_inputs.get("collection_name")
-                if not collection_name:
-                    return {"error": "collection_name is required for shard distribution."}
-                col = db.collection(collection_name)
-                props = col.properties()
-                shard_info = {
-                    "collection": collection_name,
-                    "numberOfShards": props.get("numberOfShards"),
-                    "shardKeys": props.get("shardKeys"),
-                    "replicationFactor": props.get("replicationFactor"),
-                    "writeConcern": props.get("writeConcern"),
-                    "shardingStrategy": props.get("shardingStrategy"),
-                    "isSmart": props.get("isSmart", False),
-                    "status": props.get("status"),
-                }
-                return {"shard_distribution": shard_info}
-
-            else:
-                return {"error": f"Unknown cluster operation: {operation}"}
-
-        except ArangoServerError as e:
-            error_msg = e.error_message if hasattr(e, "error_message") else str(e)
-            lower_msg = str(error_msg).lower()
-            if any(
-                phrase in lower_msg for phrase in ("not a cluster", "not running", "not supported")
-            ):
-                return {"error": f"This operation requires a cluster deployment: {error_msg}"}
-            logger.error(f"ClusterManagementAgent: ArangoDB error - {e}")
-            return {"error": f"ArangoDB Cluster Error: {error_msg}"}
-        except Exception as e:
-            err_str = str(e).lower()
-            if "500 error" in err_str or "max retries" in err_str:
-                return {"error": f"This operation is not available on this deployment: {e}"}
-            logger.error(f"ClusterManagementAgent: Unexpected error - {e}", exc_info=True)
-            return {"error": f"An unexpected error occurred: {str(e)}"}
+        else:
+            return {"error": f"Unknown cluster operation: {operation}"}

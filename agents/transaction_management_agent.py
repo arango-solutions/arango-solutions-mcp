@@ -1,8 +1,8 @@
 import logging
 from typing import Any, Dict, List, Optional, Union
 
+from arango.database import StandardDatabase
 from arango.exceptions import (
-    ArangoServerError,
     TransactionAbortError,
     TransactionCommitError,
     TransactionInitError,
@@ -10,8 +10,7 @@ from arango.exceptions import (
     TransactionStatusError,
 )
 
-from agents.agent_base import ArangoAgentBase
-from arango_connector import arango_connector
+from agents.agent_base import ArangoAgentBase, handle_arango_errors
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -24,52 +23,41 @@ class TransactionManagementAgent(ArangoAgentBase):
     Operations: begin, status, commit, abort, list, execute_within.
     """
 
+    @handle_arango_errors(
+        "TransactionManagementAgent",
+        "Transaction",
+        specific_exceptions=(
+            TransactionInitError,
+            TransactionCommitError,
+            TransactionAbortError,
+            TransactionStatusError,
+            TransactionListError,
+        ),
+    )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
         logger.info(f"TransactionManagementAgent: Op='{operation}', DB='{database_name}'")
 
-        try:
-            db = arango_connector.get_db(database_name)
-            database_name = database_name or db.name
+        db, database_name = self.resolve_db(database_name)
 
-            if operation == "begin_transaction":
-                return self._begin(db, mcp_tool_inputs)
-            elif operation == "transaction_status":
-                return self._status(db, mcp_tool_inputs)
-            elif operation == "commit_transaction":
-                return self._commit(db, mcp_tool_inputs)
-            elif operation == "abort_transaction":
-                return self._abort(db, mcp_tool_inputs)
-            elif operation == "list_transactions":
-                return self._list(db)
-            elif operation == "execute_transaction":
-                return self._execute_js(db, mcp_tool_inputs)
-            else:
-                return {"error": f"Unknown transaction operation: {operation}"}
+        if operation == "begin_transaction":
+            return await self._begin(db, mcp_tool_inputs)
+        elif operation == "transaction_status":
+            return await self._status(db, mcp_tool_inputs)
+        elif operation == "commit_transaction":
+            return await self._commit(db, mcp_tool_inputs)
+        elif operation == "abort_transaction":
+            return await self._abort(db, mcp_tool_inputs)
+        elif operation == "list_transactions":
+            return await self._list(db)
+        elif operation == "execute_transaction":
+            return await self._execute_js(db, mcp_tool_inputs)
+        else:
+            return {"error": f"Unknown transaction operation: {operation}"}
 
-        except (
-            TransactionInitError,
-            TransactionCommitError,
-            TransactionAbortError,
-            TransactionStatusError,
-            TransactionListError,
-        ) as e:
-            logger.error(f"TransactionManagementAgent: Transaction error - {e}")
-            return {
-                "error": f"Transaction Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"
-            }
-        except ArangoServerError as e:
-            logger.error(f"TransactionManagementAgent: ArangoDB error - {e}")
-            return {
-                "error": f"ArangoDB Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"
-            }
-        except Exception as e:
-            logger.error(f"TransactionManagementAgent: Unexpected error - {e}", exc_info=True)
-            return {"error": f"An unexpected error occurred: {str(e)}"}
-
-    def _begin(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _begin(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
         read_collections: Optional[Union[str, List[str]]] = inputs.get("read")
         write_collections: Optional[Union[str, List[str]]] = inputs.get("write")
         exclusive_collections: Optional[Union[str, List[str]]] = inputs.get("exclusive")
@@ -94,7 +82,7 @@ class TransactionManagementAgent(ArangoAgentBase):
         if max_size is not None:
             kwargs["max_size"] = max_size
 
-        txn_db = db.begin_transaction(**kwargs)
+        txn_db = await self.run_sync(db.begin_transaction, **kwargs)
         txn_id = txn_db.transaction_id
 
         return {
@@ -108,47 +96,47 @@ class TransactionManagementAgent(ArangoAgentBase):
             ),
         }
 
-    def _status(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _status(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         txn_id: Optional[str] = inputs.get("transaction_id")
         if not txn_id:
             return {"error": "transaction_id is required."}
 
-        txn_db = db.fetch_transaction(txn_id)
-        status = txn_db.transaction_status()
+        txn_db = await self.run_sync(db.fetch_transaction, txn_id)
+        status = await self.run_sync(txn_db.transaction_status)
 
         return {"transaction_id": txn_id, "status": status}
 
-    def _commit(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _commit(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         txn_id: Optional[str] = inputs.get("transaction_id")
         if not txn_id:
             return {"error": "transaction_id is required."}
 
-        txn_db = db.fetch_transaction(txn_id)
-        txn_db.commit_transaction()
+        txn_db = await self.run_sync(db.fetch_transaction, txn_id)
+        await self.run_sync(txn_db.commit_transaction)
 
         return {
             "status": "Transaction committed successfully.",
             "transaction_id": txn_id,
         }
 
-    def _abort(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _abort(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         txn_id: Optional[str] = inputs.get("transaction_id")
         if not txn_id:
             return {"error": "transaction_id is required."}
 
-        txn_db = db.fetch_transaction(txn_id)
-        txn_db.abort_transaction()
+        txn_db = await self.run_sync(db.fetch_transaction, txn_id)
+        await self.run_sync(txn_db.abort_transaction)
 
         return {
             "status": "Transaction aborted successfully.",
             "transaction_id": txn_id,
         }
 
-    def _list(self, db) -> Dict[str, Any]:
-        transactions = db.list_transactions()
+    async def _list(self, db: StandardDatabase) -> Dict[str, Any]:
+        transactions = await self.run_sync(db.list_transactions)
         return {"transactions": transactions}
 
-    def _execute_js(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_js(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a server-side JavaScript transaction."""
         if not settings.server.enable_js_transactions:
             return {
@@ -181,6 +169,6 @@ class TransactionManagementAgent(ArangoAgentBase):
         if allow_implicit is not None:
             kwargs["allow_implicit"] = allow_implicit
 
-        result = db.execute_transaction(**kwargs)
+        result = await self.run_sync(db.execute_transaction, **kwargs)
 
         return {"status": "Transaction executed.", "result": result}

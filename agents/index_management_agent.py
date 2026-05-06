@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional
 from arango.exceptions import IndexCreateError, IndexDeleteError, IndexListError
 
 from agents.agent_base import ArangoAgentBase, handle_arango_errors
-from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
 
@@ -31,18 +30,17 @@ class IndexManagementAgent(ArangoAgentBase):
         if not collection_name:
             return {"error": "Collection name is required for index operations."}
 
-        db = arango_connector.get_db(database_name)
-        database_name = database_name or db.name
+        db, database_name = self.resolve_db(database_name)
 
-        if not db.has_collection(collection_name):
+        if not await self.run_sync(db.has_collection, collection_name):
             return {
                 "error": f"Collection '{collection_name}' not found in database '{database_name}'."
             }
 
-        collection = db.collection(collection_name)
+        collection = await self.run_sync(db.collection, collection_name)
 
         if operation == "list_indexes":
-            indexes = collection.indexes()
+            indexes = await self.run_sync(collection.indexes)
             return {"indexes": indexes}
 
         elif operation == "create_index":
@@ -77,7 +75,7 @@ class IndexManagementAgent(ArangoAgentBase):
             # Pass the definition dict directly — the server validates the shape.
             index_data = dict(index_definition)
             index_data["fields"] = fields
-            index_info = collection.add_index(index_data)
+            index_info = await self.run_sync(collection.add_index, index_data)
 
             return {"status": "Index created successfully.", "index_info": index_info}
 
@@ -86,7 +84,7 @@ class IndexManagementAgent(ArangoAgentBase):
                 return {"error": "Index ID or name is required for deletion."}
 
             # Primary index cannot be deleted. Check if it's the primary index.
-            indexes = collection.indexes()
+            indexes = await self.run_sync(collection.indexes)
             primary_index_id = next(
                 (idx["id"] for idx in indexes if idx["type"] == "primary"), None
             )
@@ -107,8 +105,8 @@ class IndexManagementAgent(ArangoAgentBase):
             if primary_index_id and target_index_id == primary_index_id:
                 return {"error": "The primary index cannot be deleted."}
 
-            success = collection.delete_index(
-                target_index_id, ignore_missing=False
+            success = await self.run_sync(
+                collection.delete_index, target_index_id, ignore_missing=False
             )  # already checked existence
             return {
                 "status": f"Index '{index_id_or_name}' deleted successfully.",

@@ -9,7 +9,6 @@ from arango.exceptions import (
 )
 
 from agents.agent_base import ArangoAgentBase, handle_arango_errors
-from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class AnalyzerManagementAgent(ArangoAgentBase):
             f"AnalyzerManagementAgent: Op='{operation}', DB='{database_name}', Analyzer='{analyzer_name}'"
         )
 
-        db = arango_connector.get_db(database_name)
+        db, database_name = self.resolve_db(database_name)
 
         if operation == "list_analyzers":
             analyzers = db.analyzers()
@@ -53,7 +52,8 @@ class AnalyzerManagementAgent(ArangoAgentBase):
             ):
                 return {"error": "For N-Gram analyzer, properties must include 'minN' and 'maxN'."}
 
-            analyzer_info = db.create_analyzer(
+            analyzer_info = await self.run_sync(
+                db.create_analyzer,
                 name=analyzer_name,
                 analyzer_type=analyzer_type,
                 properties=properties or {},
@@ -65,8 +65,8 @@ class AnalyzerManagementAgent(ArangoAgentBase):
             if not analyzer_name:
                 return {"error": "Analyzer name is required for deletion."}
 
-            success = db.delete_analyzer(
-                analyzer_name, ignore_missing=True
+            success = await self.run_sync(
+                db.delete_analyzer, analyzer_name, ignore_missing=True
             )  # Set ignore_missing based on desired behavior
             if success:  # delete_analyzer returns True/False
                 return {"status": f"Analyzer '{analyzer_name}' deleted successfully."}
@@ -77,7 +77,7 @@ class AnalyzerManagementAgent(ArangoAgentBase):
             if not analyzer_name:
                 return {"error": "Analyzer name is required to get properties."}
 
-            analyzer_def = db.analyzer(analyzer_name)  # this gets the definition
+            analyzer_def = await self.run_sync(db.analyzer, analyzer_name)  # this gets the definition
             return {"analyzer_definition": analyzer_def}
 
         else:
