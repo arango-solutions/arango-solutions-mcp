@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Union
 
 from pydantic import Field
 
@@ -32,7 +32,7 @@ collection_agent = CollectionManagementAgent()
     """,
 )
 async def list_collections(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="""Target database name to list collections from.
         
@@ -84,16 +84,16 @@ async def create_collection(
         - Use verb forms for edge collections (follows, likes, contains)
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
-    collection_type: str = Field(
+    collection_type: Literal["document", "edge"] = Field(
         default="document",
         description="""Type of collection: 'document' (default) or 'edge'.
         Choose 'edge' for graph relationships requiring _from and _to fields.
         """,
     ),
-    number_of_shards: Optional[int] = Field(
+    number_of_shards: int | None = Field(
         default=None,
         description="""Number of shards for the collection (cluster only).
         More shards = better write parallelism but more overhead.
@@ -101,7 +101,7 @@ async def create_collection(
         Ignored on single-server deployments.
         """,
     ),
-    shard_keys: Optional[List[str]] = Field(
+    shard_keys: List[str] | None = Field(
         default=None,
         description="""Document fields used to determine shard placement (cluster only).
         Defaults to ['_key'] if not specified.
@@ -116,7 +116,7 @@ async def create_collection(
         Cannot be changed after collection creation.
         """,
     ),
-    replication_factor: Optional[Union[int, str]] = Field(
+    replication_factor: Union[int, str] | None = Field(
         default=None,
         description="""Number of shard replicas (cluster only).
         - 1: no replication (not recommended for production)
@@ -126,14 +126,14 @@ async def create_collection(
           useful for small lookup tables to avoid network joins)
         """,
     ),
-    write_concern: Optional[int] = Field(
+    write_concern: int | None = Field(
         default=None,
         description="""Minimum number of replicas that must confirm a write (cluster only).
         Must be <= replication_factor. Higher values = stronger durability
         guarantees but higher write latency. Default is 1.
         """,
     ),
-    sharding_strategy: Optional[str] = Field(
+    sharding_strategy: str | None = Field(
         default=None,
         description="""Sharding algorithm (cluster only). Options:
         - 'community-compat': default community sharding
@@ -144,7 +144,7 @@ async def create_collection(
         Usually left as default unless building SmartGraphs.
         """,
     ),
-    computed_values: Optional[List[Dict[str, Any]]] = Field(
+    computed_values: List[Dict[str, Any]] | None = Field(
         default=None,
         description="""Computed values to auto-generate fields on write (ArangoDB 3.10+).
 
@@ -223,7 +223,7 @@ async def delete_collection(
         Double-check the name before execution. This cannot be undone.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -274,7 +274,7 @@ async def get_collection_properties(
         indexes, and performance characteristics.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:

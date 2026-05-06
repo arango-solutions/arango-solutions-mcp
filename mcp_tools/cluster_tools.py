@@ -1,4 +1,4 @@
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal
 
 from pydantic import Field
 
@@ -29,7 +29,7 @@ cluster_agent = ClusterManagementAgent()
     """,
 )
 async def cluster_health(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -52,7 +52,7 @@ async def cluster_health(
     """,
 )
 async def cluster_server_role(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -70,7 +70,7 @@ async def cluster_server_role(
     """,
 )
 async def cluster_server_count(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -88,7 +88,7 @@ async def cluster_server_count(
     """,
 )
 async def cluster_endpoints(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -111,7 +111,7 @@ async def cluster_server_statistics(
         Obtain from the cluster-health tool output (e.g., 'PRMR-abc12345').
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -139,7 +139,7 @@ async def cluster_server_statistics(
     """,
 )
 async def cluster_calculate_imbalance(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -163,31 +163,31 @@ async def cluster_calculate_imbalance(
     """,
 )
 async def cluster_rebalance(
-    max_moves: Optional[int] = Field(
+    max_moves: int | None = Field(
         default=None,
         description="Maximum number of shard moves to perform. "
         "Lower values = safer but slower convergence.",
     ),
-    move_leaders: Optional[bool] = Field(
+    move_leaders: bool | None = Field(
         default=None, description="Whether to move leader shards. Default: true."
     ),
-    move_followers: Optional[bool] = Field(
+    move_followers: bool | None = Field(
         default=None, description="Whether to move follower shards. Default: true."
     ),
-    leader_changes: Optional[bool] = Field(
+    leader_changes: bool | None = Field(
         default=None,
         description="Whether to change shard leadership. Default: true.",
     ),
-    pi_factor: Optional[float] = Field(
+    pi_factor: float | None = Field(
         default=None,
         description="Weight factor for leader imbalance vs follower imbalance. "
         "Higher values prioritize leader balance. Default: 256.0.",
     ),
-    exclude_system_collections: Optional[bool] = Field(
+    exclude_system_collections: bool | None = Field(
         default=None,
         description="Exclude system collections from rebalancing. Default: false.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -226,7 +226,7 @@ async def cluster_toggle_maintenance(
     mode: Literal["on", "off"] = Field(
         description="'on' to enable maintenance mode, 'off' to disable it."
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -256,7 +256,7 @@ async def cluster_toggle_maintenance(
 )
 async def collection_shard_distribution(
     collection_name: str = Field(description="Name of the collection to inspect."),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:

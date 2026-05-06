@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal
 
 from pydantic import Field
 
@@ -50,7 +50,7 @@ async def vector_search(
         In practice, dimensions are typically 256, 384, 768, or 1536.
         """
     ),
-    metric: str = Field(
+    metric: Literal["cosine", "l2", "innerProduct"] = Field(
         default="cosine",
         description="""Similarity metric. Must match the vector index metric.
         - 'cosine': angular similarity (default)
@@ -60,16 +60,19 @@ async def vector_search(
     ),
     limit: int = Field(
         default=10,
+        ge=1,
+        le=10000,
         description="Maximum number of similar documents to return.",
     ),
-    n_probe: Optional[int] = Field(
+    n_probe: int | None = Field(
         default=None,
+        ge=1,
         description="""Number of neighboring Voronoi cells to search.
         Higher = better recall but slower. Overrides the index's
         defaultNProbe for this query only.
         """,
     ),
-    return_fields: Optional[List[str]] = Field(
+    return_fields: List[str] | None = Field(
         default=None,
         description="""Specific fields to return from each document.
         If not specified, returns the entire document.
@@ -77,7 +80,7 @@ async def vector_search(
         Example: ['title', 'category', 'price']
         """,
     ),
-    filters: Optional[Dict[str, Any]] = Field(
+    filters: Dict[str, Any] | None = Field(
         default=None,
         description="""Pre-filter documents before vector search (3.12.6+).
         Applied as equality filters on document attributes.
@@ -92,7 +95,7 @@ async def vector_search(
         default=True,
         description="Include the similarity/distance score in results.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -158,12 +161,14 @@ async def hybrid_search(
         Example: 'machine learning neural network'
         """
     ),
-    metric: str = Field(
+    metric: Literal["cosine", "l2", "innerProduct"] = Field(
         default="cosine",
         description="Vector similarity metric: 'cosine', 'l2', or 'innerProduct'.",
     ),
     limit: int = Field(
         default=10,
+        ge=1,
+        le=10000,
         description="Maximum number of combined results to return.",
     ),
     text_analyzer: str = Field(
@@ -172,17 +177,21 @@ async def hybrid_search(
     ),
     vector_weight: float = Field(
         default=0.7,
+        ge=0.0,
+        le=1.0,
         description="Weight for vector similarity score in combined ranking (0-1).",
     ),
     text_weight: float = Field(
         default=0.3,
+        ge=0.0,
+        le=1.0,
         description="Weight for text relevance score in combined ranking (0-1).",
     ),
-    n_probe: Optional[int] = Field(
+    n_probe: int | None = Field(
         default=None,
         description="Number of Voronoi cells to search (overrides index default).",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:

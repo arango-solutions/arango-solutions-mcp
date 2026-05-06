@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal
 
 from pydantic import Field
 
@@ -69,7 +69,7 @@ Example for 'search-alias' view type (requires an existing inverted index on the
     """,
 )
 async def list_views(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="""Target database name. Uses default database if not specified.
         
@@ -136,7 +136,7 @@ async def create_view(
         - Consider search domain or use case
         """
     ),
-    view_type: str = Field(
+    view_type: Literal["arangosearch", "search-alias"] = Field(
         description="""Type of search view to create.
         
         Options:
@@ -155,7 +155,7 @@ async def create_view(
         - Limited search requirements
         """
     ),
-    properties: Optional[Dict[str, Any]] = Field(
+    properties: Dict[str, Any] | None = Field(
         default=None,
         description=f"""View configuration properties (optional for initial ArangoSearch creation).
         
@@ -175,7 +175,7 @@ async def create_view(
         Start minimal and iterate - you can always update configuration later.
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -230,7 +230,7 @@ async def get_view_properties(
         - Index statistics and performance data
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -311,7 +311,7 @@ async def update_view_properties(
         Only include properties you want to change - existing settings are preserved.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -377,7 +377,7 @@ async def replace_view_properties(
          Include all desired properties - anything omitted will be reset to defaults.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -433,7 +433,7 @@ async def delete_view(
         Ensure no applications depend on this view before deletion.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:

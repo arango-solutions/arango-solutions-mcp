@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from pydantic import Field
 
@@ -23,23 +23,23 @@ backup_agent = BackupManagementAgent()
     """,
 )
 async def create_backup(
-    label: Optional[str] = Field(
+    label: str | None = Field(
         default=None,
         description="Human-readable label for the backup (appended to the auto-generated ID).",
     ),
-    allow_inconsistent: Optional[bool] = Field(
+    allow_inconsistent: bool | None = Field(
         default=None,
         description="If true, allows potentially inconsistent backup (e.g. during heavy writes).",
     ),
-    force: Optional[bool] = Field(
+    force: bool | None = Field(
         default=None,
         description="If true, aborts ongoing transactions to force a consistent snapshot.",
     ),
-    timeout: Optional[int] = Field(
+    timeout: int | None = Field(
         default=None,
         description="Timeout in seconds to wait for the backup to complete.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database for authentication. Backup covers the entire deployment.",
     ),
@@ -67,11 +67,11 @@ async def create_backup(
     """,
 )
 async def list_backups(
-    backup_id: Optional[str] = Field(
+    backup_id: str | None = Field(
         default=None,
         description="Specific backup ID to retrieve. Lists all if omitted.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database for authentication.",
     ),
@@ -99,7 +99,7 @@ async def restore_backup(
     backup_id: str = Field(
         description="The backup ID to restore from (as returned by create-backup or list-backups).",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database for authentication.",
     ),
@@ -127,7 +127,7 @@ async def delete_backup(
     backup_id: str = Field(
         description="The backup ID to delete.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database for authentication.",
     ),

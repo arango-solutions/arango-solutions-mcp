@@ -1,7 +1,7 @@
 # Product Requirements Document — ArangoDB MCP Server
 
 **Version:** 2.0.0
-**Last Updated:** March 29, 2026
+**Last Updated:** May 5, 2026
 **Status:** Implemented
 **Repository:** [arango-solutions/arango-solutions-mcp](https://github.com/arango-solutions/arango-solutions-mcp)
 
@@ -30,7 +30,7 @@ AI coding assistants need structured access to databases to be effective. Withou
 
 1. **Zero hardcoded secrets** — All credentials and connection parameters are injected via environment variables or `.env` files, never stored in code.
 2. **Multi-model first** — Every ArangoDB data model (document, graph, key-value, search, vector) is a first-class citizen with dedicated tools.
-3. **Safety by default** — Destructive operations require explicit parameters; AQL identifier injection is prevented by validation; sensitive data is redacted from logs.
+3. **Safety by default** — Destructive operations require explicit parameters; AQL identifier injection is prevented by validation; sensitive data is redacted from logs. The HTTP / SSE transport refuses to bind to a non-loopback interface unless `MCP_AUTH_TOKEN` is set, so the server cannot be exposed publicly without authentication.
 4. **AI-optimized ergonomics** — Tool descriptions, server instructions, and error messages are written for LLM consumption, not human CLI users.
 5. **Thin tools, smart agents** — MCP tool definitions are thin Pydantic-validated wrappers; all business logic lives in testable agent classes.
 
@@ -263,6 +263,9 @@ Serve built-in AQL documentation to the AI assistant.
 | **SSL/TLS by default** | `ARANGO_VERIFY_SSL` defaults to `true`; optional `ARANGO_SSL_CERT_PATH` with cross-platform path validation |
 | **JS transaction gating** | `execute-transaction` disabled by default; requires `ENABLE_JS_TRANSACTIONS=true` to allow arbitrary JS execution on the server |
 | **Defense-in-depth** | `_system` database deletion blocked at agent level (in addition to tool level) |
+| **HTTP transport authentication** | `auth_middleware.BearerTokenAuthMiddleware` enforces an `Authorization: Bearer <MCP_AUTH_TOKEN>` header on every request using `hmac.compare_digest` (constant-time comparison). The server refuses to start (exit code `2`) when `MCP_TRANSPORT` is `sse` / `streamable-http`, `MCP_HOST` is non-loopback, and `MCP_AUTH_TOKEN` is unset. |
+| **Query budget** | `DEFAULT_AQL_MAX_RUNTIME` (default `30` seconds) caps every `execute-aql-query` call server-side via the python-arango cursor `max_runtime` parameter. Each call also accepts a per-invocation `max_runtime` override. Set to `0` to disable. |
+| **In-process secret protection** | The root password and `MCP_AUTH_TOKEN` use `pydantic.SecretStr`, so the raw value is never reprinted in logs or `repr()`. The `create-user` and `update-user` `password` parameters are also typed as `SecretStr` so user-management secrets are not echoed back through MCP framing or log lines. |
 
 ### 3.2 Reliability
 
@@ -278,9 +281,10 @@ Serve built-in AQL documentation to the AI assistant.
 
 | Requirement | Implementation |
 |-------------|----------------|
-| **Connection pooling** | Configuration fields reserved (`max_connections`, `timeout`) for future `python-arango` pool tuning |
 | **Cursor consumption** | All cursors fully iterated and results collected; no abandoned iterators |
 | **Bind variables** | All AQL values passed as bind variables for server-side optimization |
+| **Async safety** | Every blocking python-arango call is wrapped in `asyncio.to_thread()` via `ArangoAgentBase.run_sync()` so a single in-flight tool call cannot block the event loop, and concurrent tool calls run in parallel rather than serializing on the driver. |
+| **Connection pooling** | Delegated to the python-arango driver's default `requests.Session`. Tunable pool sizing is tracked as future work. |
 
 ### 3.4 Compatibility
 
@@ -289,8 +293,9 @@ Serve built-in AQL documentation to the AI assistant.
 | **ArangoDB versions** | 3.12+ (vector search requires 3.12.4+ with `--vector-index`); forward-compatible with 4.0 |
 | **Python versions** | 3.10+ (uses `pyproject.toml` with `python = "^3.10"`) |
 | **Platforms** | macOS, Linux, Windows — platform-specific event loop policies configured in `main.py` |
-| **MCP clients** | Any MCP-compatible client (Cursor IDE, Claude Desktop, custom integrations) |
-| **Transport** | stdio transport (standard for MCP) |
+| **MCP clients** | Any MCP-compatible client (Cursor IDE, Claude Desktop, Antigravity, custom integrations) |
+| **Transport** | stdio (default for client-launched), SSE, and streamable-http (for standalone/Docker deployment) |
+| **Deployment** | Client subprocess (stdio), standalone service (Docker), or bare-metal (any HTTP-capable host) |
 
 ### 3.5 Observability
 
@@ -299,7 +304,6 @@ Serve built-in AQL documentation to the AI assistant.
 | **Structured logging** | All agents use `logging.getLogger(__name__)`; log level configurable via `LOG_LEVEL` env var |
 | **Startup diagnostics** | Server logs platform, Python version, server version, default database on startup |
 | **Error context** | Error responses include `error` message, optional `error_code`, and agent-specific context |
-| **Metrics** | `enable_metrics` configuration field reserved for future implementation |
 
 ---
 
@@ -358,7 +362,9 @@ Serve built-in AQL documentation to the AI assistant.
 | Pattern | Application |
 |---------|-------------|
 | **Agent-per-domain** | Each functional area has a dedicated agent class for testability and separation of concerns |
-| **Decorator-based error handling** | `handle_arango_errors` in `agent_base.py` eliminates try/except boilerplate across 5 agents |
+| **Decorator-based error handling** | `handle_arango_errors` in `agent_base.py` eliminates try/except boilerplate across all 15 agents. The decorator accepts an `on_arango_error: Callable[[Exception], dict \| None]` callback so agents like Cluster (single-server detection) and Backup (Enterprise-only detection) can rewrite specific error responses without hand-rolling try/except blocks. |
+| **Async wrapper** | `ArangoAgentBase.run_sync()` wraps every synchronous python-arango call in `asyncio.to_thread()` so blocking driver I/O does not stall the FastMCP event loop. |
+| **Bearer-token auth** | `auth_middleware.BearerTokenAuthMiddleware` is an ASGI middleware that wraps the FastMCP `streamable_http_app()` / `sse_app()` whenever `MCP_AUTH_TOKEN` is set, validating the `Authorization` header in constant time before forwarding the scope. |
 | **Bind variable injection** | All user-provided values use AQL bind variables (`@param`); identifiers validated by `aql_utils` |
 | **Lifespan management** | `arango_db_lifespan` async context manager ensures clean connect/disconnect tied to server lifecycle |
 | **Configuration-as-code** | `pydantic-settings` with env vars, `.env` file, and runtime validation |
@@ -375,18 +381,21 @@ Serve built-in AQL documentation to the AI assistant.
 | `ARANGO_ROOT_USERNAME` | Yes | — | `ARANGO_` | Database username |
 | `ARANGO_ROOT_PASSWORD` | Yes | — | `ARANGO_` | Database password |
 | `ARANGO_DEFAULT_DB_NAME` | No | `_system` | `ARANGO_` | Default database for all operations |
-| `ARANGO_MAX_CONNECTIONS` | No | `50` | `ARANGO_` | Connection pool size (reserved) |
-| `ARANGO_TIMEOUT` | No | `30` | `ARANGO_` | Connection timeout in seconds (reserved) |
 | `ARANGO_VERIFY_SSL` | No | `true` | `ARANGO_` | Enable SSL certificate verification |
 | `ARANGO_SSL_CERT_PATH` | No | `""` | `ARANGO_` | Path to SSL certificate file |
 | `LOG_LEVEL` | No | `INFO` | — | Server log level |
 | `ENABLE_JS_TRANSACTIONS` | No | `false` | — | Enable server-side JavaScript transactions (security-sensitive) |
 | `SERVER_NAME` | No | `ArangoDB MCP Server` | — | MCP server display name |
 | `SERVER_VERSION` | No | `2.0.0` | — | MCP server version string |
+| `MCP_TRANSPORT` | No | `stdio` | — | Transport protocol: `stdio`, `sse`, or `streamable-http` |
+| `MCP_HOST` | No | `0.0.0.0` | — | Bind host for `sse`/`streamable-http` transport |
+| `MCP_PORT` | No | `8000` | — | Bind port for `sse`/`streamable-http` transport |
+| `MCP_AUTH_TOKEN` | Conditional | — | — | Bearer token required for `sse` / `streamable-http` transports. **REQUIRED** when `MCP_HOST` is non-loopback (anything other than `127.0.0.1`, `localhost`, or `::1`); the server exits with code `2` if unset in that configuration. Ignored for `stdio`. Stored in-process as `pydantic.SecretStr`. |
+| `DEFAULT_AQL_MAX_RUNTIME` | No | `30` | — | Default per-query AQL max runtime, in seconds. Applied server-side to every `execute-aql-query` call; the tool also accepts a per-call `max_runtime` override. Set to `0` to disable. |
 
 ### 5.2 MCP Client Configuration
 
-Tools are exposed over **stdio transport**. Clients configure the server in their MCP JSON:
+**stdio transport** (default) — the MCP client launches the server as a subprocess:
 
 ```json
 {
@@ -406,6 +415,46 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 }
 ```
 
+**HTTP transport** — for remote/Docker deployments, clients connect via URL:
+
+```json
+{
+  "mcpServers": {
+    "arangodb-mcp": {
+      "url": "http://your-server:8000/mcp",
+      "type": "http"
+    }
+  }
+}
+```
+
+### 5.3 Standalone Deployment (Docker)
+
+The server ships with a `Dockerfile` and `docker-compose.yml` for standalone deployment using `streamable-http` transport.
+
+**Docker Compose** launches both the MCP server and an ArangoDB instance:
+
+```bash
+export ARANGO_ROOT_PASSWORD=your_password
+docker compose up -d
+# MCP server at http://localhost:8000/mcp
+# ArangoDB UI at http://localhost:8529
+```
+
+**Docker only** (connect to existing ArangoDB):
+
+```bash
+docker build -t arangodb-mcp .
+docker run -d -p 8000:8000 \
+  -e ARANGO_HOSTS=http://your-arangodb:8529 \
+  -e ARANGO_ROOT_USERNAME=root \
+  -e ARANGO_ROOT_PASSWORD=your_password \
+  -e MCP_AUTH_TOKEN="$(openssl rand -hex 32)" \
+  arangodb-mcp
+```
+
+`MCP_AUTH_TOKEN` is required whenever the container binds to a non-loopback interface (the default for any container exposing port `8000`). Without it the server logs an error and exits with code `2` instead of starting an unauthenticated public listener. Clients must send `Authorization: Bearer <MCP_AUTH_TOKEN>` on every request.
+
 ---
 
 ## 6. Testing
@@ -422,17 +471,29 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 
 ### 6.2 Test Coverage
 
-| Test File | Agents / Areas Covered |
-|-----------|------------------------|
-| `test_connectivity.py` | Raw driver smoke tests (version, collections, docs, AQL, indexes) |
-| `test_agents.py` | CollectionManagement, DocumentCRUD, IndexManagement, AQLExecution, ClusterManagement, GraphManagement |
-| `test_aql_utils.py` | AQL identifier validation functions (53 test cases incl. injection vectors) |
-| `test_database_manual_analyzer.py` | DatabaseManagementAgent, ManualManagementAgent, AnalyzerManagementAgent |
-| `test_vector_search.py` | VectorSearchAgent, ViewManagementAgent, IndexManagement (vector paths) |
-| `test_traversal.py` | GraphTraversalAgent, AQL explain/validate |
-| `test_transactions.py` | TransactionManagementAgent, BackupManagementAgent |
-| `test_users.py` | UserManagementAgent (users + permissions) |
-| `test_cluster.py` | Cluster-specific tests (manual; excluded from CI) |
+The suite is organized into three tiers based on what infrastructure they need:
+
+* **Mock** — pure-Python unit tests; run anywhere, no Docker, no ArangoDB.
+* **E2E (framework)** — exercise the FastMCP server / tool registry by introspection; no live ArangoDB required.
+* **Integration** — require a running ArangoDB instance (auto-provisioned by `conftest.py` via Docker, or supplied via `ARANGO_HOSTS`).
+
+| Test File | Tier | Areas Covered |
+|-----------|------|---------------|
+| `test_connectivity.py` | Integration | Raw python-arango driver smoke tests (version, collections, docs, AQL, indexes) |
+| `test_agents.py` | Integration | CollectionManagement, DocumentCRUD, IndexManagement, AQLExecution, ClusterManagement, GraphManagement |
+| `test_aql_utils.py` | Mock | AQL identifier validation functions (injection vectors, edge cases) |
+| `test_database_manual_analyzer.py` | Integration | DatabaseManagementAgent, ManualManagementAgent, AnalyzerManagementAgent |
+| `test_vector_search.py` | Integration | VectorSearchAgent, ViewManagementAgent, IndexManagement (vector paths) |
+| `test_traversal.py` | Integration | GraphTraversalAgent, AQL explain/validate |
+| `test_transactions.py` | Integration | TransactionManagementAgent, BackupManagementAgent |
+| `test_users.py` | Integration | UserManagementAgent (users + permissions, `SecretStr` password handling) |
+| `test_cluster.py` | Integration (cluster) | Cluster-specific tests; excluded from CI (requires multi-server deployment) |
+| `test_agent_unit.py` | Mock | Per-agent unit tests with `arango_connector` patched out — covers logic branches in every agent without DB I/O |
+| `test_base_and_decorator.py` | Mock | `ArangoAgentBase` (`resolve_db`, `pack_optional`, `run_sync`) and the `handle_arango_errors` decorator (specific exceptions, `on_arango_error` callback, fallthrough) |
+| `test_mcp_tools.py` | Mock | Verifies each `@mcp_app.tool` wrapper builds the correct operation dict and delegates to its agent's `arun` |
+| `test_mcp_e2e.py` | E2E (framework) | Imports `mcp_app`, introspects the tool registry, asserts tool count (74), schema shapes, and server instructions — without a live database |
+| `test_coverage_gaps.py` | Integration | Fills gaps surfaced by review: document replace/bulk with read-back, ArangoSearch view CRUD, additional index types, hybrid search |
+| `test_auth_middleware.py` | Mock | `BearerTokenAuthMiddleware` with an in-process ASGI harness — no/wrong/correct token, lifespan passthrough, longer-prefix rejection, empty-token construction error |
 
 ### 6.3 CI/CD
 
@@ -442,7 +503,7 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 | **Triggers** | Push/PR to `main` |
 | **Lint job** | Ruff check + Ruff format check + Mypy type check |
 | **Test job** | pytest with coverage across Python 3.10 and 3.11, ArangoDB 3.12 Docker |
-| **Coverage** | `pytest-cov` reports on `agents/`, `mcp_tools/`, `aql_utils.py` |
+| **Coverage** | `pytest-cov` reports on `agents`, `mcp_tools`, `aql_utils`, `config`, `arango_connector`, `server`, `main`, `auth_middleware` |
 | **Exclusions** | `test_cluster.py` excluded (requires multi-server deployment) |
 
 ---
@@ -496,15 +557,18 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 | CI | `fcd3a0e`–`66b603e` | GitHub Actions CI workflow |
 | Users | `f311408` | User and permission management (9 tools, 74 total) |
 | Hardening | `5e941b2` | Security fixes, code quality, test expansion, tooling |
+| Async-safety & auth | `(uncommitted)` | Async-safety pass: `run_sync` wrapping across all 15 agents; `@handle_arango_errors` adopted by remaining 2 agents (Cluster, Backup) with the new `on_arango_error` callback for Enterprise / cluster-mode rewrites; HTTP bearer-token auth (`auth_middleware.BearerTokenAuthMiddleware`) plus non-loopback startup guard; `MCP_AUTH_TOKEN` and `DEFAULT_AQL_MAX_RUNTIME` settings added; `SecretStr` extended to user-create / user-update passwords; orphan config fields (`max_connections`, `timeout`, `enable_metrics`) removed; broken docker-test cluster mode removed. |
 
 ### 8.2 Adding New Tools
 
-1. Create an agent in `agents/` inheriting from `ArangoAgentBase`
-2. Optionally apply `@handle_arango_errors` decorator for standard error handling
-3. Create tool definitions in `mcp_tools/` using `@mcp_app.tool` with Pydantic `Field` descriptions
-4. Import the new tool module in both `mcp_tools/__init__.py` and `server.py`
-5. Add tests in `tests/`
-6. Update the tool count in `server.py` instructions and `README.md`
+1. Create an agent in `agents/` inheriting from `ArangoAgentBase`.
+2. Use `self.resolve_db(...)` to get an authenticated `(db, resolved_db_name)` tuple instead of touching `arango_connector` directly.
+3. Wrap every blocking python-arango call in `await self.run_sync(...)` so the call runs in a thread and does not block the FastMCP event loop.
+4. Apply `@handle_arango_errors` to `arun` for standard error handling. If the agent needs to rewrite specific ArangoDB errors (e.g. Enterprise-only or cluster-only paths), pass an `on_arango_error` callback that returns a custom dict for the cases it wants to override and `None` to fall through to the standard error envelope.
+5. Create tool definitions in `mcp_tools/` using `@mcp_app.tool` with Pydantic `Field` descriptions; for any password / secret parameter, use `pydantic.SecretStr` so values are not echoed in logs.
+6. Import the new tool module in both `mcp_tools/__init__.py` and `server.py`.
+7. Add tests in `tests/` — at minimum a mock-based unit test in `test_agent_unit.py` and, for the wrapper, a delegation test in `test_mcp_tools.py`.
+8. Update the tool count in `server.py` instructions, `PRD.md`, and `README.md`.
 
 ---
 
@@ -514,10 +578,9 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 
 | Area | Limitation |
 |------|-----------|
-| **Transport** | stdio only; no HTTP/SSE mode |
-| **Authentication** | Server-level credentials only; no per-tool auth or multi-tenant support |
-| **Connection pooling** | `max_connections` and `timeout` config fields are defined but not yet wired to the driver |
-| **Metrics** | `enable_metrics` field reserved but no metrics collection implemented |
+| **Authorization granularity** | A valid `MCP_AUTH_TOKEN` grants the bearer full `ARANGO_ROOT_*` access through the connector. There is no per-tool, per-database, or per-tenant RBAC layer; multi-tenant or per-tool authorization is future work. |
+| **Connection pooling** | Driver pool/timeout tuning not yet exposed via configuration |
+| **Metrics** | Not implemented; consumers wanting Prometheus / OpenTelemetry can wrap the ASGI app themselves. |
 | **Cluster CI** | Cluster-specific tests excluded from CI (require multi-server deployment) |
 
 ### 9.2 Planned Features (per branch history)
@@ -525,7 +588,7 @@ Tools are exposed over **stdio transport**. Clients configure the server in thei
 | Feature | Branch | Status |
 |---------|--------|--------|
 | User & permission management | `feature/user-permission-management` | **Merged** to `main` |
-| HTTP transport mode | `feature/http-mode` | In progress |
+| HTTP transport mode | `feature/http-mode` | **Implemented + auth gating** (streamable-http + SSE via `MCP_TRANSPORT`, with `MCP_AUTH_TOKEN` bearer-token middleware and a non-loopback startup guard) |
 | Performance profiling | `feature/profiling` | In progress |
 | SSL implementation enhancements | `Implemented_SSL` | In progress |
 | Query optimization tools | `MCP_Server_Optimization_Query` | In progress |
