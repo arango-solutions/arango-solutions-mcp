@@ -220,7 +220,7 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "rw",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
         assert "error" not in result
@@ -233,7 +233,7 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "rw",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
 
@@ -242,8 +242,8 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "ro",
-                "database": self.db_name,
-                "collection": self.col_name,
+                "database_name": self.db_name,
+                "collection_name": self.col_name,
             }
         )
         assert "error" not in result
@@ -256,7 +256,7 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "ro",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
 
@@ -264,7 +264,7 @@ class TestPermissionManagement:
             {
                 "operation": "get_permission",
                 "username": self.username,
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
         assert "error" not in result
@@ -277,7 +277,7 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "rw",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
         await self.agent.arun(
@@ -285,8 +285,8 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "ro",
-                "database": self.db_name,
-                "collection": self.col_name,
+                "database_name": self.db_name,
+                "collection_name": self.col_name,
             }
         )
 
@@ -294,8 +294,8 @@ class TestPermissionManagement:
             {
                 "operation": "get_permission",
                 "username": self.username,
-                "database": self.db_name,
-                "collection": self.col_name,
+                "database_name": self.db_name,
+                "collection_name": self.col_name,
             }
         )
         assert "error" not in result
@@ -309,7 +309,7 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "rw",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
 
@@ -325,7 +325,7 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "rw",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
 
@@ -333,7 +333,7 @@ class TestPermissionManagement:
             {
                 "operation": "revoke_permission",
                 "username": self.username,
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
         assert "error" not in result
@@ -346,7 +346,7 @@ class TestPermissionManagement:
                 "operation": "grant_permission",
                 "username": self.username,
                 "permission": "admin",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
         assert "error" in result
@@ -357,7 +357,7 @@ class TestPermissionManagement:
             {
                 "operation": "grant_permission",
                 "permission": "rw",
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
         assert "error" in result
@@ -379,7 +379,7 @@ class TestPermissionManagement:
             {
                 "operation": "grant_permission",
                 "username": self.username,
-                "database": self.db_name,
+                "database_name": self.db_name,
             }
         )
         assert "error" in result

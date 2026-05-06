@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,16 +33,8 @@ class ArangoDBSettings(BaseSettings):
     # Connection settings - MUST be provided via environment variables
     hosts: str = Field(description="ArangoDB server URLs (e.g., http://localhost:8529)")
     root_username: str = Field(description="ArangoDB username")
-    root_password: str = Field(description="ArangoDB password - REQUIRED via environment")
+    root_password: SecretStr = Field(description="ArangoDB password - REQUIRED via environment")
     default_db_name: str = Field(default="_system", description="Default database name")
-
-    # Connection pool settings
-    max_connections: int = Field(
-        default=50, description="Maximum concurrent connections (reserved, not yet wired)"
-    )
-    timeout: int = Field(
-        default=30, description="Connection timeout in seconds (reserved, not yet wired)"
-    )
 
     # SSL settings
     verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
@@ -82,13 +75,48 @@ class ServerSettings(BaseSettings):
     server_name: str = "ArangoDB MCP Server"
     server_version: str = "2.0.0"
     log_level: str = "INFO"
-    enable_metrics: bool = Field(
-        default=False, description="Enable metrics collection (reserved, not yet wired)"
+    log_format: str = Field(
+        default="text",
+        description="Log format: 'text' for human-readable (default), "
+        "'json' for one-line JSON per record (production / log aggregation).",
+    )
+    mcp_transport: str = Field(
+        default="stdio",
+        description="MCP transport protocol: 'stdio' for client-launched, "
+        "'sse' or 'streamable-http' for standalone/Docker deployment.",
+    )
+    mcp_host: str = Field(
+        default="0.0.0.0",
+        description="Host to bind when using sse or streamable-http transport.",
+    )
+    mcp_port: int = Field(
+        default=8000,
+        description="Port to bind when using sse or streamable-http transport.",
     )
     enable_js_transactions: bool = Field(
         default=False,
         description="Enable server-side JavaScript transaction execution (execute-transaction tool). "
         "Disabled by default because it allows arbitrary JS on the database server.",
+    )
+    default_aql_max_runtime: float = Field(
+        default=30.0,
+        description="Default per-query AQL max runtime in seconds. ArangoDB will kill queries that "
+        "exceed this. Set to 0 to disable. Per-call overrides via the execute-aql-query tool.",
+    )
+    connect_max_retries: int = Field(
+        default=5,
+        description="Max connection retries on transient failures at startup. "
+        "Set to 0 to disable retries.",
+    )
+    connect_initial_backoff: float = Field(
+        default=1.0,
+        description="Initial backoff (seconds) between connection retries; "
+        "doubled each attempt up to 30s.",
+    )
+    mcp_auth_token: Optional[SecretStr] = Field(
+        default=None,
+        description="Optional bearer token required for sse / streamable-http transports. "
+        "When unset and binding non-loopback, the server refuses to start. Ignored for stdio.",
     )
 
 
