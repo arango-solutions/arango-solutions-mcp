@@ -1,11 +1,11 @@
 import logging
 from typing import Any, Dict, Optional
 
-from arango.exceptions import AQLQueryExecuteError, ArangoServerError
+from arango.database import StandardDatabase
+from arango.exceptions import AQLQueryExecuteError
 
-from agents.agent_base import ArangoAgentBase
+from agents.agent_base import ArangoAgentBase, handle_arango_errors
 from aql_utils import validate_aql_identifier, validate_aql_identifiers
-from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
 
@@ -17,41 +17,25 @@ class GraphTraversalAgent(ArangoAgentBase):
     or edge collections directly.
     """
 
+    @handle_arango_errors("GraphTraversalAgent", "Graph Traversal", specific_exceptions=(AQLQueryExecuteError,))
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
         logger.info(f"GraphTraversalAgent: Op='{operation}', DB='{database_name}'")
 
-        try:
-            db = arango_connector.get_db(database_name)
-            database_name = database_name or db.name
+        db, database_name = self.resolve_db(database_name)
 
-            if operation == "traverse":
-                return self._traverse(db, mcp_tool_inputs)
-            elif operation == "shortest_path":
-                return self._shortest_path(db, mcp_tool_inputs)
-            elif operation == "k_shortest_paths":
-                return self._k_shortest_paths(db, mcp_tool_inputs)
-            elif operation == "neighbors":
-                return self._neighbors(db, mcp_tool_inputs)
-            else:
-                return {"error": f"Unknown traversal operation: {operation}"}
-
-        except AQLQueryExecuteError as e:
-            logger.error(f"GraphTraversalAgent: AQL error - {e}")
-            return {
-                "error": f"AQL Execution Error: {e.error_message}",
-                "error_code": e.error_code,
-            }
-        except ArangoServerError as e:
-            logger.error(f"GraphTraversalAgent: ArangoDB error - {e}")
-            return {
-                "error": f"ArangoDB Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"
-            }
-        except Exception as e:
-            logger.error(f"GraphTraversalAgent: Unexpected error - {e}", exc_info=True)
-            return {"error": f"An unexpected error occurred: {str(e)}"}
+        if operation == "traverse":
+            return await self.run_sync(self._traverse, db, mcp_tool_inputs)
+        elif operation == "shortest_path":
+            return await self.run_sync(self._shortest_path, db, mcp_tool_inputs)
+        elif operation == "k_shortest_paths":
+            return await self.run_sync(self._k_shortest_paths, db, mcp_tool_inputs)
+        elif operation == "neighbors":
+            return await self.run_sync(self._neighbors, db, mcp_tool_inputs)
+        else:
+            return {"error": f"Unknown traversal operation: {operation}"}
 
     def _validate_direction(self, direction: str) -> Optional[str]:
         d = direction.upper()
@@ -71,7 +55,7 @@ class GraphTraversalAgent(ArangoAgentBase):
             return ", ".join(f"`{ec}`" for ec in edge_collections)
         return None
 
-    def _traverse(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _traverse(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         start_vertex: str = inputs.get("start_vertex", "")
         direction: str = inputs.get("direction", "OUTBOUND")
         min_depth: int = inputs.get("min_depth", 1)
@@ -151,7 +135,7 @@ class GraphTraversalAgent(ArangoAgentBase):
             "aql_generated": aql,
         }
 
-    def _shortest_path(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _shortest_path(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         start_vertex: str = inputs.get("start_vertex", "")
         target_vertex: str = inputs.get("target_vertex", "")
         direction: str = inputs.get("direction", "OUTBOUND")
@@ -191,7 +175,7 @@ class GraphTraversalAgent(ArangoAgentBase):
             "aql_generated": aql,
         }
 
-    def _k_shortest_paths(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _k_shortest_paths(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         start_vertex: str = inputs.get("start_vertex", "")
         target_vertex: str = inputs.get("target_vertex", "")
         direction: str = inputs.get("direction", "OUTBOUND")
@@ -237,7 +221,7 @@ class GraphTraversalAgent(ArangoAgentBase):
             "aql_generated": aql,
         }
 
-    def _neighbors(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _neighbors(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
         start_vertex: str = inputs.get("start_vertex", "")
         direction: str = inputs.get("direction", "ANY")
         depth: int = inputs.get("depth", 1)

@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 from arango.exceptions import GraphCreateError, GraphDeleteError, GraphListError
 
 from agents.agent_base import ArangoAgentBase, handle_arango_errors
-from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +43,16 @@ class GraphManagementAgent(ArangoAgentBase):
             f"GraphManagementAgent: Op='{operation}', DB='{database_name}', Graph='{graph_name}'"
         )
 
-        db = arango_connector.get_db(database_name)
-        database_name = database_name or db.name
+        db, database_name = self.resolve_db(database_name)
 
         if operation == "list_graphs":
-            graphs = db.graphs()
+            graphs = await self.run_sync(db.graphs)
             return {"graphs": graphs}
 
         elif operation == "create_graph":
             if not graph_name or not edge_definitions:
                 return {"error": "Graph name and edge definitions are required for graph creation."}
-            if db.has_graph(graph_name):
+            if await self.run_sync(db.has_graph, graph_name):
                 return {
                     "status": f"Graph '{graph_name}' already exists in database '{database_name}'."
                 }
@@ -83,27 +81,30 @@ class GraphManagementAgent(ArangoAgentBase):
             if is_satellite:
                 create_kwargs["replication_factor"] = "satellite"
 
-            graph_obj = db.create_graph(graph_name, **create_kwargs)
+            graph_obj = await self.run_sync(db.create_graph, graph_name, **create_kwargs)
+            properties = await self.run_sync(graph_obj.properties)
             return {
                 "status": f"Graph '{graph_name}' created successfully.",
-                "graph_info": graph_obj.properties(),
+                "graph_info": properties,
             }
 
         elif operation == "get_graph_properties":
             if not graph_name:
                 return {"error": "Graph name is required."}
-            if not db.has_graph(graph_name):
+            if not await self.run_sync(db.has_graph, graph_name):
                 return {"error": f"Graph '{graph_name}' not found in database '{database_name}'."}
-            graph_obj = db.graph(graph_name)
-            return {"properties": graph_obj.properties()}
+            graph_obj = await self.run_sync(db.graph, graph_name)
+            properties = await self.run_sync(graph_obj.properties)
+            return {"properties": properties}
 
         elif operation == "delete_graph":
             if not graph_name:
                 return {"error": "Graph name is required for deletion."}
-            if not db.has_graph(graph_name):
+            if not await self.run_sync(db.has_graph, graph_name):
                 return {"error": f"Graph '{graph_name}' not found in database '{database_name}'."}
 
-            db.delete_graph(
+            await self.run_sync(
+                db.delete_graph,
                 graph_name,
                 ignore_missing=False,
                 drop_collections=mcp_tool_inputs.get("drop_collections", False),
@@ -115,22 +116,22 @@ class GraphManagementAgent(ArangoAgentBase):
                 return {
                     "error": "Graph name, edge collection name, from_vertex_id, and to_vertex_id are required to create an edge."
                 }
-            if not db.has_graph(graph_name):
+            if not await self.run_sync(db.has_graph, graph_name):
                 return {"error": f"Graph '{graph_name}' not found."}
 
-            graph_obj = db.graph(graph_name)
-            if not graph_obj.has_edge_definition(edge_collection_name):
+            graph_obj = await self.run_sync(db.graph, graph_name)
+            if not await self.run_sync(graph_obj.has_edge_definition, edge_collection_name):
                 return {
                     "error": f"Edge collection '{edge_collection_name}' not part of graph '{graph_name}' definitions."
                 }
 
-            edge_collection = graph_obj.edge_collection(edge_collection_name)
+            edge_collection = await self.run_sync(graph_obj.edge_collection, edge_collection_name)
 
             edge_document_to_insert = edge_data or {}
             edge_document_to_insert["_from"] = from_vertex_id
             edge_document_to_insert["_to"] = to_vertex_id
 
-            meta = edge_collection.insert(edge_document_to_insert)
+            meta = await self.run_sync(edge_collection.insert, edge_document_to_insert)
             return {"status": "Edge created successfully.", "edge_metadata": meta}
 
         else:

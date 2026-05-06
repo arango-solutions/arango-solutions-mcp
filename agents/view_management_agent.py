@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
+from arango.database import StandardDatabase
 from arango.exceptions import (
     ArangoServerError,
     ViewCreateError,
@@ -10,14 +11,13 @@ from arango.exceptions import (
     ViewUpdateError,
 )
 
-from agents.agent_base import ArangoAgentBase
-from arango_connector import arango_connector
+from agents.agent_base import ArangoAgentBase, handle_arango_errors
 
 logger = logging.getLogger(__name__)
 
 
 class ViewManagementAgent(ArangoAgentBase):
-    def _view_exists(self, db_instance, view_name: str) -> bool:
+    async def _view_exists(self, db_instance: StandardDatabase, view_name: str) -> bool:
         """
         Helper function to check if a view exists.
         Returns True if the view exists, False if it does not.
@@ -26,7 +26,7 @@ class ViewManagementAgent(ArangoAgentBase):
         if not view_name:
             return False
         try:
-            db_instance.view(view_name)  # Attempt to get view properties
+            await self.run_sync(db_instance.view, view_name)  # Attempt to get view properties
             logger.debug(f"_view_exists: View '{view_name}' found.")
             return True
         except ViewGetError as e:
@@ -62,6 +62,11 @@ class ViewManagementAgent(ArangoAgentBase):
             )
             raise
 
+    @handle_arango_errors(
+        "ViewManagementAgent",
+        "View",
+        specific_exceptions=(ViewListError, ViewCreateError, ViewDeleteError, ViewUpdateError, ViewGetError),
+    )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
@@ -77,162 +82,137 @@ class ViewManagementAgent(ArangoAgentBase):
             f"ViewManagementAgent: Op='{operation}', DB='{database_name}', View='{view_name}', Type='{view_type}', Props='{str(properties)[:100]}...'"
         )
 
-        try:
-            db = arango_connector.get_db(database_name)
-            database_name = database_name or db.name
+        db, database_name = self.resolve_db(database_name)
 
-            if operation == "list_views":
-                views = db.views()
-                return {"views": views}
+        if operation == "list_views":
+            views = await self.run_sync(db.views)
+            return {"views": views}
 
-            elif operation == "create_view":
-                if not view_name or not view_type:
-                    logger.warning(
-                        "ViewManagementAgent: View name and type are required for create_view."
-                    )
-                    return {"error": "View name and type are required for creation."}
-
-                # This is where the error was happening according to the log.
-                # _view_exists should now correctly return False if view is not found,
-                # or re-raise if there's another issue during the check.
-                if self._view_exists(db, view_name):  # CHECK 1
-                    return {
-                        "status": f"View '{view_name}' already exists in database '{database_name}'."
-                    }
-
-                # If _view_exists returned False, we proceed.
-                # If _view_exists raised an error (e.g. permissions), it would be caught by the outer try-except.
-
-                current_properties = properties
-
-                logger.info(
-                    f"Attempting to create view '{view_name}' of type '{view_type}' with properties: {current_properties}"
+        elif operation == "create_view":
+            if not view_name or not view_type:
+                logger.warning(
+                    "ViewManagementAgent: View name and type are required for create_view."
                 )
+                return {"error": "View name and type are required for creation."}
 
-                if view_type.lower() == "arangosearch":
-                    view_info = db.create_arangosearch_view(
-                        name=view_name, properties=current_properties
-                    )
-                elif view_type.lower() == "search-alias":
-                    if not current_properties or "indexes" not in current_properties:
-                        return {
-                            "error": "For 'search-alias' view type, 'properties' argument must include 'indexes' definition."
-                        }
-                    view_info = db.create_view(
-                        name=view_name, view_type="search-alias", properties=current_properties
-                    )
-                else:
-                    return {
-                        "error": f"Unsupported view type '{view_type}'. Supported types: 'arangosearch', 'search-alias'."
-                    }
-                logger.info(f"View '{view_name}' created successfully.")
-                return {"status": "View created successfully.", "view_info": view_info}
-
-            elif operation == "get_view_properties":
-                if not view_name:
-                    return {"error": "View name is required to get properties."}
-                if not self._view_exists(db, view_name):  # CHECK 2
-                    return {"error": f"View '{view_name}' not found in database '{database_name}'."}
-                view_info = db.view(view_name)
-                return {"view_properties": view_info}
-
-            elif operation == "update_view_properties":
-                if not view_name:
-                    return {"error": "View name is required for update."}
-                if not self._view_exists(db, view_name):  # CHECK 5
-                    return {"error": f"View '{view_name}' not found."}
-
-                view_obj_props = db.view(view_name)
-                view_actual_type = view_obj_props.get("type")
-                logger.info(
-                    f"Updating view '{view_name}' of type '{view_actual_type}' with properties: {properties}"
-                )
-
-                if view_actual_type == "arangosearch":
-                    updated_props = db.update_arangosearch_view(
-                        name=view_name, properties=properties
-                    )
-                elif view_actual_type == "search-alias":
-                    updated_props = db.update_view(name=view_name, properties=properties)
-                else:
-                    logger.warning(
-                        f"Attempting generic update for unknown or non-specific view type: {view_actual_type}"
-                    )
-                    updated_props = db.update_view(name=view_name, properties=properties)
-                return {"status": "View properties updated.", "updated_properties": updated_props}
-
-            elif operation == "replace_view_properties":
-                if not view_name:
-                    return {"error": "View name is required for replacement."}
-                if not self._view_exists(db, view_name):  # CHECK 6
-                    return {"error": f"View '{view_name}' not found."}
-
-                view_obj_props = db.view(view_name)
-                view_actual_type = view_obj_props.get("type")
-                logger.info(
-                    f"Replacing properties for view '{view_name}' of type '{view_actual_type}' with: {properties}"
-                )
-
-                if view_actual_type == "arangosearch":
-                    replaced_props = db.replace_arangosearch_view(
-                        name=view_name, properties=properties
-                    )
-                elif view_actual_type == "search-alias":
-                    if (
-                        "indexes" not in properties
-                    ):  # Ensure properties are valid for search-alias replacement
-                        return {
-                            "error": "For replacing 'search-alias' view type, 'properties' must include 'indexes' definition."
-                        }
-                    replaced_props = db.replace_view(
-                        name=view_name, view_type="search-alias", properties=properties
-                    )
-                else:
-                    logger.warning(
-                        f"Attempting generic replace for non-specific view type: {view_actual_type}."
-                    )
-                    replaced_props = db.replace_view(
-                        name=view_name, view_type=view_actual_type, properties=properties
-                    )
-
+            if await self._view_exists(db, view_name):
                 return {
-                    "status": "View properties replaced.",
-                    "replaced_properties": replaced_props,
+                    "status": f"View '{view_name}' already exists in database '{database_name}'."
                 }
 
-            elif operation == "delete_view":
-                if not view_name:
-                    return {"error": "View name is required for deletion."}
-                if not self._view_exists(db, view_name):  # CHECK 7
-                    return {"status": f"View '{view_name}' not found, no action taken."}
+            current_properties = properties
 
-                success = db.delete_view(view_name, ignore_missing=False)
-                return {"status": f"View '{view_name}' deleted successfully.", "success": success}
+            logger.info(
+                f"Attempting to create view '{view_name}' of type '{view_type}' with properties: {current_properties}"
+            )
 
+            if view_type.lower() == "arangosearch":
+                view_info = await self.run_sync(
+                    db.create_arangosearch_view,
+                    name=view_name, properties=current_properties,
+                )
+            elif view_type.lower() == "search-alias":
+                if not current_properties or "indexes" not in current_properties:
+                    return {
+                        "error": "For 'search-alias' view type, 'properties' argument must include 'indexes' definition."
+                    }
+                view_info = await self.run_sync(
+                    db.create_view,
+                    name=view_name, view_type="search-alias", properties=current_properties,
+                )
             else:
-                return {"error": f"Unknown view operation: {operation}"}
+                return {
+                    "error": f"Unsupported view type '{view_type}'. Supported types: 'arangosearch', 'search-alias'."
+                }
+            logger.info(f"View '{view_name}' created successfully.")
+            return {"status": "View created successfully.", "view_info": view_info}
 
-        # Catching specific ArangoDB errors first
-        except (
-            ViewListError,
-            ViewCreateError,
-            ViewDeleteError,
-            ViewGetError,
-            ViewUpdateError,
-            ArangoServerError,
-        ) as e:
-            logger.error(
-                f"ViewManagementAgent: ArangoDB error - Op: {operation}, DB: {database_name}, View: {view_name}, Error: {e}",
-                exc_info=True,
+        elif operation == "get_view_properties":
+            if not view_name:
+                return {"error": "View name is required to get properties."}
+            if not await self._view_exists(db, view_name):
+                return {"error": f"View '{view_name}' not found in database '{database_name}'."}
+            view_info = await self.run_sync(db.view, view_name)
+            return {"view_properties": view_info}
+
+        elif operation == "update_view_properties":
+            if not view_name:
+                return {"error": "View name is required for update."}
+            if not await self._view_exists(db, view_name):
+                return {"error": f"View '{view_name}' not found."}
+
+            view_obj_props = await self.run_sync(db.view, view_name)
+            view_actual_type = view_obj_props.get("type")
+            logger.info(
+                f"Updating view '{view_name}' of type '{view_actual_type}' with properties: {properties}"
             )
+
+            if view_actual_type == "arangosearch":
+                updated_props = await self.run_sync(
+                    db.update_arangosearch_view,
+                    name=view_name, properties=properties,
+                )
+            elif view_actual_type == "search-alias":
+                updated_props = await self.run_sync(
+                    db.update_view, name=view_name, properties=properties,
+                )
+            else:
+                logger.warning(
+                    f"Attempting generic update for unknown or non-specific view type: {view_actual_type}"
+                )
+                updated_props = await self.run_sync(
+                    db.update_view, name=view_name, properties=properties,
+                )
+            return {"status": "View properties updated.", "updated_properties": updated_props}
+
+        elif operation == "replace_view_properties":
+            if not view_name:
+                return {"error": "View name is required for replacement."}
+            if not await self._view_exists(db, view_name):
+                return {"error": f"View '{view_name}' not found."}
+
+            view_obj_props = await self.run_sync(db.view, view_name)
+            view_actual_type = view_obj_props.get("type")
+            logger.info(
+                f"Replacing properties for view '{view_name}' of type '{view_actual_type}' with: {properties}"
+            )
+
+            if view_actual_type == "arangosearch":
+                replaced_props = await self.run_sync(
+                    db.replace_arangosearch_view,
+                    name=view_name, properties=properties,
+                )
+            elif view_actual_type == "search-alias":
+                if "indexes" not in properties:
+                    return {
+                        "error": "For replacing 'search-alias' view type, 'properties' must include 'indexes' definition."
+                    }
+                replaced_props = await self.run_sync(
+                    db.replace_view,
+                    name=view_name, view_type="search-alias", properties=properties,
+                )
+            else:
+                logger.warning(
+                    f"Attempting generic replace for non-specific view type: {view_actual_type}."
+                )
+                replaced_props = await self.run_sync(
+                    db.replace_view,
+                    name=view_name, view_type=view_actual_type, properties=properties,
+                )
+
             return {
-                "error": f"ArangoDB View Error: {getattr(e, 'error_message', str(e))}",
-                "error_code": getattr(e, "error_code", None),
+                "status": "View properties replaced.",
+                "replaced_properties": replaced_props,
             }
-        # Catch any other unexpected exceptions
-        except Exception as e:
-            logger.error(
-                f"ViewManagementAgent: Unexpected error - Op: {operation}, DB: {database_name}, View: {view_name}, Error: {e}",
-                exc_info=True,
-            )
-            return {"error": f"An unexpected error occurred: {str(e)}"}
+
+        elif operation == "delete_view":
+            if not view_name:
+                return {"error": "View name is required for deletion."}
+            if not await self._view_exists(db, view_name):
+                return {"status": f"View '{view_name}' not found, no action taken."}
+
+            success = await self.run_sync(db.delete_view, view_name, ignore_missing=False)
+            return {"status": f"View '{view_name}' deleted successfully.", "success": success}
+
+        else:
+            return {"error": f"Unknown view operation: {operation}"}

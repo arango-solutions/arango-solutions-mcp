@@ -1,11 +1,11 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from arango.exceptions import AQLQueryExecuteError, ArangoServerError
+from arango.database import StandardDatabase
+from arango.exceptions import AQLQueryExecuteError
 
-from agents.agent_base import ArangoAgentBase
+from agents.agent_base import ArangoAgentBase, handle_arango_errors
 from aql_utils import validate_aql_identifier, validate_aql_identifiers
-from arango_connector import arango_connector
 
 logger = logging.getLogger(__name__)
 
@@ -23,39 +23,23 @@ class VectorSearchAgent(ArangoAgentBase):
     against collections with vector indexes.
     """
 
+    @handle_arango_errors("VectorSearchAgent", "Vector Search", specific_exceptions=(AQLQueryExecuteError,))
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")
 
         logger.info(f"VectorSearchAgent: Op='{operation}', DB='{database_name}'")
 
-        try:
-            db = arango_connector.get_db(database_name)
-            database_name = database_name or db.name
+        db, database_name = self.resolve_db(database_name)
 
-            if operation == "vector_search":
-                return self._execute_vector_search(db, mcp_tool_inputs)
+        if operation == "vector_search":
+            return await self.run_sync(self._execute_vector_search, db, mcp_tool_inputs)
 
-            elif operation == "hybrid_search":
-                return self._execute_hybrid_search(db, mcp_tool_inputs)
+        elif operation == "hybrid_search":
+            return await self.run_sync(self._execute_hybrid_search, db, mcp_tool_inputs)
 
-            else:
-                return {"error": f"Unknown vector operation: {operation}"}
-
-        except AQLQueryExecuteError as e:
-            logger.error(f"VectorSearchAgent: AQL error - {e}")
-            return {
-                "error": f"AQL Execution Error: {e.error_message}",
-                "error_code": e.error_code,
-            }
-        except ArangoServerError as e:
-            logger.error(f"VectorSearchAgent: ArangoDB error - {e}")
-            return {
-                "error": f"ArangoDB Error: {e.error_message if hasattr(e, 'error_message') else str(e)}"
-            }
-        except Exception as e:
-            logger.error(f"VectorSearchAgent: Unexpected error - {e}", exc_info=True)
-            return {"error": f"An unexpected error occurred: {str(e)}"}
+        else:
+            return {"error": f"Unknown vector operation: {operation}"}
 
     def _execute_vector_search(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
         collection_name: str = inputs.get("collection_name", "")
@@ -143,7 +127,9 @@ class VectorSearchAgent(ArangoAgentBase):
             "aql_generated": aql,
         }
 
-    def _execute_hybrid_search(self, db, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_hybrid_search(
+        self, db: StandardDatabase, inputs: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Hybrid search combining vector similarity with ArangoSearch text filters."""
         collection_name: str = inputs.get("collection_name", "")
         vector_field: str = inputs.get("vector_field", "")
