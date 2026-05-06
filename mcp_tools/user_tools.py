@@ -1,6 +1,6 @@
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 
 from agents.user_management_agent import UserManagementAgent
 from server import mcp_app
@@ -43,13 +43,19 @@ async def get_user(
 )
 async def create_user(
     username: str = Field(description="Username for the new user."),
-    password: Optional[str] = Field(
-        default=None, description="Password. If omitted, the user has no password."
+    password: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Password for the new user. Wrapped in pydantic.SecretStr so it is "
+            "never logged or shown in repr() within this process. Transmitted "
+            "in cleartext over MCP transport (the wire is not protected by "
+            "SecretStr). If omitted, the user has no password."
+        ),
     ),
-    active: Optional[bool] = Field(
+    active: bool | None = Field(
         default=None, description="Whether the user is active (default true)."
     ),
-    extra: Optional[Dict[str, Any]] = Field(
+    extra: Dict[str, Any] | None = Field(
         default=None, description="Arbitrary extra data to store with the user."
     ),
 ) -> Dict[str, Any]:
@@ -74,9 +80,16 @@ async def create_user(
 )
 async def update_user(
     username: str = Field(description="Username to update."),
-    password: Optional[str] = Field(default=None, description="New password."),
-    active: Optional[bool] = Field(default=None, description="Set active status."),
-    extra: Optional[Dict[str, Any]] = Field(default=None, description="Extra metadata to merge."),
+    password: SecretStr | None = Field(
+        default=None,
+        description=(
+            "New password. Wrapped in pydantic.SecretStr so it is never logged "
+            "or shown in repr() within this process. Transmitted in cleartext "
+            "over MCP transport (the wire is not protected by SecretStr)."
+        ),
+    ),
+    active: bool | None = Field(default=None, description="Set active status."),
+    extra: Dict[str, Any] | None = Field(default=None, description="Extra metadata to merge."),
 ) -> Dict[str, Any]:
     return await user_agent.arun(
         {
@@ -126,8 +139,8 @@ async def list_permissions(
 )
 async def get_permission(
     username: str = Field(description="Username."),
-    database: str = Field(description="Database name."),
-    collection: Optional[str] = Field(
+    database_name: str = Field(description="Database name."),
+    collection_name: str | None = Field(
         default=None,
         description="Collection name. If omitted, returns the database-level permission.",
     ),
@@ -136,8 +149,8 @@ async def get_permission(
         {
             "operation": "get_permission",
             "username": username,
-            "database": database,
-            "collection": collection,
+            "database_name": database_name,
+            "collection_name": collection_name,
         }
     )
 
@@ -160,10 +173,10 @@ async def grant_permission(
     permission: Literal["rw", "ro", "none"] = Field(
         description="Permission level: 'rw', 'ro', or 'none'."
     ),
-    database: str = Field(description="Target database."),
-    collection: Optional[str] = Field(
+    database_name: str = Field(description="Target database name."),
+    collection_name: str | None = Field(
         default=None,
-        description="Target collection. If omitted, permission applies to the whole database.",
+        description="Target collection name. If omitted, permission applies to the whole database.",
     ),
 ) -> Dict[str, Any]:
     return await user_agent.arun(
@@ -171,8 +184,8 @@ async def grant_permission(
             "operation": "grant_permission",
             "username": username,
             "permission": permission,
-            "database": database,
-            "collection": collection,
+            "database_name": database_name,
+            "collection_name": collection_name,
         }
     )
 
@@ -187,17 +200,17 @@ async def grant_permission(
 )
 async def revoke_permission(
     username: str = Field(description="Username to revoke permission from."),
-    database: str = Field(description="Target database."),
-    collection: Optional[str] = Field(
+    database_name: str = Field(description="Target database name."),
+    collection_name: str | None = Field(
         default=None,
-        description="Target collection. If omitted, revokes the database-level grant.",
+        description="Target collection name. If omitted, revokes the database-level grant.",
     ),
 ) -> Dict[str, Any]:
     return await user_agent.arun(
         {
             "operation": "revoke_permission",
             "username": username,
-            "database": database,
-            "collection": collection,
+            "database_name": database_name,
+            "collection_name": collection_name,
         }
     )

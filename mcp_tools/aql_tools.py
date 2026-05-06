@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from pydantic import Field
 
@@ -41,17 +41,23 @@ async def execute_aql(
         - "FOR v, e, p IN 1..2 OUTBOUND 'users/123' GRAPH 'mygraph' RETURN p"
         """,
     ),
-    bind_vars: Optional[Dict[str, Any]] = Field(
+    bind_vars: Dict[str, Any] | None = Field(
         default=None,
         description="""Bind variables for parameterized queries (optional).
         
         Example: {'name': 'John', 'minAge': 25}
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="""Target database name. Uses default if not specified.
         """,
+    ),
+    max_runtime: float | None = Field(
+        default=None,
+        description="Maximum query execution time in seconds. ArangoDB will kill the query if "
+        "exceeded. If unset, the server's DEFAULT_AQL_MAX_RUNTIME env var (default 30s) applies. "
+        "Pass 0 to disable.",
     ),
 ) -> Dict[str, Any]:
     """Executes an AQL query against ArangoDB.
@@ -71,6 +77,7 @@ async def execute_aql(
         "aql_query": aql_query,
         "bind_vars": bind_vars or {},
         "database_name": database_name,
+        "max_runtime": max_runtime,
     }
     result = await aql_agent.arun(tool_input)
     return result
@@ -99,7 +106,7 @@ async def execute_aql(
 )
 async def explain_aql_query(
     aql_query: str = Field(description="The AQL query to analyze (not executed)."),
-    bind_vars: Optional[Dict[str, Any]] = Field(
+    bind_vars: Dict[str, Any] | None = Field(
         default=None,
         description="Bind variables (needed if query uses @params).",
     ),
@@ -107,11 +114,11 @@ async def explain_aql_query(
         default=False,
         description="Return all possible execution plans, not just the optimal one.",
     ),
-    max_plans: Optional[int] = Field(
+    max_plans: int | None = Field(
         default=None,
         description="Maximum number of plans to generate (only with all_plans=true).",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -140,7 +147,7 @@ async def explain_aql_query(
 )
 async def validate_aql_query(
     aql_query: str = Field(description="The AQL query to validate."),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
