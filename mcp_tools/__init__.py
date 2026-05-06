@@ -1,17 +1,1 @@
-from . import (  # noqa: F401 — side-effect imports register MCP tools
-    analyzer_tools,
-    aql_tools,
-    backup_tools,
-    cluster_tools,
-    collection_tools,
-    database_tools,
-    document_tools,
-    graph_tools,
-    index_tools,
-    manual_tools,
-    transaction_tools,
-    traversal_tools,
-    user_tools,
-    vector_tools,
-    view_tools,
-)
+"""MCP tool modules. Tools are registered via side-effect imports in server.py."""
