@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from pydantic import Field
 
+from agents.agent_base import SYSTEM_DB
 from agents.database_management_agent import DatabaseManagementAgent
 from server import mcp_app
 
@@ -132,7 +133,7 @@ async def delete_database(
     ),
 ) -> Dict[str, Any]:
     """Permanently deletes an ArangoDB database and all its contents."""
-    if database_name == "_system":
+    if database_name == SYSTEM_DB:
         return {"error": "Deleting the _system database is not allowed via this tool."}
     return await db_agent.arun({"operation": "delete_database", "database_name": database_name})
 
@@ -164,7 +165,7 @@ async def delete_database(
     """,
 )
 async def get_database_info(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="""Name of the database to analyze. Uses default database if not specified.
         

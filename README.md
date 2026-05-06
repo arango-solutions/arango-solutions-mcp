@@ -67,6 +67,39 @@ poetry install
 }
 ```
 
+**Antigravity** — edit `~/.gemini/antigravity/mcp_config.json` (or use the MCP Store UI → "View raw config"):
+
+```json
+{
+  "mcpServers": {
+    "arangodb-mcp": {
+      "command": "poetry",
+      "args": ["run", "python", "main.py"],
+      "cwd": "/path/to/arango-mcp-server",
+      "env": {
+        "ARANGO_HOSTS": "http://localhost:8529",
+        "ARANGO_ROOT_USERNAME": "root",
+        "ARANGO_ROOT_PASSWORD": "your_password_here",
+        "ARANGO_DEFAULT_DB_NAME": "myapp"
+      }
+    }
+  }
+}
+```
+
+For remote/Docker deployments, Antigravity can connect via HTTP:
+
+```json
+{
+  "mcpServers": {
+    "arangodb-mcp": {
+      "url": "http://your-server:8000/mcp",
+      "type": "http"
+    }
+  }
+}
+```
+
 ### 3. Environment Variables
 
 | Variable | Required | Default | Description |
@@ -79,8 +112,73 @@ poetry install
 | `ARANGO_SSL_CERT_PATH` | No | — | Path to SSL certificate file |
 | `LOG_LEVEL` | No | `INFO` | Server log level |
 | `ENABLE_JS_TRANSACTIONS` | No | `false` | Enable server-side JavaScript transactions (security-sensitive) |
+| `MCP_TRANSPORT` | No | `stdio` | Transport protocol: `stdio`, `sse`, or `streamable-http` |
+| `MCP_HOST` | No | `0.0.0.0` | Bind host for `sse`/`streamable-http` transport |
+| `MCP_PORT` | No | `8000` | Bind port for `sse`/`streamable-http` transport |
+| `MCP_AUTH_TOKEN` | Conditional | — | Bearer token required for `sse`/`streamable-http` when `MCP_HOST` is non-loopback. See "HTTP transport security" below. |
+| `DEFAULT_AQL_MAX_RUNTIME` | No | `30.0` | Default per-query AQL max runtime in seconds (ArangoDB kills queries that exceed this). Set to `0` to disable. Per-call overrides via `execute-aql-query`. |
 
 All tools accept an optional `database_name` parameter to override the default.
+
+#### HTTP transport security
+
+When `MCP_TRANSPORT=streamable-http` or `sse` and `MCP_HOST` is non-loopback (e.g. `0.0.0.0`), `MCP_AUTH_TOKEN` is **REQUIRED**. The server refuses to start otherwise (exits with code `2`). Clients must send `Authorization: Bearer <token>` on every request; missing or invalid tokens are rejected with HTTP `401`.
+
+Loopback binds (`127.0.0.1`, `localhost`, `::1`) without a token are allowed but log a loud warning. Token comparison is constant-time (`hmac.compare_digest`).
+
+Generate a token with, e.g., `openssl rand -hex 32`.
+
+> **Limitation:** the auth middleware is wired by wrapping FastMCP's ASGI app factories (`streamable_http_app()` / `sse_app()`). If a future `fastmcp` release removes those factories, the server will refuse to start when `MCP_AUTH_TOKEN` is set rather than silently disable auth (exits with code `3`).
+
+---
+
+## Standalone Deployment (Docker)
+
+The server can run as a standalone service using `streamable-http` or `sse` transport, accessible by any MCP client over the network.
+
+### Docker Compose (recommended)
+
+Launches both the MCP server and an ArangoDB instance:
+
+```bash
+# Set your ArangoDB password
+export ARANGO_ROOT_PASSWORD=your_password
+
+# Start the stack
+docker compose up -d
+
+# MCP server available at http://localhost:8000/mcp
+# ArangoDB UI available at http://localhost:8529
+```
+
+### Docker only (connect to existing ArangoDB)
+
+```bash
+docker build -t arangodb-mcp .
+
+docker run -d -p 8000:8000 \
+  -e ARANGO_HOSTS=http://your-arangodb:8529 \
+  -e ARANGO_ROOT_USERNAME=root \
+  -e ARANGO_ROOT_PASSWORD=your_password \
+  -e ARANGO_DEFAULT_DB_NAME=myapp \
+  -e MCP_AUTH_TOKEN="$(openssl rand -hex 32)" \
+  arangodb-mcp
+```
+
+`MCP_AUTH_TOKEN` is required whenever the container binds to a non-loopback interface (the default for any container that publishes port `8000`); the server exits with code `2` instead of starting an unauthenticated public listener. See "HTTP transport security" above.
+
+### Without Docker
+
+```bash
+MCP_TRANSPORT=streamable-http \
+MCP_PORT=8000 \
+ARANGO_HOSTS=http://localhost:8529 \
+ARANGO_ROOT_USERNAME=root \
+ARANGO_ROOT_PASSWORD=your_password \
+  poetry run python main.py
+```
+
+The server exposes the MCP endpoint at `http://localhost:8000/mcp`. Any MCP client that supports HTTP transport can connect to it.
 
 ---
 
@@ -366,6 +464,9 @@ pre-commit install
 | **SSL by default** | `ARANGO_VERIFY_SSL` defaults to `true`; optional `ARANGO_SSL_CERT_PATH` for custom certs |
 | **Log redaction** | Bind variable values are never logged; only parameter keys appear in log output |
 | **Destructive operation guards** | `_system` database deletion blocked at both tool and agent levels |
+| **HTTP bearer-token auth** | `MCP_AUTH_TOKEN` enforces an `Authorization: Bearer <token>` header on every `sse` / `streamable-http` request via constant-time comparison (`hmac.compare_digest`). The server refuses to start (exit code `2`) when `MCP_HOST` is non-loopback and the token is unset. |
+| **AQL query budget** | `DEFAULT_AQL_MAX_RUNTIME` (default `30s`) caps every `execute-aql-query`; per-call `max_runtime` override is also accepted. |
+| **Secret hygiene** | Root password, `MCP_AUTH_TOKEN`, and the `password` parameter on `create-user` / `update-user` are typed as `pydantic.SecretStr`, so values are not reprinted in logs or `repr()` output. |
 
 ---
 

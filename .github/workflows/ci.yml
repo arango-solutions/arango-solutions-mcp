@@ -85,4 +85,6 @@ jobs:
           poetry run pytest tests/ -v
           --ignore=tests/test_cluster.py
           --cov=agents --cov=mcp_tools --cov=aql_utils
+          --cov=config --cov=arango_connector --cov=server --cov=main
+          --cov=auth_middleware
           --cov-report=term-missing

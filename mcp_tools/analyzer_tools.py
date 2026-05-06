@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union  # Union for properties
+from typing import Any, Dict, List, Union  # Union for properties
 
 from pydantic import Field
 
@@ -33,7 +33,7 @@ analyzer_agent = AnalyzerManagementAgent()
     """,
 )
 async def list_analyzers(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="""Target database name. Uses default database if not specified.
         
@@ -112,7 +112,7 @@ async def create_analyzer(
         - 'delimiter' for structured codes, IDs
         """
     ),
-    properties: Optional[Union[Dict[str, Any], str]] = Field(
+    properties: Union[Dict[str, Any], str] | None = Field(
         default=None,
         description="""Analyzer-specific configuration properties.
         
@@ -140,7 +140,7 @@ async def create_analyzer(
         }
         """,
     ),
-    features: Optional[List[str]] = Field(
+    features: List[str] | None = Field(
         default=None,
         description="""Search features to enable for this analyzer.
         
@@ -157,7 +157,7 @@ async def create_analyzer(
         More features = more storage and processing overhead.
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -213,7 +213,7 @@ async def delete_analyzer(
         Check view dependencies before deletion.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -251,7 +251,7 @@ async def delete_analyzer(
     - Understanding built-in analyzer behavior
     """,
 )
-async def get_analyzer_definition(
+async def get_analyzer_properties(
     analyzer_name: str = Field(
         description="""Name of the analyzer to inspect.
         
@@ -265,7 +265,7 @@ async def get_analyzer_definition(
         Returns complete configuration and feature details.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:

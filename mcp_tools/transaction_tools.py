@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import Field
 
@@ -29,35 +29,35 @@ txn_agent = TransactionManagementAgent()
     """,
 )
 async def begin_transaction(
-    write: Optional[List[str]] = Field(
+    write: List[str] | None = Field(
         default=None,
         description="Collections that will be written to inside this transaction.",
     ),
-    read: Optional[List[str]] = Field(
+    read: List[str] | None = Field(
         default=None,
         description="Collections that will be read from inside this transaction.",
     ),
-    exclusive: Optional[List[str]] = Field(
+    exclusive: List[str] | None = Field(
         default=None,
         description="Collections requiring exclusive (serialized) access.",
     ),
-    sync: Optional[bool] = Field(
+    sync: bool | None = Field(
         default=None,
         description="If true, forces WAL sync on every operation (safer, slower).",
     ),
-    allow_implicit: Optional[bool] = Field(
+    allow_implicit: bool | None = Field(
         default=None,
         description="If true, allows reading from collections not declared upfront.",
     ),
-    lock_timeout: Optional[int] = Field(
+    lock_timeout: int | None = Field(
         default=None,
         description="Timeout in seconds for acquiring collection locks.",
     ),
-    max_size: Optional[int] = Field(
+    max_size: int | None = Field(
         default=None,
         description="Maximum transaction size in bytes before intermediate commits.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -90,7 +90,7 @@ async def transaction_status(
     transaction_id: str = Field(
         description="The transaction ID returned by begin-transaction.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -117,7 +117,7 @@ async def commit_transaction(
     transaction_id: str = Field(
         description="The transaction ID to commit.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -143,7 +143,7 @@ async def abort_transaction(
     transaction_id: str = Field(
         description="The transaction ID to abort.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -166,7 +166,7 @@ async def abort_transaction(
     """,
 )
 async def list_transactions(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -208,31 +208,31 @@ async def execute_transaction(
     command: str = Field(
         description="JavaScript function body to execute server-side.",
     ),
-    params: Optional[Dict[str, Any]] = Field(
+    params: Dict[str, Any] | None = Field(
         default=None,
         description="Parameters passed to the JavaScript function.",
     ),
-    write: Optional[List[str]] = Field(
+    write: List[str] | None = Field(
         default=None,
         description="Collections the function will write to.",
     ),
-    read: Optional[List[str]] = Field(
+    read: List[str] | None = Field(
         default=None,
         description="Collections the function will read from.",
     ),
-    sync: Optional[bool] = Field(
+    sync: bool | None = Field(
         default=None,
         description="If true, forces WAL sync (safer, slower).",
     ),
-    max_size: Optional[int] = Field(
+    max_size: int | None = Field(
         default=None,
         description="Maximum transaction size in bytes.",
     ),
-    allow_implicit: Optional[bool] = Field(
+    allow_implicit: bool | None = Field(
         default=None,
         description="Allow reading collections not declared upfront.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),

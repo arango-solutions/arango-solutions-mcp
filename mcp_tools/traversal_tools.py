@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal
 
 from pydantic import Field
 
@@ -38,11 +38,11 @@ async def graph_traverse(
         - 'airports/JFK'
         """
     ),
-    graph_name: Optional[str] = Field(
+    graph_name: str | None = Field(
         default=None,
         description="Named graph to traverse. Provide this OR edge_collections.",
     ),
-    edge_collections: Optional[List[str]] = Field(
+    edge_collections: List[str] | None = Field(
         default=None,
         description="Edge collection(s) to traverse. Alternative to graph_name.",
     ),
@@ -52,24 +52,28 @@ async def graph_traverse(
     ),
     min_depth: int = Field(
         default=1,
+        ge=0,
         description="Minimum traversal depth (default 1).",
     ),
     max_depth: int = Field(
         default=1,
+        ge=1,
         description="Maximum traversal depth. Set to 2+ for multi-hop traversals.",
     ),
     limit: int = Field(
         default=100,
+        ge=1,
+        le=10000,
         description="Maximum number of results to return.",
     ),
-    vertex_filters: Optional[Dict[str, Any]] = Field(
+    vertex_filters: Dict[str, Any] | None = Field(
         default=None,
         description="""Filter visited vertices by attribute values (equality).
 
         Example: {'status': 'active', 'country': 'US'}
         """,
     ),
-    edge_filters: Optional[Dict[str, Any]] = Field(
+    edge_filters: Dict[str, Any] | None = Field(
         default=None,
         description="""Filter traversed edges by attribute values (equality).
 
@@ -79,7 +83,7 @@ async def graph_traverse(
     return_vertices: bool = Field(default=True, description="Include vertices in results."),
     return_edges: bool = Field(default=True, description="Include edges in results."),
     return_paths: bool = Field(default=False, description="Include full paths in results."),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -126,11 +130,11 @@ async def graph_traverse(
 async def graph_shortest_path(
     start_vertex: str = Field(description="Starting vertex ID (format: 'collection/key')."),
     target_vertex: str = Field(description="Target vertex ID (format: 'collection/key')."),
-    graph_name: Optional[str] = Field(
+    graph_name: str | None = Field(
         default=None,
         description="Named graph. Provide this OR edge_collections.",
     ),
-    edge_collections: Optional[List[str]] = Field(
+    edge_collections: List[str] | None = Field(
         default=None,
         description="Edge collection(s). Alternative to graph_name.",
     ),
@@ -138,7 +142,7 @@ async def graph_shortest_path(
         default="OUTBOUND",
         description="Edge direction: 'OUTBOUND', 'INBOUND', or 'ANY'.",
     ),
-    weight_attribute: Optional[str] = Field(
+    weight_attribute: str | None = Field(
         default=None,
         description="""Edge attribute for weighted shortest path.
         If set, finds the lowest-weight path instead of fewest hops.
@@ -146,7 +150,7 @@ async def graph_shortest_path(
         Example: 'distance', 'cost', 'duration'
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -182,11 +186,11 @@ async def graph_shortest_path(
 async def graph_k_shortest_paths(
     start_vertex: str = Field(description="Starting vertex ID (format: 'collection/key')."),
     target_vertex: str = Field(description="Target vertex ID (format: 'collection/key')."),
-    graph_name: Optional[str] = Field(
+    graph_name: str | None = Field(
         default=None,
         description="Named graph. Provide this OR edge_collections.",
     ),
-    edge_collections: Optional[List[str]] = Field(
+    edge_collections: List[str] | None = Field(
         default=None,
         description="Edge collection(s). Alternative to graph_name.",
     ),
@@ -196,13 +200,15 @@ async def graph_k_shortest_paths(
     ),
     limit: int = Field(
         default=5,
+        ge=1,
+        le=100,
         description="Maximum number of paths to return (K).",
     ),
-    weight_attribute: Optional[str] = Field(
+    weight_attribute: str | None = Field(
         default=None,
         description="Edge attribute for weighted path calculation.",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),
@@ -240,11 +246,11 @@ async def graph_k_shortest_paths(
 )
 async def graph_neighbors(
     start_vertex: str = Field(description="Starting vertex ID (format: 'collection/key')."),
-    graph_name: Optional[str] = Field(
+    graph_name: str | None = Field(
         default=None,
         description="Named graph. Provide this OR edge_collections.",
     ),
-    edge_collections: Optional[List[str]] = Field(
+    edge_collections: List[str] | None = Field(
         default=None,
         description="Edge collection(s). Alternative to graph_name.",
     ),
@@ -254,13 +260,16 @@ async def graph_neighbors(
     ),
     depth: int = Field(
         default=1,
+        ge=1,
         description="How many hops away to look (default: 1 = direct neighbors).",
     ),
     limit: int = Field(
         default=100,
+        ge=1,
+        le=10000,
         description="Maximum number of neighbors to return.",
     ),
-    vertex_filters: Optional[Dict[str, Any]] = Field(
+    vertex_filters: Dict[str, Any] | None = Field(
         default=None,
         description="Filter neighbors by attribute values (equality).",
     ),
@@ -268,7 +277,7 @@ async def graph_neighbors(
         default=True,
         description="Return each neighbor only once (default: true).",
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="Target database. Uses default if not specified.",
     ),

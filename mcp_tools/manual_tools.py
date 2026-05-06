@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 from pydantic import Field
 
@@ -54,8 +54,8 @@ manual_agent = ManualManagementAgent()
     5. **FINALLY**: Execute the query using 'execute-aql-query'
     """,
 )
-async def get_aql_manuals(
-    manual_name: str = Field(
+async def get_aql_manual(
+    manual_name: Literal["aql_ref", "cypher2aql", "optimization"] = Field(
         description="""The name of the manual to retrieve.
 
         Options:
@@ -65,5 +65,4 @@ async def get_aql_manuals(
         """,
     ),
 ) -> Dict[str, Any]:
-    """Retrieves a specific AQL manual."""
     return await manual_agent.arun({"operation": "get_aql_manual", "manual_name": manual_name})

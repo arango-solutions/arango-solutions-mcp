@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import Field
 
@@ -60,7 +60,7 @@ async def create_document(
         Avoid using field names starting with underscore except for system fields.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="""Target database name. Uses default database if not specified.
         
@@ -126,7 +126,7 @@ async def create_documents_bulk(
         Response will include details about successful and failed insertions.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -178,7 +178,7 @@ async def read_document(
         Use _id format when working across multiple collections.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -239,6 +239,8 @@ async def read_documents_with_filter(
     ),
     limit: int = Field(
         default=100,
+        ge=1,
+        le=1000,
         description="""Maximum number of documents to return (1-1000).
         
         Use for pagination and performance:
@@ -249,6 +251,7 @@ async def read_documents_with_filter(
     ),
     skip: int = Field(
         default=0,
+        ge=0,
         description="""Number of documents to skip (for pagination).
         
         Examples:
@@ -257,7 +260,7 @@ async def read_documents_with_filter(
         - Page 3: skip=40, limit=20
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -318,7 +321,7 @@ async def update_document(
         Set field to null to remove it from the document.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -360,7 +363,7 @@ async def delete_document(
         - ID: 'users/user123'
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -398,7 +401,7 @@ async def replace_document(
         All previous fields not in this payload will be removed.
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -441,7 +444,7 @@ async def upsert_document(
         Example: {"email": "alice@example.com", "name": "Alice", "role": "user"}
         """
     ),
-    update_data: Optional[Dict[str, Any]] = Field(
+    update_data: Dict[str, Any] | None = Field(
         default=None,
         description="""Fields to UPDATE if a match IS found (merge semantics).
         If omitted, document_data is used for both insert and update.
@@ -449,7 +452,7 @@ async def upsert_document(
         Example: {"last_seen": "2024-01-15", "login_count": 42}
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -488,7 +491,7 @@ async def update_documents_bulk(
         ]
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -523,7 +526,7 @@ async def delete_documents_bulk(
         [{"_key": "old_user_1"}, {"_key": "old_user_2"}, {"_key": "old_user_3"}]
         """
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:

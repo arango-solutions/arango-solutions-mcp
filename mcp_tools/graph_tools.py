@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import Field
 
@@ -35,7 +35,7 @@ graph_agent = GraphManagementAgent()
     """,
 )
 async def list_graphs(
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None,
         description="""Target database name. Uses default database if not specified.
         
@@ -96,11 +96,11 @@ async def create_graph(
         }]
         """
     ),
-    orphan_collections: Optional[List[str]] = Field(
+    orphan_collections: List[str] | None = Field(
         default=None,
         description="Additional vertex collections not connected by edges.",
     ),
-    smart: Optional[bool] = Field(
+    smart: bool | None = Field(
         default=None,
         description="""Create a SmartGraph (Enterprise, cluster only).
         Requires smart_field to be set. Vertices are distributed across
@@ -108,7 +108,7 @@ async def create_graph(
         vertices for optimal traversal performance.
         """,
     ),
-    disjoint: Optional[bool] = Field(
+    disjoint: bool | None = Field(
         default=None,
         description="""Create a Disjoint SmartGraph (Enterprise, cluster only).
         Requires smart=true. Guarantees that vertices with different
@@ -116,7 +116,7 @@ async def create_graph(
         enabling further query optimizations.
         """,
     ),
-    smart_field: Optional[str] = Field(
+    smart_field: str | None = Field(
         default=None,
         description="""Document attribute used for smart sharding (Enterprise, cluster only).
         All vertices must contain this field. Edges are automatically
@@ -128,33 +128,33 @@ async def create_graph(
         - 'country' — geographic partitioning
         """,
     ),
-    shard_count: Optional[int] = Field(
+    shard_count: int | None = Field(
         default=None,
         description="Number of shards for the graph's collections (cluster only).",
     ),
-    replication_factor: Optional[int] = Field(
+    replication_factor: int | None = Field(
         default=None,
         description="Number of shard replicas for the graph's collections (cluster only).",
     ),
-    write_concern: Optional[int] = Field(
+    write_concern: int | None = Field(
         default=None,
         description="Minimum replicas that must confirm a write (cluster only).",
     ),
-    satellite_collections: Optional[List[str]] = Field(
+    satellite_collections: List[str] | None = Field(
         default=None,
         description="""Collections to replicate to all DB servers (Enterprise, cluster only).
         Useful for small lookup tables referenced during traversals.
         These collections avoid network hops during joins.
         """,
     ),
-    is_satellite: Optional[bool] = Field(
+    is_satellite: bool | None = Field(
         default=None,
         description="""Create a SatelliteGraph (Enterprise, cluster only).
         All collections in the graph are replicated to every DB server.
         Ideal for small reference graphs that are read frequently.
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -231,7 +231,7 @@ async def delete_graph(
         Recommended: Use false to preserve data unless doing complete cleanup.
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -324,7 +324,7 @@ async def create_edge(
         Use format 'collection_name/document_key'.
         """
     ),
-    edge_data: Optional[Dict[str, Any]] = Field(
+    edge_data: Dict[str, Any] | None = Field(
         default=None,
         description="""Additional attributes and metadata for the relationship.
         
@@ -358,7 +358,7 @@ async def create_edge(
         Leave empty for simple relationships without additional data.
         """,
     ),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
@@ -391,7 +391,7 @@ async def create_edge(
 )
 async def get_graph_properties(
     graph_name: str = Field(description="Name of the graph to inspect."),
-    database_name: Optional[str] = Field(
+    database_name: str | None = Field(
         default=None, description="Target database name. Uses default if not specified."
     ),
 ) -> Dict[str, Any]:
