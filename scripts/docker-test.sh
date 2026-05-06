@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Spin up ArangoDB containers on dynamic ports, run tests, and tear down.
+# Spin up an ArangoDB container on a dynamic port, run tests, and tear down.
 #
 # Usage:
-#   ./scripts/docker-test.sh              # single-server tests
-#   ./scripts/docker-test.sh --cluster    # cluster/sharding tests
-#   ./scripts/docker-test.sh --all        # both single + cluster
+#   ./scripts/docker-test.sh                                   # run tests
 #   ./scripts/docker-test.sh --image arangodb/arangodb:latest  # override image
+#   ./scripts/docker-test.sh -k some_test                      # extra pytest args
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
-MODE="--single"
 ARANGO_IMAGE="${ARANGO_IMAGE:-arangodb/arangodb:3.12}"
 EXTRA_PYTEST_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --single|--cluster|--all)
-            MODE="$1"; shift ;;
+        --single)
+            shift ;;
         --image)
             ARANGO_IMAGE="$2"; shift 2 ;;
+        -h|--help)
+            echo "Usage: $0 [--single] [--image IMAGE] [pytest args...]"
+            exit 0 ;;
         *)
             EXTRA_PYTEST_ARGS+=("$1"); shift ;;
     esac
@@ -32,7 +33,7 @@ export ARANGO_IMAGE
 
 cleanup() {
     echo "==> Tearing down containers..."
-    docker compose --profile cluster down -v 2>/dev/null || true
+    docker compose down -v 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -67,14 +68,14 @@ discover_port() {
 }
 
 run_single_tests() {
-    echo "==> Starting single-server ArangoDB (dynamic port)..."
-    docker compose up -d arangodb-single
+    echo "==> Starting ArangoDB (dynamic port)..."
+    docker compose up -d arangodb
 
-    wait_for_healthy arangodb-single 60
+    wait_for_healthy arangodb 60
 
     local port
-    port=$(discover_port arangodb-single 8529)
-    echo "==> ArangoDB single-server available on port $port"
+    port=$(discover_port arangodb 8529)
+    echo "==> ArangoDB available on port $port"
 
     ARANGO_HOSTS="http://localhost:${port}" \
     ARANGO_ROOT_USERNAME="root" \
@@ -82,43 +83,10 @@ run_single_tests() {
     ARANGO_DEFAULT_DB_NAME="_system" \
         poetry run pytest tests/ -v -m "not cluster" --tb=short "${EXTRA_PYTEST_ARGS[@]}"
 
-    echo "==> Stopping single-server..."
-    docker compose stop arangodb-single
+    echo "==> Stopping ArangoDB..."
+    docker compose stop arangodb
 }
 
-run_cluster_tests() {
-    echo "==> Starting ArangoDB cluster (dynamic port)..."
-    docker compose --profile cluster up -d
-
-    wait_for_healthy coordinator 90
-
-    local port
-    port=$(discover_port coordinator 8529)
-    echo "==> ArangoDB coordinator available on port $port"
-
-    ARANGO_HOSTS="http://localhost:${port}" \
-    ARANGO_ROOT_USERNAME="root" \
-    ARANGO_ROOT_PASSWORD="test_root_password" \
-    ARANGO_DEFAULT_DB_NAME="_system" \
-        poetry run pytest tests/ -v -m "cluster" --tb=short "${EXTRA_PYTEST_ARGS[@]}"
-}
-
-case "$MODE" in
-    --single)
-        run_single_tests
-        ;;
-    --cluster)
-        run_cluster_tests
-        ;;
-    --all)
-        run_single_tests
-        cleanup
-        run_cluster_tests
-        ;;
-    *)
-        echo "Usage: $0 [--single|--cluster|--all] [--image IMAGE] [pytest args...]"
-        exit 1
-        ;;
-esac
+run_single_tests
 
 echo "==> All tests passed."
