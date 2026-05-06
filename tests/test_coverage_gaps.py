@@ -465,7 +465,7 @@ class TestHybridSearch:
         col_obj.add_index(
             {
                 "type": "inverted",
-                "fields": [{"name": "title"}],
+                "fields": [{"name": "title", "analyzer": "text_en"}],
                 "name": "hybrid_inv_idx",
             }
         )
