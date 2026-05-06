@@ -11,6 +11,8 @@ Environment variables (all optional):
     ARANGO_ROOT_PASSWORD     default: test_root_password
     ARANGO_IMAGE             default: arangodb/arangodb:3.12
     ARANGO_TEST_TIMEOUT      seconds to wait for container health (default: 120)
+    ENABLE_JS_TRANSACTIONS   default: true (so tests/test_transactions.py runs;
+                             set to "false" to test the gate-off behaviour)
 """
 
 import contextlib
@@ -29,6 +31,10 @@ _USER_PROVIDED_HOSTS = "ARANGO_HOSTS" in os.environ
 os.environ.setdefault("ARANGO_HOSTS", "http://localhost:8529")
 os.environ.setdefault("ARANGO_ROOT_USERNAME", "root")
 os.environ.setdefault("ARANGO_ROOT_PASSWORD", "test_root_password")
+# Default JS transactions to on so the integration suite runs without
+# extra env wrangling. Set ENABLE_JS_TRANSACTIONS=false explicitly to
+# exercise the gate-off behaviour.
+os.environ.setdefault("ENABLE_JS_TRANSACTIONS", "true")
 
 import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
