@@ -103,6 +103,14 @@ class ServerSettings(BaseSettings):
         description="Default per-query AQL max runtime in seconds. ArangoDB will kill queries that "
         "exceed this. Set to 0 to disable. Per-call overrides via the execute-aql-query tool.",
     )
+    log_aql_queries: bool = Field(
+        default=False,
+        description="When false (default), the AQL execution agent logs only structural "
+        "metadata (query length, bind variable keys, database, operation). User-supplied "
+        "AQL can contain literal sensitive values (e.g. FILTER doc.token == \"abc\"), so "
+        "the query text is suppressed. Set true to log the first 100 chars of the query "
+        "for debugging.",
+    )
     connect_max_retries: int = Field(
         default=5,
         description="Max connection retries on transient failures at startup. "

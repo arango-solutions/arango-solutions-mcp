@@ -192,6 +192,71 @@ class TestAQLExecutionAgent:
         assert "error" in result
 
 
+class TestAQLLogRedaction:
+    """settings.server.log_aql_queries gates whether user-supplied AQL is
+    logged as plain text or as a structural fingerprint."""
+
+    def test_redacted_by_default(self):
+        from agents.aql_execution_agent import _aql_log_fragment
+        from config import settings
+
+        # Default ServerSettings has log_aql_queries=False.
+        assert settings.server.log_aql_queries is False
+        out = _aql_log_fragment("FILTER doc.token == \"super-secret-value\"")
+        assert "super-secret-value" not in out
+        assert "<redacted" in out
+        assert "len=" in out
+        assert "sha1=" in out
+
+    def test_redaction_is_deterministic_per_query(self):
+        from agents.aql_execution_agent import _aql_log_fragment
+
+        a = _aql_log_fragment("RETURN 1")
+        b = _aql_log_fragment("RETURN 1")
+        c = _aql_log_fragment("RETURN 2")
+        assert a == b
+        assert a != c
+
+    def test_log_aql_queries_true_emits_truncated_text(self, monkeypatch):
+        from agents.aql_execution_agent import _aql_log_fragment
+        from config import settings
+
+        monkeypatch.setattr(settings.server, "log_aql_queries", True)
+        short = "FOR d IN c RETURN d"
+        assert _aql_log_fragment(short) == short
+
+        long_q = "FILTER doc.x == 1 " * 50  # well over 100 chars
+        out = _aql_log_fragment(long_q)
+        assert out.endswith("...")
+        assert len(out) <= 103  # 100 chars + "..."
+
+    @pytest.mark.asyncio
+    @patch("agents.agent_base.arango_connector")
+    async def test_executing_log_line_does_not_contain_query_text_by_default(
+        self, mock_connector, caplog
+    ):
+        from agents.aql_execution_agent import AQLExecutionAgent
+
+        secret = "FILTER user.password == \"hunter2-leaked-secret\""
+        mock_db = _mock_db()
+        cursor = MagicMock()
+        cursor.__iter__.return_value = iter([])
+        cursor.count.return_value = 0
+        cursor.full_count.return_value = 0
+        cursor.statistics.return_value = {}
+        mock_db.aql.execute.return_value = cursor
+        mock_connector.get_db.return_value = mock_db
+
+        with caplog.at_level(logging.INFO, logger="agents.aql_execution_agent"):
+            await AQLExecutionAgent().arun(
+                {"operation": "execute", "aql_query": secret}
+            )
+
+        all_records = " ".join(r.getMessage() for r in caplog.records)
+        assert "hunter2-leaked-secret" not in all_records
+        assert "<redacted" in all_records
+
+
 class TestDocumentCRUDAgent:
     @pytest.mark.asyncio
     @patch("agents.agent_base.arango_connector")

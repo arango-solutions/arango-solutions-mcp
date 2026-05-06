@@ -37,7 +37,7 @@ The original review identified **27 findings** across PRD alignment, code qualit
 | P-1 | `max_connections` / `timeout` fields existed but were never wired        | High     | **Closed** | Fields **removed** from `config.py`; PRD §9.1 documents pool tuning as future work using python-arango's `HTTPClient` |
 | P-2 | `enable_metrics` field reserved but never implemented                    | Low      | **Closed** | Field **removed** from `config.py`; metrics documented as future work in PRD §9.1 |
 | P-3 | `ARANGO_VERIFY_SSL` plumbing not actually applied at HTTP-client level   | Medium   | **Closed** | Verified `verify_override` is the correct python-arango knob; no change required, PRD §3.1 clarified |
-| P-4 | Log redaction — bind values not logged, but raw query text was logged    | Medium   | **Open**   | **Deferred** — query text still logged at first 100 chars in `aql_execution_agent.py`. Tracked in PRD §9.1 as "Log redaction of inline AQL literals" |
+| P-4 | Log redaction — bind values not logged, but raw query text was logged    | Medium   | **Closed** | User-supplied AQL is now redacted by default to `<redacted len=N sha1=…>`; the sha1 prefix lets operators correlate log lines for the same query without exposing literals. Set `LOG_AQL_QUERIES=true` to opt back into plaintext (first 100 chars) for debugging. 4 new mock tests in `test_agent_unit.py::TestAQLLogRedaction`. |
 | P-5 | `@handle_arango_errors` only used by 5/15 agents                         | High     | **Closed** | Decorator extended with `on_arango_error` callback; **all 15 agents** now use it (Phase 1 + Phase 3 fan-out) |
 | P-6 | No auth middleware for HTTP transport (acknowledged limitation)          | Medium   | **Closed** | New `auth_middleware.py` (`BearerTokenAuthMiddleware`); `MCP_AUTH_TOKEN` required for non-loopback HTTP/SSE; startup guard refuses to bind otherwise |
 
@@ -146,8 +146,7 @@ These are documented and tracked, not bugs:
 3. **Prometheus / OpenTelemetry metrics** — operators wanting metrics can wrap the ASGI app themselves; no built-in counters / histograms yet.
 4. **Cluster CI** — multi-coordinator compose file removed (was broken); to be replaced with a working topology.
 5. **Hybrid search integration tests** — require vector-capable ArangoDB; currently skipped in environments without `vector` index support.
-6. **AQL log redaction** — query text is logged at first 100 chars; inline literals could leak sensitive data.
-7. **Operation-dispatch registry** — replace `if/elif` chains in `arun()` with a registry pattern. Cosmetic.
+6. **Operation-dispatch registry** — replace `if/elif` chains in `arun()` with a registry pattern. Cosmetic.
 
 ---
 

@@ -13,6 +13,23 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 
+def _aql_log_fragment(aql_query: str) -> str:
+    """Return a log-safe representation of a user-supplied AQL query.
+
+    By default this is structural metadata only — query length and a
+    sha1 prefix to correlate log lines belonging to the same query
+    without exposing literals. Set ``MCP_LOG_AQL_QUERIES=true`` (i.e.
+    ``settings.server.log_aql_queries = True``) to log the first 100
+    chars of the actual query for debugging.
+    """
+    import hashlib
+
+    if settings.server.log_aql_queries:
+        return f"{aql_query[:100]}..." if len(aql_query) > 100 else aql_query
+    digest = hashlib.sha1(aql_query.encode("utf-8")).hexdigest()[:10]
+    return f"<redacted len={len(aql_query)} sha1={digest}>"
+
+
 class AQLExecutionAgent(ArangoAgentBase):
     """Agent for executing, explaining, and validating AQL queries."""
 
@@ -35,7 +52,8 @@ class AQLExecutionAgent(ArangoAgentBase):
 
         logger.info(
             f"AQLExecutionAgent: Executing AQL in DB '{database_name}': "
-            f"{aql_query[:100]}... bind_vars_keys={list(bind_vars.keys()) if bind_vars else []}"
+            f"{_aql_log_fragment(aql_query)} "
+            f"bind_vars_keys={list(bind_vars.keys()) if bind_vars else []}"
         )
 
         db_to_query, database_name = self.resolve_db(database_name)
@@ -85,7 +103,8 @@ class AQLExecutionAgent(ArangoAgentBase):
         opt_rules: List[str] | None = inputs.get("opt_rules")
 
         logger.info(
-            f"AQLExecutionAgent: Explaining AQL in DB '{database_name}': {aql_query[:100]}..."
+            f"AQLExecutionAgent: Explaining AQL in DB '{database_name}': "
+            f"{_aql_log_fragment(aql_query)}"
         )
 
         try:
@@ -118,7 +137,8 @@ class AQLExecutionAgent(ArangoAgentBase):
 
     async def _validate(self, aql_query: str, database_name: str | None) -> Dict[str, Any]:
         logger.info(
-            f"AQLExecutionAgent: Validating AQL in DB '{database_name}': {aql_query[:100]}..."
+            f"AQLExecutionAgent: Validating AQL in DB '{database_name}': "
+            f"{_aql_log_fragment(aql_query)}"
         )
 
         try:
