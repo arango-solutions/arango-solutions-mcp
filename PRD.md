@@ -259,7 +259,7 @@ Serve built-in AQL documentation to the AI assistant.
 |-------------|----------------|
 | **No hardcoded credentials** | All connection parameters via `ARANGO_*` environment variables; validated by Pydantic settings |
 | **AQL injection prevention** | `aql_utils.py` validates all identifiers before AQL interpolation; values use bind variables (`@param`) |
-| **Log redaction** | Bind variable values are never logged; only parameter keys appear in log output |
+| **Log redaction** | Bind variable values are never logged; only parameter keys appear in log output. User-supplied AQL is also redacted by default (`<redacted len=N sha1=…>`) because inline literals can contain secrets. Set `LOG_AQL_QUERIES=true` to log the first 100 chars of the query for debugging. |
 | **SSL/TLS by default** | `ARANGO_VERIFY_SSL` defaults to `true`; optional `ARANGO_SSL_CERT_PATH` with cross-platform path validation |
 | **JS transaction gating** | `execute-transaction` disabled by default; requires `ENABLE_JS_TRANSACTIONS=true` to allow arbitrary JS execution on the server |
 | **Defense-in-depth** | `_system` database deletion blocked at agent level (in addition to tool level) |

@@ -117,6 +117,7 @@ For remote/Docker deployments, Antigravity can connect via HTTP:
 | `MCP_PORT` | No | `8000` | Bind port for `sse`/`streamable-http` transport |
 | `MCP_AUTH_TOKEN` | Conditional | — | Bearer token required for `sse`/`streamable-http` when `MCP_HOST` is non-loopback. See "HTTP transport security" below. |
 | `DEFAULT_AQL_MAX_RUNTIME` | No | `30.0` | Default per-query AQL max runtime in seconds (ArangoDB kills queries that exceed this). Set to `0` to disable. Per-call overrides via `execute-aql-query`. |
+| `LOG_AQL_QUERIES` | No | `false` | Whether to log the first 100 chars of user-supplied AQL. Default `false` because inline literals (`FILTER doc.token == "abc"`) can contain secrets. When `false`, the agent logs `<redacted len=N sha1=…>` instead. |
 
 All tools accept an optional `database_name` parameter to override the default.
 
@@ -466,6 +467,7 @@ pre-commit install
 | **Destructive operation guards** | `_system` database deletion blocked at both tool and agent levels |
 | **HTTP bearer-token auth** | `MCP_AUTH_TOKEN` enforces an `Authorization: Bearer <token>` header on every `sse` / `streamable-http` request via constant-time comparison (`hmac.compare_digest`). The server refuses to start (exit code `2`) when `MCP_HOST` is non-loopback and the token is unset. |
 | **AQL query budget** | `DEFAULT_AQL_MAX_RUNTIME` (default `30s`) caps every `execute-aql-query`; per-call `max_runtime` override is also accepted. |
+| **AQL log redaction** | User-supplied AQL is logged as `<redacted len=N sha1=…>` by default; the sha1 prefix lets you correlate log lines for the same query without exposing literals. Set `LOG_AQL_QUERIES=true` for plaintext debugging. |
 | **Secret hygiene** | Root password, `MCP_AUTH_TOKEN`, and the `password` parameter on `create-user` / `update-user` are typed as `pydantic.SecretStr`, so values are not reprinted in logs or `repr()` output. |
 
 ---
