@@ -65,7 +65,13 @@ class ViewManagementAgent(ArangoAgentBase):
     @handle_arango_errors(
         "ViewManagementAgent",
         "View",
-        specific_exceptions=(ViewListError, ViewCreateError, ViewDeleteError, ViewUpdateError, ViewGetError),
+        specific_exceptions=(
+            ViewListError,
+            ViewCreateError,
+            ViewDeleteError,
+            ViewUpdateError,
+            ViewGetError,
+        ),
     )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
@@ -109,7 +115,8 @@ class ViewManagementAgent(ArangoAgentBase):
             if view_type.lower() == "arangosearch":
                 view_info = await self.run_sync(
                     db.create_arangosearch_view,
-                    name=view_name, properties=current_properties,
+                    name=view_name,
+                    properties=current_properties,
                 )
             elif view_type.lower() == "search-alias":
                 if not current_properties or "indexes" not in current_properties:
@@ -118,7 +125,9 @@ class ViewManagementAgent(ArangoAgentBase):
                     }
                 view_info = await self.run_sync(
                     db.create_view,
-                    name=view_name, view_type="search-alias", properties=current_properties,
+                    name=view_name,
+                    view_type="search-alias",
+                    properties=current_properties,
                 )
             else:
                 return {
@@ -150,18 +159,23 @@ class ViewManagementAgent(ArangoAgentBase):
             if view_actual_type == "arangosearch":
                 updated_props = await self.run_sync(
                     db.update_arangosearch_view,
-                    name=view_name, properties=properties,
+                    name=view_name,
+                    properties=properties,
                 )
             elif view_actual_type == "search-alias":
                 updated_props = await self.run_sync(
-                    db.update_view, name=view_name, properties=properties,
+                    db.update_view,
+                    name=view_name,
+                    properties=properties,
                 )
             else:
                 logger.warning(
                     f"Attempting generic update for unknown or non-specific view type: {view_actual_type}"
                 )
                 updated_props = await self.run_sync(
-                    db.update_view, name=view_name, properties=properties,
+                    db.update_view,
+                    name=view_name,
+                    properties=properties,
                 )
             return {"status": "View properties updated.", "updated_properties": updated_props}
 
@@ -180,7 +194,8 @@ class ViewManagementAgent(ArangoAgentBase):
             if view_actual_type == "arangosearch":
                 replaced_props = await self.run_sync(
                     db.replace_arangosearch_view,
-                    name=view_name, properties=properties,
+                    name=view_name,
+                    properties=properties,
                 )
             elif view_actual_type == "search-alias":
                 if "indexes" not in properties:
@@ -189,7 +204,9 @@ class ViewManagementAgent(ArangoAgentBase):
                     }
                 replaced_props = await self.run_sync(
                     db.replace_view,
-                    name=view_name, view_type="search-alias", properties=properties,
+                    name=view_name,
+                    view_type="search-alias",
+                    properties=properties,
                 )
             else:
                 logger.warning(
@@ -197,7 +214,9 @@ class ViewManagementAgent(ArangoAgentBase):
                 )
                 replaced_props = await self.run_sync(
                     db.replace_view,
-                    name=view_name, view_type=view_actual_type, properties=properties,
+                    name=view_name,
+                    view_type=view_actual_type,
+                    properties=properties,
                 )
 
             return {

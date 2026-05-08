@@ -23,7 +23,9 @@ class VectorSearchAgent(ArangoAgentBase):
     against collections with vector indexes.
     """
 
-    @handle_arango_errors("VectorSearchAgent", "Vector Search", specific_exceptions=(AQLQueryExecuteError,))
+    @handle_arango_errors(
+        "VectorSearchAgent", "Vector Search", specific_exceptions=(AQLQueryExecuteError,)
+    )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         database_name: Optional[str] = mcp_tool_inputs.get("database_name")

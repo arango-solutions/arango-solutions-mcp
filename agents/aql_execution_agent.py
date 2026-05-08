@@ -62,15 +62,11 @@ class AQLExecutionAgent(ArangoAgentBase):
         if configured_max_runtime is None:
             configured_max_runtime = settings.server.default_aql_max_runtime
 
-        execute_kwargs: Dict[str, Any] = dict(
-            bind_vars=bind_vars, count=True, full_count=True
-        )
+        execute_kwargs: Dict[str, Any] = dict(bind_vars=bind_vars, count=True, full_count=True)
         if configured_max_runtime and configured_max_runtime > 0:
             execute_kwargs["max_runtime"] = float(configured_max_runtime)
 
-        cursor = await self.run_sync(
-            db_to_query.aql.execute, aql_query, **execute_kwargs
-        )
+        cursor = await self.run_sync(db_to_query.aql.execute, aql_query, **execute_kwargs)
         results = list(cursor)
 
         response = {
@@ -82,9 +78,7 @@ class AQLExecutionAgent(ArangoAgentBase):
                 else None
             ),
             "count": cursor.count(),
-            "full_count": (
-                cursor.full_count() if hasattr(cursor, "full_count") else None
-            ),
+            "full_count": (cursor.full_count() if hasattr(cursor, "full_count") else None),
             "results": results,
             "extra_stats": cursor.statistics(),
         }

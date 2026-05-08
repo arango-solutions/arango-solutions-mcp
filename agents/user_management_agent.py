@@ -36,7 +36,13 @@ class UserManagementAgent(ArangoAgentBase):
     @handle_arango_errors(
         "UserManagementAgent",
         "User",
-        specific_exceptions=(UserCreateError, UserDeleteError, UserGetError, UserListError, UserUpdateError),
+        specific_exceptions=(
+            UserCreateError,
+            UserDeleteError,
+            UserGetError,
+            UserListError,
+            UserUpdateError,
+        ),
     )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
@@ -156,7 +162,9 @@ class UserManagementAgent(ArangoAgentBase):
             result["collection"] = collection_name
         return result
 
-    async def _grant_permission(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _grant_permission(
+        self, db: StandardDatabase, inputs: Dict[str, Any]
+    ) -> Dict[str, Any]:
         username: str | None = inputs.get("username")
         permission: str | None = inputs.get("permission")
         database_name: str | None = inputs.get("database_name")
@@ -183,7 +191,9 @@ class UserManagementAgent(ArangoAgentBase):
             "status": f"Granted '{permission}' on {target} to user '{username}'.",
         }
 
-    async def _revoke_permission(self, db: StandardDatabase, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def _revoke_permission(
+        self, db: StandardDatabase, inputs: Dict[str, Any]
+    ) -> Dict[str, Any]:
         username: str | None = inputs.get("username")
         database_name: str | None = inputs.get("database_name")
         collection_name: str | None = inputs.get("collection_name")

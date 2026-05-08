@@ -73,7 +73,11 @@ class _RecordingApp:
 
 
 async def _send_http_request(
-    app, *, path: str = "/mcp", method: str = "POST", headers: list[tuple[bytes, bytes]] | None = None
+    app,
+    *,
+    path: str = "/mcp",
+    method: str = "POST",
+    headers: list[tuple[bytes, bytes]] | None = None,
 ) -> dict[str, Any]:
     """Drive ``app`` with a synthetic ASGI HTTP request and collect the response."""
     scope = {
@@ -310,15 +314,13 @@ def test_custom_health_path():
     """The ``health_path`` is configurable; other paths still hit auth."""
     inner = _RecordingApp()
     health = _RecordingHealthApp()
-    mw = BearerTokenAuthMiddleware(
-        inner, TOKEN, health_app=health, health_path="/_/ready"
-    )
+    mw = BearerTokenAuthMiddleware(inner, TOKEN, health_app=health, health_path="/_/ready")
 
     ok = asyncio.run(_send_http_request(mw, path="/_/ready", method="GET"))
     assert ok["status"] == 200
     assert len(health.calls) == 1
 
     blocked = asyncio.run(_send_http_request(mw, path="/healthz", method="GET"))
-    assert blocked["status"] == 401, (
-        "default /healthz should not bypass auth when health_path was overridden"
-    )
+    assert (
+        blocked["status"] == 401
+    ), "default /healthz should not bypass auth when health_path was overridden"
