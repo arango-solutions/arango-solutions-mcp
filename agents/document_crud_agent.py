@@ -96,9 +96,7 @@ class DocumentCRUDAgent(ArangoAgentBase):
         elif operation == "delete_document":
             if not document_key_or_id:
                 return {"error": "Document key or ID is required."}
-            meta = await self.run_sync(
-                collection.delete, document_key_or_id, ignore_missing=False
-            )
+            meta = await self.run_sync(collection.delete, document_key_or_id, ignore_missing=False)
             return {"status": "Document deleted successfully.", "metadata": meta}
 
         elif operation == "replace_document":

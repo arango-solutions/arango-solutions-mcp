@@ -42,9 +42,7 @@ class ArangoDBConnector:
 
         hosts = [host.strip() for host in settings.arango.hosts.split(",")]
 
-        logger.info(
-            f"Connecting to ArangoDB at: {hosts} as user: {settings.arango.root_username}"
-        )
+        logger.info(f"Connecting to ArangoDB at: {hosts} as user: {settings.arango.root_username}")
 
         client_kwargs: dict = {"hosts": hosts}
 

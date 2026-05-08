@@ -57,9 +57,8 @@ ignore = [
     "E402",   # module-import-not-at-top-of-file — side-effect imports in server.py/conftest
     "E501",   # line-too-long — enforced by formatter, not linter
     "UP006",  # non-pep585-annotation — project uses typing.Dict/List
-    "UP007",  # non-pep604-annotation — project uses Optional[X]
+    "UP007",  # non-pep604-annotation — project uses Optional[X] (also covers parameters)
     "UP035",  # deprecated-import — project uses typing imports
-    "UP045",  # non-pep604-annotation-optional — same rationale as UP007 (parameters)
     "W293",   # whitespace-before-comment — in multiline Field descriptions
 ]
 

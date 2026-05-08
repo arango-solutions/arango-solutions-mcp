@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 class DatabaseManagementAgent(ArangoAgentBase):
     """Agent for ArangoDB database management operations (create, list, delete, info)."""
 
-    @handle_arango_errors("DatabaseManagementAgent", "Database", specific_exceptions=(DatabaseListError, DatabaseCreateError, DatabaseDeleteError))
+    @handle_arango_errors(
+        "DatabaseManagementAgent",
+        "Database",
+        specific_exceptions=(DatabaseListError, DatabaseCreateError, DatabaseDeleteError),
+    )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation = mcp_tool_inputs.get("operation")
         db_name_param: Optional[str] = mcp_tool_inputs.get("database_name")

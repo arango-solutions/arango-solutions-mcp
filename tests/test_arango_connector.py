@@ -78,11 +78,10 @@ class TestIsAuthError:
 
 class TestConnectRetry:
     async def test_success_on_first_attempt(self, connector, fast_settings):
-        with patch(
-            "arango_connector.ArangoClient", return_value=_ok_client()
-        ) as mock_client_cls, patch(
-            "arango_connector.asyncio.sleep", new=AsyncMock()
-        ) as mock_sleep:
+        with (
+            patch("arango_connector.ArangoClient", return_value=_ok_client()) as mock_client_cls,
+            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        ):
             await connector.connect()
 
         mock_client_cls.assert_called_once()
@@ -96,11 +95,10 @@ class TestConnectRetry:
             _ok_client(),
         ]
 
-        with patch(
-            "arango_connector.ArangoClient", side_effect=clients
-        ) as mock_client_cls, patch(
-            "arango_connector.asyncio.sleep", new=AsyncMock()
-        ) as mock_sleep:
+        with (
+            patch("arango_connector.ArangoClient", side_effect=clients) as mock_client_cls,
+            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+        ):
             await connector.connect()
 
         assert mock_client_cls.call_count == 3
@@ -110,11 +108,11 @@ class TestConnectRetry:
     async def test_auth_failure_raises_immediately(self, connector, fast_settings):
         err = _FakeAuthError("HTTP 401: unauthorized")
 
-        with patch(
-            "arango_connector.ArangoClient", side_effect=err
-        ) as mock_client_cls, patch(
-            "arango_connector.asyncio.sleep", new=AsyncMock()
-        ) as mock_sleep, pytest.raises(_FakeAuthError):
+        with (
+            patch("arango_connector.ArangoClient", side_effect=err) as mock_client_cls,
+            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            pytest.raises(_FakeAuthError),
+        ):
             await connector.connect()
 
         assert mock_client_cls.call_count == 1
@@ -124,11 +122,11 @@ class TestConnectRetry:
         err = _FakeAuthError("server said no")
         err.http_code = 401  # type: ignore[attr-defined]
 
-        with patch(
-            "arango_connector.ArangoClient", side_effect=err
-        ) as mock_client_cls, patch(
-            "arango_connector.asyncio.sleep", new=AsyncMock()
-        ) as mock_sleep, pytest.raises(_FakeAuthError):
+        with (
+            patch("arango_connector.ArangoClient", side_effect=err) as mock_client_cls,
+            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            pytest.raises(_FakeAuthError),
+        ):
             await connector.connect()
 
         assert mock_client_cls.call_count == 1
@@ -140,11 +138,11 @@ class TestConnectRetry:
         fake_pw.get_secret_value.return_value = ""
         monkeypatch.setattr(arango_connector.settings.arango, "root_password", fake_pw)
 
-        with patch(
-            "arango_connector.ArangoClient", return_value=_ok_client()
-        ) as mock_client_cls, patch(
-            "arango_connector.asyncio.sleep", new=AsyncMock()
-        ) as mock_sleep, pytest.raises(ValueError, match="ArangoDB password not configured"):
+        with (
+            patch("arango_connector.ArangoClient", return_value=_ok_client()) as mock_client_cls,
+            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            pytest.raises(ValueError, match="ArangoDB password not configured"),
+        ):
             await connector.connect()
 
         mock_client_cls.assert_not_called()
@@ -152,12 +150,14 @@ class TestConnectRetry:
 
     async def test_exhausted_retries_raises_last(self, connector, fast_settings):
         # max_retries=3 → 4 total attempts, 3 sleeps between them.
-        with patch(
-            "arango_connector.ArangoClient",
-            side_effect=ConnectionError("connection refused"),
-        ) as mock_client_cls, patch(
-            "arango_connector.asyncio.sleep", new=AsyncMock()
-        ) as mock_sleep, pytest.raises(ConnectionError, match="connection refused"):
+        with (
+            patch(
+                "arango_connector.ArangoClient",
+                side_effect=ConnectionError("connection refused"),
+            ) as mock_client_cls,
+            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            pytest.raises(ConnectionError, match="connection refused"),
+        ):
             await connector.connect()
 
         assert mock_client_cls.call_count == 4  # max_retries + 1
@@ -172,12 +172,14 @@ class TestConnectRetry:
         async def _record_sleep(seconds: float) -> None:
             sleep_calls.append(seconds)
 
-        with patch(
-            "arango_connector.ArangoClient",
-            side_effect=ConnectionError("connection refused"),
-        ), patch(
-            "arango_connector.asyncio.sleep", new=_record_sleep
-        ), pytest.raises(ConnectionError):
+        with (
+            patch(
+                "arango_connector.ArangoClient",
+                side_effect=ConnectionError("connection refused"),
+            ),
+            patch("arango_connector.asyncio.sleep", new=_record_sleep),
+            pytest.raises(ConnectionError),
+        ):
             await connector.connect()
 
         # 20 → min(40, 30)=30 → 30 → 30 → 30; 5 sleeps for max_retries=5.

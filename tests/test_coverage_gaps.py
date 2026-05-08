@@ -224,9 +224,7 @@ class TestArangoSearchViews:
         assert "error" not in props
         assert props["view_properties"]["type"] == "arangosearch"
 
-        await self.view_agent.arun(
-            {"operation": "delete_view", "view_name": "as_test_view"}
-        )
+        await self.view_agent.arun({"operation": "delete_view", "view_name": "as_test_view"})
 
     @pytest.mark.asyncio
     async def test_update_arangosearch_view(self):
@@ -263,9 +261,7 @@ class TestArangoSearchViews:
         assert "error" not in result, result
         assert "updated" in result.get("status", "").lower()
 
-        await self.view_agent.arun(
-            {"operation": "delete_view", "view_name": "as_update_view"}
-        )
+        await self.view_agent.arun({"operation": "delete_view", "view_name": "as_update_view"})
 
     @pytest.mark.asyncio
     async def test_replace_arangosearch_view(self):
@@ -303,9 +299,7 @@ class TestArangoSearchViews:
         assert "error" not in result, result
         assert "replaced" in result.get("status", "").lower()
 
-        await self.view_agent.arun(
-            {"operation": "delete_view", "view_name": "as_replace_view"}
-        )
+        await self.view_agent.arun({"operation": "delete_view", "view_name": "as_replace_view"})
 
 
 # ── Index Types ──────────────────────────────────────────────────────
@@ -474,11 +468,7 @@ class TestHybridSearch:
         test_db.create_view(
             name=self.view_name,
             view_type="search-alias",
-            properties={
-                "indexes": [
-                    {"collection": test_collection, "index": "hybrid_inv_idx"}
-                ]
-            },
+            properties={"indexes": [{"collection": test_collection, "index": "hybrid_inv_idx"}]},
         )
         time.sleep(1)
 

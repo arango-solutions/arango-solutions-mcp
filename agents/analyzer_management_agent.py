@@ -77,7 +77,9 @@ class AnalyzerManagementAgent(ArangoAgentBase):
             if not analyzer_name:
                 return {"error": "Analyzer name is required to get properties."}
 
-            analyzer_def = await self.run_sync(db.analyzer, analyzer_name)  # this gets the definition
+            analyzer_def = await self.run_sync(
+                db.analyzer, analyzer_name
+            )  # this gets the definition
             return {"analyzer_definition": analyzer_def}
 
         else:

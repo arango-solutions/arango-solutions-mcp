@@ -74,9 +74,7 @@ class ArangoAgentBase(ABC):
     The external LLM (Cursor/Claude) handles intelligence.
     """
 
-    def resolve_db(
-        self, database_name: Optional[str] = None
-    ) -> tuple[StandardDatabase, str]:
+    def resolve_db(self, database_name: Optional[str] = None) -> tuple[StandardDatabase, str]:
         """Get an authenticated database handle and its resolved name.
 
         Returns:

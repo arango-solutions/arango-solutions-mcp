@@ -17,6 +17,7 @@ from agents.agent_base import SYSTEM_DB, ArangoAgentBase, handle_arango_errors  
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _mock_db(name: str = "testdb") -> MagicMock:
     """Return a lightweight MagicMock that quacks like a StandardDatabase."""
     db = MagicMock()
@@ -186,9 +187,7 @@ class TestAQLExecutionAgent:
         which still requires a non-empty query."""
         from agents.aql_execution_agent import AQLExecutionAgent
 
-        result = await AQLExecutionAgent().arun(
-            {"operation": "nonexistent", "aql_query": ""}
-        )
+        result = await AQLExecutionAgent().arun({"operation": "nonexistent", "aql_query": ""})
         assert "error" in result
 
 
@@ -202,7 +201,7 @@ class TestAQLLogRedaction:
 
         # Default ServerSettings has log_aql_queries=False.
         assert settings.server.log_aql_queries is False
-        out = _aql_log_fragment("FILTER doc.token == \"super-secret-value\"")
+        out = _aql_log_fragment('FILTER doc.token == "super-secret-value"')
         assert "super-secret-value" not in out
         assert "<redacted" in out
         assert "len=" in out
@@ -237,7 +236,7 @@ class TestAQLLogRedaction:
     ):
         from agents.aql_execution_agent import AQLExecutionAgent
 
-        secret = "FILTER user.password == \"hunter2-leaked-secret\""
+        secret = 'FILTER user.password == "hunter2-leaked-secret"'
         mock_db = _mock_db()
         cursor = MagicMock()
         cursor.__iter__.return_value = iter([])
@@ -248,9 +247,7 @@ class TestAQLLogRedaction:
         mock_connector.get_db.return_value = mock_db
 
         with caplog.at_level(logging.INFO, logger="agents.aql_execution_agent"):
-            await AQLExecutionAgent().arun(
-                {"operation": "execute", "aql_query": secret}
-            )
+            await AQLExecutionAgent().arun({"operation": "execute", "aql_query": secret})
 
         all_records = " ".join(r.getMessage() for r in caplog.records)
         assert "hunter2-leaked-secret" not in all_records

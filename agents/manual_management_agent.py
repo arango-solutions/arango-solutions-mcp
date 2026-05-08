@@ -16,7 +16,9 @@ _AVAILABLE_MANUALS = (
 class ManualManagementAgent(ArangoAgentBase):
     """Agent for retrieving AQL manuals."""
 
-    @handle_arango_errors("ManualManagementAgent", "Manual", specific_exceptions=(FileNotFoundError,))
+    @handle_arango_errors(
+        "ManualManagementAgent", "Manual", specific_exceptions=(FileNotFoundError,)
+    )
     async def arun(self, mcp_tool_inputs: Dict[str, Any]) -> Dict[str, Any]:
         operation: str = mcp_tool_inputs.get("operation", "")
         manual_name: str = mcp_tool_inputs.get("manual_name", "").lower()

@@ -107,7 +107,7 @@ class ServerSettings(BaseSettings):
         default=False,
         description="When false (default), the AQL execution agent logs only structural "
         "metadata (query length, bind variable keys, database, operation). User-supplied "
-        "AQL can contain literal sensitive values (e.g. FILTER doc.token == \"abc\"), so "
+        'AQL can contain literal sensitive values (e.g. FILTER doc.token == "abc"), so '
         "the query text is suppressed. Set true to log the first 100 chars of the query "
         "for debugging.",
     )

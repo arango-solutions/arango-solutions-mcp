@@ -89,9 +89,7 @@ async def health_app(scope, receive, send):
                 ],
             }
         )
-        await send(
-            {"type": "http.response.body", "body": b'{"error":"method not allowed"}'}
-        )
+        await send({"type": "http.response.body", "body": b'{"error":"method not allowed"}'})
         return
 
     healthy = await asyncio.to_thread(arango_connector.health_check)

@@ -110,9 +110,7 @@ def test_healthz_503_when_connection_unhealthy():
 
 def test_healthz_405_for_non_get():
     # health_check should NOT even be called for the wrong method.
-    with patch.object(
-        main.arango_connector, "health_check", return_value=True
-    ) as hc:
+    with patch.object(main.arango_connector, "health_check", return_value=True) as hc:
         response = asyncio.run(_drive(health_app, method="POST"))
 
     assert response["status"] == 405
