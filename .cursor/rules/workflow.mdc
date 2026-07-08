@@ -1,0 +1,22 @@
+---
+alwaysApply: true
+---
+
+# Project workflow rules
+
+## PRD drift detection
+- This project uses a formal PRD at `PRD.md`.
+- When you modify an implementation file, remind the user to run `/prd-sync` at session end.
+- Never claim a requirement is implemented without a `file:line` reference.
+- A test is not an implementation.
+
+## Before solving any non-trivial problem
+1. Ask: "Should I search shared memory for prior solutions to this?"
+2. If yes, query ArangoDB `shared_patterns` collection via the arangodb-memory-mcp MCP:
+   `FOR p IN shared_patterns FILTER CONTAINS(LOWER(p.problem_description), "<keyword>") SORT p.created_at DESC LIMIT 5 RETURN p`
+
+## After solving a reusable problem
+- Offer to save the solution to `shared_patterns` via the MCP `upsert-document` tool.
+
+## Session end
+- Remind the user to run `/prd-sync` if implementation files changed.

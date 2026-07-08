@@ -6,7 +6,7 @@ Built for AI assistants (Cursor, Claude Desktop, etc.) that need full-spectrum a
 
 ## Supported ArangoDB Versions
 
-- **ArangoDB 3.12+** (vector search requires 3.12.4+ with `--vector-index`)
+- **ArangoDB 3.12+** (vector search requires 3.12.4+ with `--experimental-vector-index`)
 - **ArangoDB 4.0** (under development — forward-compatible)
 
 ## Prerequisites
@@ -255,7 +255,7 @@ The server exposes the MCP endpoint at `http://localhost:8000/mcp`. Any MCP clie
 
 ### Vector & Semantic Search (2)
 
-*Requires ArangoDB 3.12.4+ with `--vector-index` enabled.*
+*Requires ArangoDB 3.12.4+ with `--experimental-vector-index` enabled.*
 
 | Tool | Description |
 |------|-------------|

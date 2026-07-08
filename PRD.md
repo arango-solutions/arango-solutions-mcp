@@ -138,7 +138,7 @@ Create and manage all ArangoDB index types including vector and MDI.
 
 ### 2.8 Vector & Semantic Search (2 tools)
 
-Approximate nearest-neighbor and hybrid search. Requires ArangoDB 3.12.4+ with `--vector-index`.
+Approximate nearest-neighbor and hybrid search. Requires ArangoDB 3.12.4+ with `--experimental-vector-index`.
 
 | ID | Tool | Description | Key Parameters |
 |----|------|-------------|----------------|
@@ -290,7 +290,7 @@ Serve built-in AQL documentation to the AI assistant.
 
 | Requirement | Implementation |
 |-------------|----------------|
-| **ArangoDB versions** | 3.12+ (vector search requires 3.12.4+ with `--vector-index`); forward-compatible with 4.0 |
+| **ArangoDB versions** | 3.12+ (vector search requires 3.12.4+ with `--experimental-vector-index`); forward-compatible with 4.0 |
 | **Python versions** | 3.10+ (uses `pyproject.toml` with `python = "^3.10"`) |
 | **Platforms** | macOS, Linux, Windows — platform-specific event loop policies configured in `main.py` |
 | **MCP clients** | Any MCP-compatible client (Cursor IDE, Claude Desktop, Antigravity, custom integrations) |
