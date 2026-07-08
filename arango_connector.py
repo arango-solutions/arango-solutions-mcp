@@ -55,8 +55,28 @@ class ArangoDBConnector:
 
         self.client = ArangoClient(**client_kwargs)
 
+        # Ensure the target database exists before connecting to it (create-if-missing).
+        # Guarded so a user lacking _system access does not break connecting to an
+        # already-existing database.
+        db_name = settings.arango.default_db_name
+        if db_name != "_system":
+            try:
+                sys_db = self.client.db(
+                    "_system",
+                    username=settings.arango.root_username,
+                    password=settings.arango.root_password.get_secret_value(),
+                )
+                if not sys_db.has_database(db_name):
+                    logger.info(f"Database '{db_name}' does not exist; creating it.")
+                    sys_db.create_database(db_name)
+            except Exception as e:
+                logger.warning(
+                    f"Could not ensure database '{db_name}' exists (continuing; "
+                    f"it may already exist or the user may lack _system access): {e}"
+                )
+
         self._default_db = self.client.db(
-            settings.arango.default_db_name,
+            db_name,
             username=settings.arango.root_username,
             password=settings.arango.root_password.get_secret_value(),
         )
