@@ -35,7 +35,7 @@ poetry install
     "arangodb-mcp": {
       "command": "poetry",
       "args": ["run", "python", "main.py"],
-      "cwd": "/path/to/arango-mcp-server",
+      "cwd": "/path/to/arango-solutions-mcp",
       "env": {
         "ARANGO_HOSTS": "http://localhost:8529",
         "ARANGO_ROOT_USERNAME": "root",
@@ -55,7 +55,7 @@ poetry install
     "arangodb-mcp": {
       "command": "poetry",
       "args": ["run", "python", "main.py"],
-      "cwd": "/path/to/arango-mcp-server",
+      "cwd": "/path/to/arango-solutions-mcp",
       "env": {
         "ARANGO_HOSTS": "http://localhost:8529",
         "ARANGO_ROOT_USERNAME": "root",
@@ -75,7 +75,7 @@ poetry install
     "arangodb-mcp": {
       "command": "poetry",
       "args": ["run", "python", "main.py"],
-      "cwd": "/path/to/arango-mcp-server",
+      "cwd": "/path/to/arango-solutions-mcp",
       "env": {
         "ARANGO_HOSTS": "http://localhost:8529",
         "ARANGO_ROOT_USERNAME": "root",
@@ -341,7 +341,7 @@ The server exposes the MCP endpoint at `http://localhost:8000/mcp`. Any MCP clie
 ## Architecture
 
 ```
-arango-mcp-server/
+arango-solutions-mcp/
 ├── main.py                  # Entry point, event loop setup
 ├── server.py                # FastMCP app, server instructions
 ├── config.py                # Pydantic settings (env-based, zero hardcoding)
