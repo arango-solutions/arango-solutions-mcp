@@ -204,6 +204,14 @@ def _has_vector_index(coll) -> bool:
     return any(ix.get("type") == "vector" for ix in coll.indexes())
 
 
+def _vector_dim(coll, default: int = 1536) -> int:
+    """Dimension of the collection's vector index (for placeholder vectors)."""
+    for ix in coll.indexes():
+        if ix.get("type") == "vector":
+            return int(ix.get("params", {}).get("dimension", default))
+    return default
+
+
 # A search is a "hit" when its top result clears this normalized-relevance bar.
 # (relevance is RRF- or BM25-normalized to ~[0,1] in the search AQL.)
 _HIT_RELEVANCE = 0.5
@@ -344,20 +352,24 @@ async def pattern_index(
         if not doc:
             return {"result": {"error": f"document {document_key!r} not found"}}
 
-        # 1. Ensure embedding.
+        # 1. Ensure a REAL embedding. Re-embed if missing OR only a deferred placeholder
+        #    is present (embedding_pending, from a save during an OpenAI outage); clear
+        #    the flag once the real vector lands.
         embedded = False
-        if not doc.get("embedding"):
+        if not doc.get("embedding") or doc.get("embedding_pending"):
             text = "\n".join(str(doc[f]) for f in ("problem_description", "solution_summary")
                              if doc.get(f))
             if text.strip():
                 vecs, _m, _d = await generate_embeddings([text], model)
-                coll.update({"_key": document_key, "embedding": vecs[0]})
+                coll.update({"_key": document_key, "embedding": vecs[0],
+                             "embedding_pending": False})
                 doc["embedding"] = vecs[0]
+                doc["embedding_pending"] = False
                 embedded = True
 
-        if not doc.get("embedding") or not _has_vector_index(coll):
+        if not doc.get("embedding") or doc.get("embedding_pending") or not _has_vector_index(coll):
             return {"result": {"embedded": embedded, "relates_edges": 0, "superseded": None,
-                               "note": "no embedding or vector index; skipped graph maintenance"}}
+                               "note": "no real embedding or vector index; skipped graph maintenance"}}
 
         rel_edges, superseded = _maintain_graph(
             db, coll, collection_name, document_key, doc["embedding"],
@@ -410,29 +422,49 @@ async def save_pattern(
                      f"{project_id}_{problem_category}_{now.strftime('%Y%m%d_%H%M%S')}")[:250]
 
         # Embed BEFORE insert so the doc satisfies a non-sparse vector index.
-        embedding = None
+        embedding, embed_error = None, None
         try:
             vecs, _m, _d = await generate_embeddings(
                 [f"{problem_description}\n{solution_summary}"], model)
             embedding = vecs[0]
         except Exception as exc:  # noqa: BLE001
-            if _has_vector_index(coll):
-                return {"result": {"error": f"embedding required (vector index present) "
-                                            f"but failed: {exc}"}}
+            embed_error = str(exc)
 
         doc = {"_key": key, "project_id": project_id, "project_type": project_type,
                "problem_category": problem_category, "problem_description": problem_description,
                "solution_summary": solution_summary, "tags": tags, "worked": worked,
                "created_at": created, "importance": importance, "usage_count": 0,
                "last_used": created, "source_file": source_file}
+        pending = False
         if embedding is not None:
             doc["embedding"] = embedding
+        elif _has_vector_index(coll):
+            # A non-sparse vector index rejects embedding-less inserts, which would make
+            # the whole save fail whenever OpenAI is unreachable (coupling every write to
+            # an external API). Instead insert with a zero-mean PLACEHOLDER vector +
+            # embedding_pending flag: the pattern is saved and immediately BM25-searchable,
+            # and pattern-index / phase1b_setup.py backfill the real embedding (and
+            # relates_to edges) later. The placeholder is ~orthogonal to real query
+            # vectors, so it does not surface via vector search.
+            dim = _vector_dim(coll)
+            doc["embedding"] = [1.0 / dim] * dim
+            doc["embedding_pending"] = True
+            pending = True
         coll.insert(doc)
 
+        # Provenance always; pass embedding=None when pending so the placeholder is not
+        # used to build bogus KNN relates_to edges (provenance needs no embedding).
         rel_edges, superseded = _maintain_graph(
-            db, coll, collection_name, key, embedding, created, rel_sim, sup_sim, top_k, project_id)
-        return {"result": {"_key": key, "embedded": embedding is not None,
-                           "relates_edges": rel_edges, "superseded": superseded}}
+            db, coll, collection_name, key, (None if pending else embedding),
+            created, rel_sim, sup_sim, top_k, project_id)
+        result = {"_key": key, "embedded": embedding is not None,
+                  "embedding_pending": pending,
+                  "relates_edges": rel_edges, "superseded": superseded}
+        if pending:
+            result["note"] = (f"embedding deferred ({embed_error}); pattern saved and "
+                              f"keyword-searchable now. Backfill with pattern-index on this "
+                              f"_key (or re-run phase1b_setup.py).")
+        return {"result": result}
     except Exception as exc:  # noqa: BLE001
         return {"result": {"error": str(exc)}}
 
@@ -493,5 +525,41 @@ async def save_drift_alert(
         prov = _ensure_provenance(db, "alert_from_project", f"{collection_name}/{key}",
                                   project_id, "alert_from_project")
         return {"result": {"_key": key, "status": status, "provenance_edge": prov}}
+    except Exception as exc:  # noqa: BLE001
+        return {"result": {"error": str(exc)}}
+
+
+@mcp_app.tool(
+    name="pattern-applied",
+    description="""Record that one or more shared-memory patterns were APPLIED to solve a
+    problem (not merely surfaced by a search). Bumps usage_count and refreshes last_used,
+    which feed the /pattern-search graded ranking so genuinely-reused patterns rank higher
+    over time.
+
+    Call this right after you USE a pattern returned by /pattern-search -- pass the _key(s)
+    you actually applied, NOT every result that was shown. This is the APPLY side of the
+    read-path funnel: /pattern-search records what was surfaced; this records what was
+    reused. One call, no AQL needed.
+    """,
+)
+async def pattern_applied(
+    keys: List[str] = Field(description="_key(s) of the pattern(s) actually applied."),
+    collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
+    database_name: str = Field(default="", description="Target database (default: server default)."),
+):
+    try:
+        if not keys:
+            return {"result": {"error": "no keys provided"}}
+        db = arango_connector.get_db(database_name or None)
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        updated = list(db.aql.execute(
+            "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
+            "UPDATE p WITH { usage_count: (p.usage_count == null ? 0 : p.usage_count) + 1, "
+            "last_used: @now } IN @@coll "
+            "RETURN { _key: NEW._key, usage_count: NEW.usage_count }",
+            bind_vars={"keys": keys, "@coll": collection_name, "now": now}))
+        missing = [k for k in keys if k not in [u["_key"] for u in updated]]
+        return {"result": {"applied": updated, "count": len(updated),
+                           "not_found": missing}}
     except Exception as exc:  # noqa: BLE001
         return {"result": {"error": str(exc)}}
