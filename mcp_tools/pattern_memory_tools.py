@@ -25,16 +25,55 @@ def _ekey(a: str, b: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "-", f"{a}__{b}")[:250]
 
 
+def _ensure_provenance(db, edge_coll, src_id, project_id, relation):
+    """Upsert the project_registry node and insert a provenance edge
+    (src_id -> project_registry/<project_id>).
+
+    Used on the write path so every pattern / drift alert is linked to its
+    project and no project becomes an orphan node. No-op if project_id is empty
+    or the edge collection is absent (keyword-only / graph layer not set up).
+    Idempotent: deterministic edge _key + overwrite=True.
+    """
+    if not project_id or not db.has_collection(edge_coll):
+        return False
+    if db.has_collection("project_registry"):
+        db.aql.execute(
+            "UPSERT { _key: @pid } "
+            "INSERT { _key: @pid, project_id: @pid, project_name: @pid, "
+            "project_type: 'other', open_gaps: 0, patterns_contributed: 0, "
+            "last_sync: null, autocreated: true } UPDATE { } IN project_registry",
+            bind_vars={"pid": project_id})
+    src_key = src_id.split("/", 1)[-1]
+    db.collection(edge_coll).insert(
+        {"_key": _ekey(src_key, project_id), "_from": src_id,
+         "_to": f"project_registry/{project_id}", "relation": relation}, overwrite=True)
+    return True
+
+
 # KNN over stored embeddings: APPROX_NEAR_COSINE must be bound via LET + used once in SORT.
 _KNN_AQL = ("FOR q IN @@coll LET s = APPROX_NEAR_COSINE(q.embedding, @vec) "
             "SORT s DESC LIMIT @lim RETURN {k: q._key, s: s, created: q.created_at}")
 
 
-def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, sup_sim, top_k):
-    """Build pattern_relates_to edges + supersede check for one pattern. Sync.
+def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, sup_sim, top_k,
+                    project_id=None):
+    """Maintain graph edges for one just-saved pattern. Sync.
 
-    Returns (relates_edges:int, superseded:dict|None). No-op if no vector index.
+    ALWAYS records provenance (pattern_from_project: pattern -> project_registry),
+    independent of embeddings, auto-creating the project node if the project never
+    ran /prd-sync -- so every saved pattern is linked to its project and neither
+    the pattern nor the project becomes an orphan in the graph. Then, when an
+    embedding + vector index exist, builds pattern_relates_to (KNN) edges and a
+    supersede check.
+
+    Returns (relates_edges:int, superseded:dict|None).
     """
+    # --- provenance: pattern -> project (no embedding needed). Historically this
+    # lived only in phase2_setup.py, so patterns saved via the tool never got a
+    # provenance edge and their projects showed up as orphan nodes. ---
+    _ensure_provenance(db, "pattern_from_project", f"{coll_name}/{key}",
+                       project_id or (coll.get(key) or {}).get("project_id"), "from_project")
+
     if not embedding or not _has_vector_index(coll):
         return 0, None
     k = max(1, min(int(top_k), 10))
@@ -165,6 +204,49 @@ def _has_vector_index(coll) -> bool:
     return any(ix.get("type") == "vector" for ix in coll.indexes())
 
 
+# A search is a "hit" when its top result clears this normalized-relevance bar.
+# (relevance is RRF- or BM25-normalized to ~[0,1] in the search AQL.)
+_HIT_RELEVANCE = 0.5
+
+
+def _log_search(db, query_text, mode, results, project_id, collection_name):
+    """Best-effort read-path instrumentation (never raises into the caller).
+
+    Writes one doc to `search_log` per search and bumps `surfaced_count` /
+    `last_surfaced` on each returned pattern. This makes the READ side of shared
+    memory measurable (search volume, hit rate, surfaced-vs-applied funnel) —
+    usage_count alone only captures the APPLY side.
+    """
+    try:
+        if not db.has_collection("search_log"):
+            db.create_collection("search_log")  # lazy provision
+        top = results[0] if results else None
+        db.collection("search_log").insert({
+            "query": query_text[:500],
+            "project_id": project_id or None,
+            "mode": mode,
+            "count": len(results),
+            "top_key": top["_key"] if top else None,
+            "top_score": top.get("score") if top else None,
+            "top_relevance": top.get("relevance") if top else None,
+            "hit": bool(top and (top.get("relevance") or 0) >= _HIT_RELEVANCE),
+            "result_keys": [r["_key"] for r in results],
+            "created_at": datetime.datetime.now(datetime.timezone.utc)
+                          .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+        keys = [r["_key"] for r in results]
+        if keys:
+            db.aql.execute(
+                "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
+                "UPDATE p WITH { surfaced_count: (p.surfaced_count == null ? 0 : p.surfaced_count) + 1, "
+                "last_surfaced: @now } IN @@coll",
+                bind_vars={"keys": keys, "@coll": collection_name,
+                           "now": datetime.datetime.now(datetime.timezone.utc)
+                                  .strftime("%Y-%m-%dT%H:%M:%SZ")})
+    except Exception:  # noqa: BLE001 — instrumentation must never break search
+        pass
+
+
 @mcp_app.tool(
     name="pattern-search",
     description="""Hybrid semantic + keyword search over the shared-memory patterns.
@@ -188,6 +270,8 @@ async def pattern_search(
     view_name: str = Field(default="patterns_search", description="ArangoSearch view for BM25."),
     database_name: str = Field(default="", description="Target database (default: server default)."),
     model: str = Field(default="", description="Optional embedding model override."),
+    project_id: str = Field(default="", description="Calling project id (from CLAUDE.md) — logged "
+                            "for per-project read-path analytics; optional."),
 ):
     lim = max(1, min(int(limit), 25))
     try:
@@ -219,6 +303,7 @@ async def pattern_search(
                 "q": query_text, "lim": lim, "@view": view_name})
 
         results = list(cursor)
+        _log_search(db, query_text, mode, results, project_id, collection_name)
         return {"result": {"mode": mode, "count": len(results), "patterns": results}}
     except Exception as exc:  # noqa: BLE001
         return {"result": {"error": str(exc)}}
@@ -276,7 +361,7 @@ async def pattern_index(
 
         rel_edges, superseded = _maintain_graph(
             db, coll, collection_name, document_key, doc["embedding"],
-            doc.get("created_at"), rel_sim, sup_sim, top_k)
+            doc.get("created_at"), rel_sim, sup_sim, top_k, doc.get("project_id"))
         return {"result": {"embedded": embedded, "relates_edges": rel_edges,
                            "superseded": superseded}}
     except Exception as exc:  # noqa: BLE001
@@ -345,8 +430,68 @@ async def save_pattern(
         coll.insert(doc)
 
         rel_edges, superseded = _maintain_graph(
-            db, coll, collection_name, key, embedding, created, rel_sim, sup_sim, top_k)
+            db, coll, collection_name, key, embedding, created, rel_sim, sup_sim, top_k, project_id)
         return {"result": {"_key": key, "embedded": embedding is not None,
                            "relates_edges": rel_edges, "superseded": superseded}}
+    except Exception as exc:  # noqa: BLE001
+        return {"result": {"error": str(exc)}}
+
+
+@mcp_app.tool(
+    name="save-drift-alert",
+    description="""Upsert a PRD drift alert AND maintain its project provenance edge.
+
+    Use this from /prd-sync instead of a raw upsert-document into drift_alerts: it
+    guarantees the alert is linked to its project node via an alert_from_project
+    edge (drift_alerts -> project_registry), auto-creating the project node if the
+    project has never run /prd-sync -- so drift alerts and their projects never
+    become orphan nodes in the memory graph.
+
+    Idempotent on _key = <project_id>_<req_id>. Identity fields (project_id,
+    req_id) are preserved across syncs; only the non-empty status/evidence fields
+    passed are merged on re-detection. To close a gap, pass status='closed' with
+    closed_at / closed_evidence.
+    """,
+)
+async def save_drift_alert(
+    project_id: str = Field(description="Originating project id (from CLAUDE.md)."),
+    req_id: str = Field(description="Requirement id, e.g. REQ-007."),
+    requirement: str = Field(default="", description="Requirement text."),
+    classification: str = Field(default="", description="IMPLEMENTED|PARTIAL|MISSING|TEST-ONLY."),
+    status: str = Field(default="open", description="open|closed."),
+    evidence: str = Field(default="", description="file:line, or empty."),
+    gap_description: str = Field(default="", description="What is missing/partial."),
+    detected_at: str = Field(default="", description="ISO timestamp; defaults to now (UTC)."),
+    closed_at: str = Field(default="", description="ISO timestamp when the gap was closed."),
+    closed_evidence: str = Field(default="", description="file:line proving implementation."),
+    collection_name: str = Field(default="drift_alerts", description="Alerts collection."),
+    database_name: str = Field(default="", description="Target database (default: server default)."),
+):
+    try:
+        db = arango_connector.get_db(database_name or None)
+        if not db.has_collection(collection_name):
+            return {"result": {"error": f"collection {collection_name!r} not found"}}
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        key = re.sub(r"[^A-Za-z0-9_-]", "-", f"{project_id}_{req_id}")[:250]
+
+        full = {"_key": key, "project_id": project_id, "req_id": req_id,
+                "requirement": requirement, "classification": classification,
+                "status": status, "evidence": evidence,
+                "gap_description": gap_description, "detected_at": detected_at or now}
+        if status == "closed":
+            full["closed_at"] = closed_at or now
+            full["closed_evidence"] = closed_evidence
+        # Merge subset: everything but identity, dropping empty strings so a
+        # re-detect never blanks a previously-set field (matches the old
+        # upsert-document search_fields/update_data semantics).
+        upd = {k: v for k, v in full.items()
+               if k not in ("_key", "project_id", "req_id") and v != ""}
+
+        db.aql.execute("UPSERT { _key: @key } INSERT @full UPDATE @upd IN @@coll",
+                       bind_vars={"key": key, "full": full, "upd": upd, "@coll": collection_name})
+
+        prov = _ensure_provenance(db, "alert_from_project", f"{collection_name}/{key}",
+                                  project_id, "alert_from_project")
+        return {"result": {"_key": key, "status": status, "provenance_edge": prov}}
     except Exception as exc:  # noqa: BLE001
         return {"result": {"error": str(exc)}}
