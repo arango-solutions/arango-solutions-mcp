@@ -29,6 +29,27 @@ _OPENAI_URL = "https://api.openai.com/v1/embeddings"
 _DEFAULT_MODEL = "text-embedding-3-small"
 _MAX_ATTEMPTS = 3  # retry transient network / 429 / 5xx errors
 
+# TLS env vars that, when pointing at a nonexistent path, make httpx raise a
+# bare FileNotFoundError("[Errno 2] No such file or directory") on every
+# HTTPS request (ssl.load_verify_locations fails before the request is sent).
+_TLS_ENV_VARS = ("SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE")
+
+
+def _sanitize_tls_env() -> None:
+    """Drop stale TLS-override env vars that point at nonexistent paths.
+
+    IDE / agent launchers (VSCode extension hosts, Claude Code sessions) can
+    leak a session-scoped SSL_CERT_FILE into long-lived MCP server processes;
+    once that session's temp file is deleted, every TLS request fails with
+    "[Errno 2] No such file or directory". Removing the dead override lets
+    httpx fall back to the default trust store (certifi). Valid overrides —
+    files that actually exist — are left untouched.
+    """
+    for var in _TLS_ENV_VARS:
+        path = os.environ.get(var)
+        if path and not os.path.exists(path):
+            os.environ.pop(var, None)
+
 
 async def generate_embeddings(texts: List[str], model: str = ""):
     """Embed `texts` via OpenAI. Returns (embeddings, model, dimension). Raises on error.
@@ -43,6 +64,7 @@ async def generate_embeddings(texts: List[str], model: str = ""):
     if not texts:
         raise RuntimeError("No texts provided.")
     chosen = model or os.environ.get("EMBEDDING_MODEL") or _DEFAULT_MODEL
+    _sanitize_tls_env()
 
     last_err = None
     for attempt in range(_MAX_ATTEMPTS):
@@ -64,6 +86,11 @@ async def generate_embeddings(texts: List[str], model: str = ""):
             last_err = RuntimeError(f"embedding API returned {resp.status_code}: {resp.text[:200]}")
         except httpx.HTTPError as exc:  # network/DNS/timeout — transient
             last_err = RuntimeError(f"embedding request failed: {exc}")
+        except OSError as exc:  # e.g. TLS trust-store setup failure — not transient
+            tls = {v: os.environ.get(v) for v in _TLS_ENV_VARS if os.environ.get(v)}
+            raise RuntimeError(
+                f"embedding TLS/socket setup failed: {exc!r}"
+                + (f" (TLS env overrides present: {tls})" if tls else "")) from exc
         if attempt < _MAX_ATTEMPTS - 1:
             await asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s
     raise last_err
