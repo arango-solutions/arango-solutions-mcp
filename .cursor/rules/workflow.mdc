@@ -7,16 +7,33 @@ alwaysApply: true
 ## PRD drift detection
 - This project uses a formal PRD at `PRD.md`.
 - When you modify an implementation file, remind the user to run `/prd-sync` at session end.
+- When the PRD file itself is modified, requirements may have changed — recommend `/prd-sync`.
 - Never claim a requirement is implemented without a `file:line` reference.
 - A test is not an implementation.
+- If the implementation legitimately diverges from the PRD (obsolete or imprecise
+  requirement), propose a PRD patch (`prd_patches`, review_state `proposed`) — never
+  silently absorb the divergence, and never edit the PRD without user acceptance.
 
 ## Before solving any non-trivial problem
-1. Ask: "Should I search shared memory for prior solutions to this?"
-2. If yes, query ArangoDB `shared_patterns` collection via the arangodb-memory-mcp MCP:
-   `FOR p IN shared_patterns FILTER CONTAINS(LOWER(p.problem_description), "<keyword>") SORT p.created_at DESC LIMIT 5 RETURN p`
+1. Search shared memory first via the `pattern-search` MCP tool (server-side hybrid
+   semantic + keyword retrieval — pass text, get ranked results):
+   - `query_text`: the full problem description
+   - `project_id`: the PROJECT_ID from CLAUDE.md
+   - `limit`: 8
+2. Present the top results (problem, solution, tags, source project) and ask which to apply.
+3. If you apply one or more results, record it with the `pattern-applied` tool
+   (pass only the `_key`s actually used).
 
 ## After solving a reusable problem
-- Offer to save the solution to `shared_patterns` via the MCP `upsert-document` tool.
+- Offer to save it with the `save-pattern` MCP tool (it embeds the text and inserts the
+  document with its embedding in one server-side step — required because the collection
+  has a vector index; do NOT insert documents directly with `upsert-document`).
+- Memory types: `pattern` (default), `feedback` (include `why` and `how_to_apply`),
+  `user`, `project`, `reference`. Only save verified successes; never save secrets or
+  client-specific data.
 
 ## Session end
-- Remind the user to run `/prd-sync` if implementation files changed.
+- Remind the user to run `/prd-sync` if implementation files (or the PRD) changed.
+
+> Note: Cursor does not run the Claude Code hooks in `.claude/` (session digest, drift
+> queue, stop gate) — in Cursor these rules are the enforcement layer, so follow them.

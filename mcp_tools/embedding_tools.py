@@ -23,6 +23,8 @@ import httpx
 from pydantic import Field
 
 from arango_connector import arango_connector
+from config import settings
+from mcp_tools._support import arango_error_result, run_sync
 from server import mcp_app
 
 _OPENAI_URL = "https://api.openai.com/v1/embeddings"
@@ -57,13 +59,16 @@ async def generate_embeddings(texts: List[str], model: str = ""):
     Retries up to _MAX_ATTEMPTS on transient failures (network/DNS blips, 429, 5xx)
     with exponential backoff. 4xx (other than 429) fail fast — retrying won't help.
     """
-    api_key = os.environ.get("OPENAI_API_KEY")
+    # Prefer the pydantic-validated setting (env: OPENAI_API_KEY); fall back to a
+    # late-injected process env var so a key set after server start still works.
+    configured = settings.embedding.openai_api_key
+    api_key = configured.get_secret_value() if configured else os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set in the server environment. "
                            "Add it to the MCP server env and restart.")
     if not texts:
         raise RuntimeError("No texts provided.")
-    chosen = model or os.environ.get("EMBEDDING_MODEL") or _DEFAULT_MODEL
+    chosen = model or settings.embedding.embedding_model or _DEFAULT_MODEL
     _sanitize_tls_env()
 
     last_err = None
@@ -118,7 +123,7 @@ async def embed_text(
     try:
         embeddings, chosen, dim = await generate_embeddings(texts, model)
     except Exception as exc:  # noqa: BLE001
-        return {"result": {"error": str(exc)}}
+        return arango_error_result(exc, "Embedding")
     return {"result": {"model": chosen, "dimension": dim, "count": len(embeddings),
                        "embeddings": embeddings}}
 
@@ -148,9 +153,9 @@ async def embed_document(
     model: str = Field(default="", description="Optional embedding model override."),
 ):
     try:
-        db = arango_connector.get_db(database_name or None)
+        db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
-        doc = coll.get(document_key)
+        doc = await run_sync(coll.get, document_key)
         if not doc:
             return {"result": {"error": f"document {document_key!r} not found in "
                                         f"{collection_name!r}"}}
@@ -158,7 +163,7 @@ async def embed_document(
         if not text.strip():
             return {"result": {"error": "no source text to embed in the given fields"}}
         embeddings, chosen, dim = await generate_embeddings([text], model)
-        coll.update({"_key": document_key, target_field: embeddings[0]})
+        await run_sync(coll.update, {"_key": document_key, target_field: embeddings[0]})
         return {"result": {"ok": True, "key": document_key, "model": chosen, "dimension": dim}}
     except Exception as exc:  # noqa: BLE001
-        return {"result": {"error": str(exc)}}
+        return arango_error_result(exc, "Embedding")

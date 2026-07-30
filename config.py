@@ -128,11 +128,37 @@ class ServerSettings(BaseSettings):
     )
 
 
+class EmbeddingSettings(BaseSettings):
+    """Embedding-provider settings for the shared-memory / pattern tools.
+
+    Configures the OpenAI embeddings REST API used by embed-text, embed-document,
+    pattern-search and save-pattern. Both fields are optional: when
+    OPENAI_API_KEY is unset the embedding/pattern tools degrade gracefully
+    (pattern-search falls back to BM25; save-pattern defers the vector), so the
+    core 74-tool database server runs unaffected without them.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    openai_api_key: Optional[SecretStr] = Field(
+        default=None,
+        description="OpenAI API key for the embeddings endpoint (env: OPENAI_API_KEY). "
+        "Required for vector/hybrid pattern-search and for embedding new patterns; "
+        "when unset the pattern tools degrade to keyword-only (BM25) behaviour.",
+    )
+    embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="OpenAI embedding model (env: EMBEDDING_MODEL). "
+        "text-embedding-3-small = 1536 dimensions.",
+    )
+
+
 class AppSettings(BaseSettings):
     """Main application settings container."""
 
     arango: ArangoDBSettings = ArangoDBSettings()
     server: ServerSettings = ServerSettings()
+    embedding: EmbeddingSettings = EmbeddingSettings()
 
 
 # Global settings instance
