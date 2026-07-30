@@ -249,6 +249,31 @@ Serve built-in AQL documentation to the AI assistant.
 
 **Implementation:** `agents/manual_management_agent.py` → `mcp_tools/manual_tools.py`
 
+### 2.16 Embeddings (2 tools)
+
+Generate vector embeddings via the OpenAI embeddings REST API, powering vector/hybrid pattern search. Optional subsystem: when `OPENAI_API_KEY` is unset these tools return a clear error and the pattern tools degrade to keyword-only search, leaving the core 74-tool server unaffected.
+
+| ID | Tool | Description | Key Parameters |
+|----|------|-------------|----------------|
+| E-1 | `embed-text` | Generate embedding vectors for one or more text strings (programmatic callers) | `texts`, `model` |
+| E-2 | `embed-document` | Embed a document's fields and store the vector on the document server-side (keeps large vectors out of the agent context) | `collection_name`, `document_key`, `source_fields`, `target_field` |
+
+**Implementation:** `mcp_tools/embedding_tools.py` (tool layer; shared helpers in `mcp_tools/_support.py`)
+
+### 2.17 Shared-Memory Patterns & Drift (5 tools)
+
+Cross-project "dark factory" memory (see `CLAUDE.md`): reusable solution patterns and PRD-drift alerts stored in ArangoDB, retrieved by hybrid semantic search and linked into a provenance graph. Requires `OPENAI_API_KEY` for vector search; falls back to BM25 when absent.
+
+| ID | Tool | Description | Key Parameters |
+|----|------|-------------|----------------|
+| P-1 | `pattern-search` | Hybrid vector + BM25 search over `shared_patterns` (RRF fusion, 1-hop graph expansion, graded re-rank by importance/recency/usage) | `query_text`, `limit`, `graph_expand`, `project_id` |
+| P-2 | `save-pattern` | Embed-then-insert a solved-problem pattern; maintains `pattern_from_project` provenance and `pattern_relates_to`/`pattern_supersedes` edges | `problem_description`, `solution_summary`, `problem_category`, `project_id`, `importance` |
+| P-3 | `pattern-index` | Backfill the embedding and graph edges for one just-saved pattern | `document_key`, `rel_sim`, `sup_sim`, `top_k` |
+| P-4 | `pattern-applied` | Record that patterns were actually reused (bumps `usage_count`/`last_used`, feeding the search ranking) | `keys` |
+| P-5 | `save-drift-alert` | Upsert a PRD drift alert and link it to its project via an `alert_from_project` edge | `project_id`, `req_id`, `classification`, `status`, `evidence` |
+
+**Implementation:** `mcp_tools/pattern_memory_tools.py` (tool layer; shared helpers in `mcp_tools/_support.py`). Unlike the 74 core tools, these carry business logic in the tool module rather than a dedicated agent (a known divergence from Design Principle 5, tracked as drift REQ-021); they honor the same async-safety and error contract as the agent tools via `mcp_tools/_support.py` (`run_sync` off-loop dispatch + `arango_error_result` standardized envelope).
+
 ---
 
 ## 3. Non-Functional Requirements
@@ -322,7 +347,7 @@ Serve built-in AQL documentation to the AI assistant.
 │                  (server.py)                         │
 │  ┌───────────────────────────────────────────────┐  │
 │  │              mcp_tools/*.py                   │  │
-│  │   74 @mcp_app.tool decorated functions        │  │
+│  │   81 @mcp_app.tool functions (74 core +7 mem)  │  │
 │  │   Pydantic Field validation + descriptions    │  │
 │  └───────────────────┬───────────────────────────┘  │
 │                      │ delegate                     │
@@ -364,6 +389,7 @@ Serve built-in AQL documentation to the AI assistant.
 | **Agent-per-domain** | Each functional area has a dedicated agent class for testability and separation of concerns |
 | **Decorator-based error handling** | `handle_arango_errors` in `agent_base.py` eliminates try/except boilerplate across all 15 agents. The decorator accepts an `on_arango_error: Callable[[Exception], dict \| None]` callback so agents like Cluster (single-server detection) and Backup (Enterprise-only detection) can rewrite specific error responses without hand-rolling try/except blocks. |
 | **Async wrapper** | `ArangoAgentBase.run_sync()` wraps every synchronous python-arango call in `asyncio.to_thread()` so blocking driver I/O does not stall the FastMCP event loop. |
+| **Tool-layer support (no-agent tools)** | The embedding / pattern-memory tools (§2.16–2.17) run directly in the tool layer without an agent. `mcp_tools/_support.py` gives them the same two guarantees the agent base provides: `run_sync` (off-loop dispatch of blocking driver calls) and `arango_error_result` (the standardized `{error, error_code}` envelope). |
 | **Bearer-token auth** | `auth_middleware.BearerTokenAuthMiddleware` is an ASGI middleware that wraps the FastMCP `streamable_http_app()` / `sse_app()` whenever `MCP_AUTH_TOKEN` is set, validating the `Authorization` header in constant time before forwarding the scope. |
 | **Bind variable injection** | All user-provided values use AQL bind variables (`@param`); identifiers validated by `aql_utils` |
 | **Lifespan management** | `arango_db_lifespan` async context manager ensures clean connect/disconnect tied to server lifecycle |
@@ -392,6 +418,8 @@ Serve built-in AQL documentation to the AI assistant.
 | `MCP_PORT` | No | `8000` | — | Bind port for `sse`/`streamable-http` transport |
 | `MCP_AUTH_TOKEN` | Conditional | — | — | Bearer token required for `sse` / `streamable-http` transports. **REQUIRED** when `MCP_HOST` is non-loopback (anything other than `127.0.0.1`, `localhost`, or `::1`); the server exits with code `2` if unset in that configuration. Ignored for `stdio`. Stored in-process as `pydantic.SecretStr`. |
 | `DEFAULT_AQL_MAX_RUNTIME` | No | `30` | — | Default per-query AQL max runtime, in seconds. Applied server-side to every `execute-aql-query` call; the tool also accepts a per-call `max_runtime` override. Set to `0` to disable. |
+| `OPENAI_API_KEY` | No | — | — | OpenAI API key for the embeddings endpoint (§2.16–2.17). Required for vector/hybrid `pattern-search` and for embedding new patterns; when unset those tools degrade to keyword-only (BM25) behaviour. Stored in-process as `pydantic.SecretStr`. |
+| `EMBEDDING_MODEL` | No | `text-embedding-3-small` | — | OpenAI embedding model (1536 dimensions for the default). |
 
 ### 5.2 MCP Client Configuration
 
@@ -491,7 +519,9 @@ The suite is organized into three tiers based on what infrastructure they need:
 | `test_agent_unit.py` | Mock | Per-agent unit tests with `arango_connector` patched out — covers logic branches in every agent without DB I/O |
 | `test_base_and_decorator.py` | Mock | `ArangoAgentBase` (`resolve_db`, `pack_optional`, `run_sync`) and the `handle_arango_errors` decorator (specific exceptions, `on_arango_error` callback, fallthrough) |
 | `test_mcp_tools.py` | Mock | Verifies each `@mcp_app.tool` wrapper builds the correct operation dict and delegates to its agent's `arun` |
-| `test_mcp_e2e.py` | E2E (framework) | Imports `mcp_app`, introspects the tool registry, asserts tool count (74), schema shapes, and server instructions — without a live database |
+| `test_embedding_tools.py` | Mock | `embed-text` / `embed-document` plus the `mcp_tools/_support.py` helpers — standardized error envelope, `run_sync` off-loop dispatch, TLS-env sanitisation, API-key guard |
+| `test_pattern_memory_tools.py` | Mock | The five shared-memory tools — BM25 fallback path, provenance upsert, usage bump + missing-key reporting, standardized errors, off-loop dispatch |
+| `test_mcp_e2e.py` | E2E (framework) | Imports `mcp_app`, introspects the tool registry, asserts tool count (81), schema shapes, and server instructions — without a live database |
 | `test_coverage_gaps.py` | Integration | Fills gaps surfaced by review: document replace/bulk with read-back, ArangoSearch view CRUD, additional index types, hybrid search |
 | `test_auth_middleware.py` | Mock | `BearerTokenAuthMiddleware` with an in-process ASGI harness — no/wrong/correct token, lifespan passthrough, longer-prefix rejection, empty-token construction error |
 
@@ -558,6 +588,7 @@ The suite is organized into three tiers based on what infrastructure they need:
 | Users | `f311408` | User and permission management (9 tools, 74 total) |
 | Hardening | `5e941b2` | Security fixes, code quality, test expansion, tooling |
 | Async-safety & auth | `(uncommitted)` | Async-safety pass: `run_sync` wrapping across all 15 agents; `@handle_arango_errors` adopted by remaining 2 agents (Cluster, Backup) with the new `on_arango_error` callback for Enterprise / cluster-mode rewrites; HTTP bearer-token auth (`auth_middleware.BearerTokenAuthMiddleware`) plus non-loopback startup guard; `MCP_AUTH_TOKEN` and `DEFAULT_AQL_MAX_RUNTIME` settings added; `SecretStr` extended to user-create / user-update passwords; orphan config fields (`max_connections`, `timeout`, `enable_metrics`) removed; broken docker-test cluster mode removed. |
+| Shared-memory tooling | `01583ae`–`(uncommitted)` | Embedding tools (`embed-text`, `embed-document`) and shared-memory pattern/drift tools (`pattern-search`, `save-pattern`, `pattern-index`, `pattern-applied`, `save-drift-alert`) — **7 tools, 81 total** (PRD §2.16–2.17); auto-create target database; graph provenance on the write path. Async-safety + standardized-error retrofit via `mcp_tools/_support.py`; embedding config (`OPENAI_API_KEY`, `EMBEDDING_MODEL`); unit tests `test_embedding_tools.py` + `test_pattern_memory_tools.py`. |
 
 ### 8.2 Adding New Tools
 
