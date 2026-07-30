@@ -17,12 +17,22 @@ from typing import List
 from pydantic import Field
 
 from arango_connector import arango_connector
+from mcp_tools._support import arango_error_result, run_sync
 from mcp_tools.embedding_tools import generate_embeddings
 from server import mcp_app
 
 
 def _ekey(a: str, b: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "-", f"{a}__{b}")[:250]
+
+
+def _run_query(db, aql: str, bind_vars: dict) -> list:
+    """Execute an AQL query and fully drain the cursor.
+
+    Both the execute and the cursor iteration are blocking network calls, so
+    callers run this via ``run_sync`` in a single worker-thread hop.
+    """
+    return list(db.aql.execute(aql, bind_vars=bind_vars))
 
 
 def _ensure_provenance(db, edge_coll, src_id, project_id, relation):
@@ -69,8 +79,9 @@ def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, su
     Returns (relates_edges:int, superseded:dict|None).
     """
     # --- provenance: pattern -> project (no embedding needed). Historically this
-    # lived only in phase2_setup.py, so patterns saved via the tool never got a
-    # provenance edge and their projects showed up as orphan nodes. ---
+    # was recorded only by an out-of-band setup step, so patterns saved via the
+    # tool never got a provenance edge and their projects showed up as orphan
+    # nodes; it now happens here on the write path. ---
     _ensure_provenance(db, "pattern_from_project", f"{coll_name}/{key}",
                        project_id or (coll.get(key) or {}).get("project_id"), "from_project")
 
@@ -283,12 +294,12 @@ async def pattern_search(
 ):
     lim = max(1, min(int(limit), 25))
     try:
-        db = arango_connector.get_db(database_name or None)
+        db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
 
         qvec = None
         mode = "bm25"
-        if _has_vector_index(coll):
+        if await run_sync(_has_vector_index, coll):
             try:
                 embeddings, _model, _dim = await generate_embeddings([query_text], model)
                 qvec = embeddings[0]
@@ -296,25 +307,25 @@ async def pattern_search(
             except Exception:  # noqa: BLE001 — embeddings optional; degrade to BM25
                 qvec = None
 
-        use_graph = (qvec is not None and graph_expand and db.has_collection("pattern_relates_to"))
+        use_graph = (qvec is not None and graph_expand
+                     and await run_sync(db.has_collection, "pattern_relates_to"))
         if use_graph:
             mode = "hybrid+graph"
-            cursor = db.aql.execute(_HYBRID_GRAPH_AQL, bind_vars={
+            results = await run_sync(_run_query, db, _HYBRID_GRAPH_AQL, {
                 "q": query_text, "qvec": qvec, "lim": lim,
                 "@coll": collection_name, "@view": view_name})
         elif qvec is not None:
-            cursor = db.aql.execute(_HYBRID_AQL, bind_vars={
+            results = await run_sync(_run_query, db, _HYBRID_AQL, {
                 "q": query_text, "qvec": qvec, "lim": lim,
                 "@coll": collection_name, "@view": view_name})
         else:
-            cursor = db.aql.execute(_BM25_AQL, bind_vars={
+            results = await run_sync(_run_query, db, _BM25_AQL, {
                 "q": query_text, "lim": lim, "@view": view_name})
 
-        results = list(cursor)
-        _log_search(db, query_text, mode, results, project_id, collection_name)
+        await run_sync(_log_search, db, query_text, mode, results, project_id, collection_name)
         return {"result": {"mode": mode, "count": len(results), "patterns": results}}
     except Exception as exc:  # noqa: BLE001
-        return {"result": {"error": str(exc)}}
+        return arango_error_result(exc)
 
 
 @mcp_app.tool(
@@ -330,9 +341,10 @@ async def pattern_search(
          edge and demotes the older (superseded=true, importance=1) so it drops out
          of search.
 
-    This replaces manual re-runs of the phase2/phase3 scripts for incremental saves.
-    Cheap + deterministic (no LLM). LLM edges (pattern_addresses_requirement,
-    requirement_depends_on) remain a periodic batch (scripts/phase2b_extract.py).
+    This maintains the graph incrementally for a single save, without a bulk
+    re-index pass. Cheap + deterministic (no LLM). LLM-derived edges
+    (pattern_addresses_requirement, requirement_depends_on) are maintained
+    separately by a periodic batch job.
     Returns a small summary. Requires OPENAI_API_KEY for the embedding step.
     """,
 )
@@ -346,9 +358,9 @@ async def pattern_index(
     model: str = Field(default="", description="Optional embedding model override."),
 ):
     try:
-        db = arango_connector.get_db(database_name or None)
+        db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
-        doc = coll.get(document_key)
+        doc = await run_sync(coll.get, document_key)
         if not doc:
             return {"result": {"error": f"document {document_key!r} not found"}}
 
@@ -361,23 +373,24 @@ async def pattern_index(
                              if doc.get(f))
             if text.strip():
                 vecs, _m, _d = await generate_embeddings([text], model)
-                coll.update({"_key": document_key, "embedding": vecs[0],
-                             "embedding_pending": False})
+                await run_sync(coll.update, {"_key": document_key, "embedding": vecs[0],
+                                             "embedding_pending": False})
                 doc["embedding"] = vecs[0]
                 doc["embedding_pending"] = False
                 embedded = True
 
-        if not doc.get("embedding") or doc.get("embedding_pending") or not _has_vector_index(coll):
+        if (not doc.get("embedding") or doc.get("embedding_pending")
+                or not await run_sync(_has_vector_index, coll)):
             return {"result": {"embedded": embedded, "relates_edges": 0, "superseded": None,
                                "note": "no real embedding or vector index; skipped graph maintenance"}}
 
-        rel_edges, superseded = _maintain_graph(
-            db, coll, collection_name, document_key, doc["embedding"],
+        rel_edges, superseded = await run_sync(
+            _maintain_graph, db, coll, collection_name, document_key, doc["embedding"],
             doc.get("created_at"), rel_sim, sup_sim, top_k, doc.get("project_id"))
         return {"result": {"embedded": embedded, "relates_edges": rel_edges,
                            "superseded": superseded}}
     except Exception as exc:  # noqa: BLE001
-        return {"result": {"error": str(exc)}}
+        return arango_error_result(exc)
 
 
 @mcp_app.tool(
@@ -392,7 +405,8 @@ async def pattern_index(
 
     Generates a timestamped _key, sets usage_count=0 and last_used=created_at.
     Requires OPENAI_API_KEY when a vector index is present. Returns a small summary
-    (no raw vectors). LLM edges remain a periodic batch (scripts/phase2b_extract.py).
+    (no raw vectors). LLM-derived edges are maintained separately by a periodic
+    batch job.
     """,
 )
 async def save_pattern(
@@ -414,7 +428,7 @@ async def save_pattern(
     top_k: int = Field(default=3, description="Neighbours to consider for graph edges."),
 ):
     try:
-        db = arango_connector.get_db(database_name or None)
+        db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
         now = datetime.datetime.now(datetime.timezone.utc)
         created = created_at or now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -438,24 +452,24 @@ async def save_pattern(
         pending = False
         if embedding is not None:
             doc["embedding"] = embedding
-        elif _has_vector_index(coll):
+        elif await run_sync(_has_vector_index, coll):
             # A non-sparse vector index rejects embedding-less inserts, which would make
             # the whole save fail whenever OpenAI is unreachable (coupling every write to
             # an external API). Instead insert with a zero-mean PLACEHOLDER vector +
             # embedding_pending flag: the pattern is saved and immediately BM25-searchable,
-            # and pattern-index / phase1b_setup.py backfill the real embedding (and
-            # relates_to edges) later. The placeholder is ~orthogonal to real query
+            # and pattern-index backfills the real embedding (and relates_to edges)
+            # later. The placeholder is ~orthogonal to real query
             # vectors, so it does not surface via vector search.
-            dim = _vector_dim(coll)
+            dim = await run_sync(_vector_dim, coll)
             doc["embedding"] = [1.0 / dim] * dim
             doc["embedding_pending"] = True
             pending = True
-        coll.insert(doc)
+        await run_sync(coll.insert, doc)
 
         # Provenance always; pass embedding=None when pending so the placeholder is not
         # used to build bogus KNN relates_to edges (provenance needs no embedding).
-        rel_edges, superseded = _maintain_graph(
-            db, coll, collection_name, key, (None if pending else embedding),
+        rel_edges, superseded = await run_sync(
+            _maintain_graph, db, coll, collection_name, key, (None if pending else embedding),
             created, rel_sim, sup_sim, top_k, project_id)
         result = {"_key": key, "embedded": embedding is not None,
                   "embedding_pending": pending,
@@ -463,10 +477,10 @@ async def save_pattern(
         if pending:
             result["note"] = (f"embedding deferred ({embed_error}); pattern saved and "
                               f"keyword-searchable now. Backfill with pattern-index on this "
-                              f"_key (or re-run phase1b_setup.py).")
+                              f"_key.")
         return {"result": result}
     except Exception as exc:  # noqa: BLE001
-        return {"result": {"error": str(exc)}}
+        return arango_error_result(exc)
 
 
 @mcp_app.tool(
@@ -500,8 +514,8 @@ async def save_drift_alert(
     database_name: str = Field(default="", description="Target database (default: server default)."),
 ):
     try:
-        db = arango_connector.get_db(database_name or None)
-        if not db.has_collection(collection_name):
+        db = await run_sync(arango_connector.get_db, database_name or None)
+        if not await run_sync(db.has_collection, collection_name):
             return {"result": {"error": f"collection {collection_name!r} not found"}}
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         key = re.sub(r"[^A-Za-z0-9_-]", "-", f"{project_id}_{req_id}")[:250]
@@ -519,14 +533,15 @@ async def save_drift_alert(
         upd = {k: v for k, v in full.items()
                if k not in ("_key", "project_id", "req_id") and v != ""}
 
-        db.aql.execute("UPSERT { _key: @key } INSERT @full UPDATE @upd IN @@coll",
+        await run_sync(db.aql.execute,
+                       "UPSERT { _key: @key } INSERT @full UPDATE @upd IN @@coll",
                        bind_vars={"key": key, "full": full, "upd": upd, "@coll": collection_name})
 
-        prov = _ensure_provenance(db, "alert_from_project", f"{collection_name}/{key}",
-                                  project_id, "alert_from_project")
+        prov = await run_sync(_ensure_provenance, db, "alert_from_project",
+                              f"{collection_name}/{key}", project_id, "alert_from_project")
         return {"result": {"_key": key, "status": status, "provenance_edge": prov}}
     except Exception as exc:  # noqa: BLE001
-        return {"result": {"error": str(exc)}}
+        return arango_error_result(exc)
 
 
 @mcp_app.tool(
@@ -550,16 +565,16 @@ async def pattern_applied(
     try:
         if not keys:
             return {"result": {"error": "no keys provided"}}
-        db = arango_connector.get_db(database_name or None)
+        db = await run_sync(arango_connector.get_db, database_name or None)
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        updated = list(db.aql.execute(
+        updated = await run_sync(_run_query, db,
             "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
             "UPDATE p WITH { usage_count: (p.usage_count == null ? 0 : p.usage_count) + 1, "
             "last_used: @now } IN @@coll "
             "RETURN { _key: NEW._key, usage_count: NEW.usage_count }",
-            bind_vars={"keys": keys, "@coll": collection_name, "now": now}))
+            {"keys": keys, "@coll": collection_name, "now": now})
         missing = [k for k in keys if k not in [u["_key"] for u in updated]]
         return {"result": {"applied": updated, "count": len(updated),
                            "not_found": missing}}
     except Exception as exc:  # noqa: BLE001
-        return {"result": {"error": str(exc)}}
+        return arango_error_result(exc)

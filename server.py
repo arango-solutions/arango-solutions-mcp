@@ -15,7 +15,7 @@ ArangoDB MCP Server — comprehensive multi-model database operations.
 4. Use 'explain-aql-query' to verify index usage
 5. Execute with 'execute-aql-query'
 
-**CAPABILITIES (74 tools):**
+**CAPABILITIES (81 tools):**
 
 Document operations:
   create/read/update/delete/replace documents, bulk operations, upsert
@@ -59,6 +59,11 @@ Hot backup (Enterprise Edition):
 User & permission management:
   list/get/create/update/delete users, list/get/grant/revoke permissions
   at database and collection level (rw, ro, none)
+
+Embeddings & shared-memory patterns:
+  embed-text, embed-document — OpenAI embeddings (requires OPENAI_API_KEY)
+  pattern-search (hybrid vector + BM25), save-pattern, pattern-index,
+  pattern-applied, save-drift-alert — cross-project pattern & PRD-drift memory
 
 **Default database:** '{settings.arango.default_db_name}'
 All operations accept an optional database_name parameter.
