@@ -183,7 +183,7 @@ The server exposes the MCP endpoint at `http://localhost:8000/mcp`. Any MCP clie
 
 ---
 
-## Tools (74)
+## Tools (81)
 
 ### Document Operations (10)
 
