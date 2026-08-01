@@ -131,16 +131,42 @@ class TestPatternApplied:
 
     def test_bumps_usage_and_reports_missing(self, monkeypatch):
         db = MagicMock()
-        db.aql.execute.return_value = [{"_key": "k1", "usage_count": 3}]
+        db.aql.execute.return_value = [{"_key": "k1", "usage_count": 3, "applied_worked": 3,
+                                        "applied_failed": 0}]
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
         with patch.object(pm.arango_connector, "get_db", return_value=db):
-            out = asyncio.run(pm.pattern_applied(keys=["k1", "gone"],
+            out = asyncio.run(pm.pattern_applied(keys=["k1", "gone"], outcome="worked",
                                                  collection_name="shared_patterns",
                                                  database_name=""))
         assert out["result"]["count"] == 1
+        assert out["result"]["outcome"] == "worked"
         assert out["result"]["not_found"] == ["gone"]
         assert "_run_query" in spy.dispatched
+
+    def test_failed_outcome_records_negative_signal(self, monkeypatch):
+        db = MagicMock()
+        db.aql.execute.return_value = [{"_key": "k1", "usage_count": 2, "applied_worked": 2,
+                                        "applied_failed": 1}]
+        spy = _dispatch_spy()
+        monkeypatch.setattr(pm, "run_sync", spy)
+        captured = {}
+        real = pm._run_query
+
+        def _cap(db_, aql, binds):
+            captured["aql"] = aql
+            captured["binds"] = binds
+            return real(db_, aql, binds)
+
+        monkeypatch.setattr(pm, "_run_query", _cap)
+        with patch.object(pm.arango_connector, "get_db", return_value=db):
+            out = asyncio.run(pm.pattern_applied(keys=["k1"], outcome="failed",
+                                                 collection_name="shared_patterns",
+                                                 database_name=""))
+        assert out["result"]["outcome"] == "failed"
+        # a failed apply must NOT reward usage/recency, and must record negative signal
+        assert captured["binds"]["worked"] is False
+        assert "applied_failed: @worked ? af : af + 1" in captured["aql"]
 
 
 # ---------------------------------------------------------------------------
