@@ -8,8 +8,13 @@ Ranking: Reciprocal Rank Fusion (k=10) of ANN vector similarity and BM25
 full-text, then MULTIPLICATIVE salience boosts:
 
     score = rel * (1 + 0.15*importance + 0.10*recency + 0.05*usage)
+                * (0.6 + 0.4*success_rate)
 
-Salience modulates relevance; it can never substitute for it. The original
+Salience modulates relevance; it can never substitute for it. The success_rate
+factor = applied_worked / (applied_worked + applied_failed), recorded by
+pattern-applied's `outcome` param, down-weights patterns that were tried but did
+not work. It is 1.0 for any pattern with no recorded apply outcomes, so it does
+not move the golden-eval MRR until negative signal accrues. The original
 additive form (rel + imp + rec + use) let query-independent terms carry 75% of
 the weight, so a perfectly-matched pattern (vector #1 AND BM25 #1) could be
 out-scored by fresher/more-important near-neighbours — measured on the golden
@@ -162,7 +167,10 @@ FOR f IN fused
   LET imp = (p.importance == null ? 5 : p.importance) / 10.0
   LET rec = POW(0.995, DATE_DIFF(p.last_used == null ? p.created_at : p.last_used, DATE_NOW(), "d"))
   LET use = LOG(1 + (p.usage_count == null ? 0 : p.usage_count)) / LOG(11)
-  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use)
+  LET aw  = p.applied_worked == null ? 0 : p.applied_worked
+  LET af  = p.applied_failed == null ? 0 : p.applied_failed
+  LET succ = (aw + af) == 0 ? 1 : aw / (aw + af)
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use) * (0.6 + 0.4*succ)
   SORT score DESC LIMIT @lim
   RETURN { _key: p._key, project_id: p.project_id, project_type: p.project_type,
            problem_category: p.problem_category, problem_description: p.problem_description,
@@ -201,7 +209,10 @@ FOR f IN fused
   LET imp = (p.importance == null ? 5 : p.importance) / 10.0
   LET rec = POW(0.995, DATE_DIFF(p.last_used == null ? p.created_at : p.last_used, DATE_NOW(), "d"))
   LET use = LOG(1 + (p.usage_count == null ? 0 : p.usage_count)) / LOG(11)
-  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use)
+  LET aw  = p.applied_worked == null ? 0 : p.applied_worked
+  LET af  = p.applied_failed == null ? 0 : p.applied_failed
+  LET succ = (aw + af) == 0 ? 1 : aw / (aw + af)
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use) * (0.6 + 0.4*succ)
   SORT score DESC LIMIT @lim
   RETURN { _key: p._key, project_id: p.project_id, project_type: p.project_type,
            problem_category: p.problem_category, problem_description: p.problem_description,
@@ -225,7 +236,10 @@ FOR c IN cand
   LET imp = (c.p.importance == null ? 5 : c.p.importance) / 10.0
   LET rec = POW(0.995, DATE_DIFF(c.p.last_used == null ? c.p.created_at : c.p.last_used, DATE_NOW(), "d"))
   LET use = LOG(1 + (c.p.usage_count == null ? 0 : c.p.usage_count)) / LOG(11)
-  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use)
+  LET aw  = c.p.applied_worked == null ? 0 : c.p.applied_worked
+  LET af  = c.p.applied_failed == null ? 0 : c.p.applied_failed
+  LET succ = (aw + af) == 0 ? 1 : aw / (aw + af)
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use) * (0.6 + 0.4*succ)
   SORT score DESC LIMIT @lim
   RETURN { _key: c.p._key, project_id: c.p.project_id, project_type: c.p.project_type,
            problem_category: c.p.problem_category, problem_description: c.p.problem_description,
@@ -590,26 +604,43 @@ async def save_drift_alert(
 )
 async def pattern_applied(
     keys: List[str] = Field(description="_key(s) of the pattern(s) actually applied."),
+    outcome: str = Field(default="worked", description="Apply outcome: 'worked' (default) or "
+                         "'failed'. 'failed' records negative signal (bumps applied_failed) "
+                         "WITHOUT boosting usage_count / last_used, so a pattern that was tried "
+                         "but did not help is down-weighted in /pattern-search ranking rather "
+                         "than rewarded."),
     collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
     database_name: str = Field(default="", description="Target database (default: server default)."),
 ):
     try:
         if not keys:
             return {"result": {"error": "no keys provided"}}
+        worked = str(outcome).strip().lower() != "failed"
         db = await run_sync(arango_connector.get_db, database_name or None)
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         updated = await run_sync(_run_query, db,
-            # apply_log: capped rolling attribution trail (who applied it, when);
-            # last 20 events is plenty for ranking/reporting and bounds doc growth.
+            # Positive signals (usage_count, last_used) bump ONLY on a 'worked' apply so a
+            # failed application can never reward the pattern; a 'failed' apply bumps
+            # applied_failed, feeding the success-rate penalty in the search ranking.
+            # apply_log: capped rolling trail (who applied it, when, outcome), bounded to 20.
             "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
-            "UPDATE p WITH { usage_count: (p.usage_count == null ? 0 : p.usage_count) + 1, "
-            "last_used: @now, last_applied_by: @by, "
+            "LET uc = p.usage_count == null ? 0 : p.usage_count "
+            "LET aw = p.applied_worked == null ? 0 : p.applied_worked "
+            "LET af = p.applied_failed == null ? 0 : p.applied_failed "
+            "UPDATE p WITH { "
+            "usage_count: @worked ? uc + 1 : uc, "
+            "applied_worked: @worked ? aw + 1 : aw, "
+            "applied_failed: @worked ? af : af + 1, "
+            "last_used: @worked ? @now : p.last_used, "
+            "last_applied_by: @by, "
             "apply_log: APPEND(SLICE(p.apply_log == null ? [] : p.apply_log, -19), "
-            "[{ by: @by, at: @now }]) } IN @@coll "
-            "RETURN { _key: NEW._key, usage_count: NEW.usage_count }",
-            {"keys": keys, "@coll": collection_name, "now": now, "by": _current_user()})
+            "[{ by: @by, at: @now, outcome: @outcome }]) } IN @@coll "
+            "RETURN { _key: NEW._key, usage_count: NEW.usage_count, "
+            "applied_worked: NEW.applied_worked, applied_failed: NEW.applied_failed }",
+            {"keys": keys, "@coll": collection_name, "now": now, "by": _current_user(),
+             "worked": worked, "outcome": "worked" if worked else "failed"})
         missing = [k for k in keys if k not in [u["_key"] for u in updated]]
         return {"result": {"applied": updated, "count": len(updated),
-                           "not_found": missing}}
+                           "outcome": "worked" if worked else "failed", "not_found": missing}}
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc)
