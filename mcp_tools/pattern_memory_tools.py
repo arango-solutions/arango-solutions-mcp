@@ -4,10 +4,20 @@ Server-side hybrid retrieval for the shared_patterns collection so agents pass a
 query string and receive only ranked results — the (large) query embedding is
 generated and consumed inside the server, never in the agent's context.
 
-Ranking: Reciprocal Rank Fusion (k=60) of ANN vector similarity and BM25
-full-text, normalized and combined with graded salience (importance, recency
-exponential decay, usage). Falls back to BM25-only if embeddings are
-unavailable or the collection has no vector index.
+Ranking: Reciprocal Rank Fusion (k=10) of ANN vector similarity and BM25
+full-text, then MULTIPLICATIVE salience boosts:
+
+    score = rel * (1 + 0.15*importance + 0.10*recency + 0.05*usage)
+
+Salience modulates relevance; it can never substitute for it. The original
+additive form (rel + imp + rec + use) let query-independent terms carry 75% of
+the weight, so a perfectly-matched pattern (vector #1 AND BM25 #1) could be
+out-scored by fresher/more-important near-neighbours — measured on the golden
+eval set (scripts/eval_retrieval.py in arango-shared-memory) as hybrid MRR 0.25
+vs BM25's 0.93. Multiplicative scoring + k=10 (sharper rank discrimination at
+small-corpus scale than the textbook k=60) lifted hybrid to MRR 0.975.
+Falls back to BM25-only if embeddings are unavailable or there is no vector
+index. Keep these AQLs in sync with scripts/eval_retrieval.py.
 """
 
 import datetime
@@ -17,6 +27,7 @@ from typing import List
 from pydantic import Field
 
 from arango_connector import arango_connector
+from config import settings
 from mcp_tools._support import arango_error_result, run_sync
 from mcp_tools.embedding_tools import generate_embeddings
 from server import mcp_app
@@ -24,6 +35,19 @@ from server import mcp_app
 
 def _ekey(a: str, b: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "-", f"{a}__{b}")[:250]
+
+
+def _current_user():
+    """The ArangoDB username this server is connected as.
+
+    Deployments use per-developer scoped users (e.g. 'arthur', 'pj'), so the
+    connection identity IS the person — stamped on writes for attribution
+    (saved_by / applied_by / detected_by). Best-effort: never raises.
+    """
+    try:
+        return settings.arango.root_username or None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _run_query(db, aql: str, bind_vars: dict) -> list:
@@ -129,7 +153,7 @@ LET bm  = (FOR p IN @@view
 LET fused = (FOR k IN UNIQUE(APPEND(vec, bm))
   LET vr = POSITION(vec, k, true)
   LET br = POSITION(bm,  k, true)
-  RETURN { k, rrf: (vr == -1 ? 0 : 1.0/(60+vr+1)) + (br == -1 ? 0 : 1.0/(60+br+1)) })
+  RETURN { k, rrf: (vr == -1 ? 0 : 1.0/(10+vr+1)) + (br == -1 ? 0 : 1.0/(10+br+1)) })
 LET maxRrf = MAX(fused[*].rrf)
 FOR f IN fused
   LET p = DOCUMENT(@@coll, f.k)
@@ -138,7 +162,7 @@ FOR f IN fused
   LET imp = (p.importance == null ? 5 : p.importance) / 10.0
   LET rec = POW(0.995, DATE_DIFF(p.last_used == null ? p.created_at : p.last_used, DATE_NOW(), "d"))
   LET use = LOG(1 + (p.usage_count == null ? 0 : p.usage_count)) / LOG(11)
-  LET score = rel + imp + rec + use
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use)
   SORT score DESC LIMIT @lim
   RETURN { _key: p._key, project_id: p.project_id, project_type: p.project_type,
            problem_category: p.problem_category, problem_description: p.problem_description,
@@ -167,8 +191,8 @@ LET fused = (FOR k IN UNIQUE(APPEND(APPEND(vec, bm), nbrs))
   LET vr = POSITION(vec, k, true)
   LET br = POSITION(bm,  k, true)
   LET graphOnly = (vr == -1 AND br == -1 AND POSITION(nbrs, k, true) != -1)
-  RETURN { k, rrf: (vr == -1 ? 0 : 1.0/(60+vr+1)) + (br == -1 ? 0 : 1.0/(60+br+1))
-                   + (graphOnly ? 1.0/(60+30) : 0), graphOnly })
+  RETURN { k, rrf: (vr == -1 ? 0 : 1.0/(10+vr+1)) + (br == -1 ? 0 : 1.0/(10+br+1))
+                   + (graphOnly ? 1.0/(10+30) : 0), graphOnly })
 LET maxRrf = MAX(fused[*].rrf)
 FOR f IN fused
   LET p = DOCUMENT(@@coll, f.k)
@@ -177,7 +201,7 @@ FOR f IN fused
   LET imp = (p.importance == null ? 5 : p.importance) / 10.0
   LET rec = POW(0.995, DATE_DIFF(p.last_used == null ? p.created_at : p.last_used, DATE_NOW(), "d"))
   LET use = LOG(1 + (p.usage_count == null ? 0 : p.usage_count)) / LOG(11)
-  LET score = rel + imp + rec + use
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use)
   SORT score DESC LIMIT @lim
   RETURN { _key: p._key, project_id: p.project_id, project_type: p.project_type,
            problem_category: p.problem_category, problem_description: p.problem_description,
@@ -201,7 +225,7 @@ FOR c IN cand
   LET imp = (c.p.importance == null ? 5 : c.p.importance) / 10.0
   LET rec = POW(0.995, DATE_DIFF(c.p.last_used == null ? c.p.created_at : c.p.last_used, DATE_NOW(), "d"))
   LET use = LOG(1 + (c.p.usage_count == null ? 0 : c.p.usage_count)) / LOG(11)
-  LET score = rel + imp + rec + use
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use)
   SORT score DESC LIMIT @lim
   RETURN { _key: c.p._key, project_id: c.p.project_id, project_type: c.p.project_type,
            problem_category: c.p.problem_category, problem_description: c.p.problem_description,
@@ -243,6 +267,7 @@ def _log_search(db, query_text, mode, results, project_id, collection_name):
         db.collection("search_log").insert({
             "query": query_text[:500],
             "project_id": project_id or None,
+            "by": _current_user(),
             "mode": mode,
             "count": len(results),
             "top_key": top["_key"] if top else None,
@@ -448,7 +473,8 @@ async def save_pattern(
                "problem_category": problem_category, "problem_description": problem_description,
                "solution_summary": solution_summary, "tags": tags, "worked": worked,
                "created_at": created, "importance": importance, "usage_count": 0,
-               "last_used": created, "source_file": source_file}
+               "last_used": created, "source_file": source_file,
+               "saved_by": _current_user()}
         pending = False
         if embedding is not None:
             doc["embedding"] = embedding
@@ -523,15 +549,20 @@ async def save_drift_alert(
         full = {"_key": key, "project_id": project_id, "req_id": req_id,
                 "requirement": requirement, "classification": classification,
                 "status": status, "evidence": evidence,
-                "gap_description": gap_description, "detected_at": detected_at or now}
+                "gap_description": gap_description, "detected_at": detected_at or now,
+                "detected_by": _current_user()}
         if status == "closed":
             full["closed_at"] = closed_at or now
             full["closed_evidence"] = closed_evidence
+            full["closed_by"] = _current_user()
         # Merge subset: everything but identity, dropping empty strings so a
         # re-detect never blanks a previously-set field (matches the old
-        # upsert-document search_fields/update_data semantics).
+        # upsert-document search_fields/update_data semantics). detected_by is
+        # insert-only attribution: the original detector is never overwritten
+        # on re-detection (closed_by, by contrast, records whoever closes it).
         upd = {k: v for k, v in full.items()
-               if k not in ("_key", "project_id", "req_id") and v != ""}
+               if k not in ("_key", "project_id", "req_id", "detected_by")
+               and v not in ("", None)}
 
         await run_sync(db.aql.execute,
                        "UPSERT { _key: @key } INSERT @full UPDATE @upd IN @@coll",
@@ -568,11 +599,15 @@ async def pattern_applied(
         db = await run_sync(arango_connector.get_db, database_name or None)
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         updated = await run_sync(_run_query, db,
+            # apply_log: capped rolling attribution trail (who applied it, when);
+            # last 20 events is plenty for ranking/reporting and bounds doc growth.
             "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
             "UPDATE p WITH { usage_count: (p.usage_count == null ? 0 : p.usage_count) + 1, "
-            "last_used: @now } IN @@coll "
+            "last_used: @now, last_applied_by: @by, "
+            "apply_log: APPEND(SLICE(p.apply_log == null ? [] : p.apply_log, -19), "
+            "[{ by: @by, at: @now }]) } IN @@coll "
             "RETURN { _key: NEW._key, usage_count: NEW.usage_count }",
-            {"keys": keys, "@coll": collection_name, "now": now})
+            {"keys": keys, "@coll": collection_name, "now": now, "by": _current_user()})
         missing = [k for k in keys if k not in [u["_key"] for u in updated]]
         return {"result": {"applied": updated, "count": len(updated),
                            "not_found": missing}}
