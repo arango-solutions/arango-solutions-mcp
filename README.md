@@ -1,6 +1,6 @@
 # ArangoDB MCP Server
 
-A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for ArangoDB, providing **74 tools** covering document CRUD, graph traversals, AQL queries, vector/semantic search, cluster administration, stream transactions, hot backup, user/permission management, and more.
+A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for ArangoDB, providing **81 tools** covering document CRUD, graph traversals, AQL queries, vector/semantic search, cluster administration, stream transactions, hot backup, user/permission management, and more — plus a **shared-memory pattern layer** (`pattern-search` hybrid retrieval, `save-pattern`, `pattern-index`, `pattern-applied` with outcome tracking, `save-drift-alert`, and `embed-text`/`embed-document` via OpenAI embeddings; these degrade gracefully to keyword-only when `OPENAI_API_KEY` is unset). Writes are attributed to the connected ArangoDB user. See `PRD.md` for the full tool contract.
 
 Built for AI assistants (Cursor, Claude Desktop, etc.) that need full-spectrum access to ArangoDB's multi-model capabilities.
 
