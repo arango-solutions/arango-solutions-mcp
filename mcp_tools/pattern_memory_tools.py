@@ -310,9 +310,11 @@ def _log_search(db, query_text, mode, results, project_id, collection_name):
     description="""Hybrid semantic + keyword search over the shared-memory patterns.
 
     Pass a plain-text problem description; the server embeds it, fuses ANN vector
-    similarity with BM25 full-text (Reciprocal Rank Fusion, k=60), and re-ranks by
-    graded salience (importance + recency decay + usage). Returns only the top
-    ranked patterns — no raw vectors.
+    similarity with BM25 full-text (Reciprocal Rank Fusion, k=10), then applies
+    MULTIPLICATIVE salience — score = relevance * (1 + 0.15*importance +
+    0.10*recency + 0.05*usage) * (0.6 + 0.4*success_rate) — so salience modulates
+    relevance but can never substitute for it. Returns only the top ranked
+    patterns — no raw vectors.
 
     Falls back to BM25-only when embeddings are unavailable (no OPENAI_API_KEY) or
     the collection has no vector index yet. Use this instead of composing
