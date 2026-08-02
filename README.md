@@ -118,6 +118,8 @@ For remote/Docker deployments, Antigravity can connect via HTTP:
 | `MCP_AUTH_TOKEN` | Conditional | — | Bearer token required for `sse`/`streamable-http` when `MCP_HOST` is non-loopback. See "HTTP transport security" below. |
 | `DEFAULT_AQL_MAX_RUNTIME` | No | `30.0` | Default per-query AQL max runtime in seconds (ArangoDB kills queries that exceed this). Set to `0` to disable. Per-call overrides via `execute-aql-query`. |
 | `LOG_AQL_QUERIES` | No | `false` | Whether to log the first 100 chars of user-supplied AQL. Default `false` because inline literals (`FILTER doc.token == "abc"`) can contain secrets. When `false`, the agent logs `<redacted len=N sha1=…>` instead. |
+| `OPENAI_API_KEY` | No | — | OpenAI API key for the embedding tools (`embed-*`, `pattern-search` vector mode, `save-pattern`). When unset, the pattern tools degrade to keyword-only (BM25). Stored as `SecretStr`. |
+| `EMBEDDING_MODEL` | No | `text-embedding-3-small` | OpenAI embedding model (1536 dimensions for the default). |
 
 All tools accept an optional `database_name` parameter to override the default.
 
@@ -336,6 +338,27 @@ The server exposes the MCP endpoint at `http://localhost:8000/mcp`. Any MCP clie
 |------|-------------|
 | `get-aql-manual` | Retrieve AQL syntax, optimization, or Cypher→AQL migration guides |
 
+### Embeddings (2)
+
+Optional — require `OPENAI_API_KEY`; the pattern tools degrade to keyword-only when it is unset.
+
+| Tool | Description |
+|------|-------------|
+| `embed-text` | Generate OpenAI embedding vectors for text strings (programmatic callers) |
+| `embed-document` | Embed a document's fields and store the vector on it server-side |
+
+### Shared-Memory Patterns & Drift (5)
+
+Cross-project "dark factory" memory: reusable solution patterns and PRD-drift alerts, retrieved by hybrid semantic search. Writes are attributed to the connected ArangoDB user.
+
+| Tool | Description |
+|------|-------------|
+| `pattern-search` | Hybrid vector + BM25 search over shared patterns (RRF k=10, multiplicative salience) |
+| `save-pattern` | Embed-then-insert a solved-problem pattern; maintains provenance + `relates_to` edges |
+| `pattern-index` | Backfill the embedding and graph edges for one saved pattern |
+| `pattern-applied` | Record that a pattern was reused, with an `outcome` (`worked`/`failed`) that feeds ranking |
+| `save-drift-alert` | Upsert a PRD drift alert linked to its project |
+
 ---
 
 ## Architecture
@@ -382,7 +405,7 @@ arango-solutions-mcp/
 │   ├── user_tools.py
 │   └── manual_tools.py
 │
-├── tests/                   # Pytest suite (223 tests)
+├── tests/                   # Pytest suite (344 tests)
 │   ├── conftest.py          # Auto-provisions Docker containers
 │   ├── test_connectivity.py
 │   ├── test_agents.py
