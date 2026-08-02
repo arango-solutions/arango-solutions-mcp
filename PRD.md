@@ -330,6 +330,21 @@ Cross-project "dark factory" memory (see `CLAUDE.md`): reusable solution pattern
 | **Startup diagnostics** | Server logs platform, Python version, server version, default database on startup |
 | **Error context** | Error responses include `error` message, optional `error_code`, and agent-specific context |
 
+### 3.6 Provenance & Attribution
+
+| Requirement | Implementation |
+|-------------|----------------|
+| **Write attribution** | Every write to shared memory (patterns, drift alerts, search-log rows, apply events) is stamped with the connected ArangoDB user — `saved_by`, `detected_by`/`closed_by`, `last_applied_by`, and `by` on search-log rows — via `_current_user()` (`mcp_tools/pattern_memory_tools.py`). Deployments use per-developer scoped users, so the connection identity is the person. |
+| **Apply trail** | `pattern-applied` maintains a capped (last-20) `apply_log` of `{by, at, outcome}` entries per pattern for a rolling reuse history. |
+| **Non-blocking** | Attribution is best-effort and MUST never block or fail the underlying write. |
+
+### 3.7 Retrieval Quality
+
+| Requirement | Implementation |
+|-------------|----------------|
+| **Relevance-dominant ranking** | `pattern-search` fuses ANN vector + BM25 via Reciprocal Rank Fusion (k=10), then applies multiplicative salience — `score = relevance × (1 + 0.15·importance + 0.10·recency + 0.05·usage) × (0.6 + 0.4·success_rate)` — so importance, recency, usage and apply success-rate modulate ranking but can never substitute for semantic relevance. |
+| **Measurable quality** | Retrieval quality MUST be measurable against a versioned golden query set (recall@1 / MRR), and ranking changes MUST be scored against it before merge. Harness: `arango-shared-memory/scripts/eval_retrieval.py` + `eval/golden_queries.json`. |
+
 ---
 
 ## 4. Architecture
