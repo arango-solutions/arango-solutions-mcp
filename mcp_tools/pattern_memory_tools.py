@@ -30,6 +30,7 @@ import re
 from typing import List
 
 from pydantic import Field
+from pydantic.fields import FieldInfo
 
 from arango_connector import arango_connector
 from config import settings
@@ -38,8 +39,41 @@ from mcp_tools.embedding_tools import generate_embeddings
 from server import mcp_app
 
 
+_MEMORY_TYPES = {"pattern", "feedback", "user", "project", "reference"}
+
+
+def _arg(value, default):
+    """Normalize omitted params on DIRECT (non-MCP) calls.
+
+    Invoked through the MCP layer, pydantic resolves Field defaults; called as a
+    plain function (unit tests, scripts), an omitted param arrives as the
+    truthy FieldInfo object itself. Coerce those back to the declared default
+    so both call paths behave identically.
+    """
+    return default if isinstance(value, FieldInfo) else value
+
+
 def _ekey(a: str, b: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "-", f"{a}__{b}")[:250]
+
+
+def _invalidate(coll, old_key, new_key, reason, now_iso):
+    """Bi-temporal invalidation of a superseded memory.
+
+    Closes the old memory's validity interval instead of deleting it: sets
+    valid_to / invalidated_by / invalidation_reason, plus the legacy
+    superseded flags and the importance demotion that keep it out of default
+    ranking. History is preserved — `pattern-search(as_of=...)` can still see
+    the memory as it was when it was valid.
+    """
+    old = coll.get(old_key)
+    if not old:
+        return
+    coll.update({"_key": old_key, "superseded": True, "superseded_by": new_key,
+                 "valid_to": now_iso, "invalidated_by": new_key,
+                 "invalidation_reason": reason,
+                 "importance_original": old.get("importance_original", old.get("importance", 5)),
+                 "importance": 1})
 
 
 def _current_user():
@@ -138,10 +172,9 @@ def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, su
         db.collection("pattern_supersedes").insert({
             "_key": _ekey(new_k, old_k), "_from": f"{coll_name}/{new_k}",
             "_to": f"{coll_name}/{old_k}", "sim": round(top["s"], 4)}, overwrite=True)
-        old = coll.get(old_k)
-        coll.update({"_key": old_k, "superseded": True, "superseded_by": new_k,
-                     "importance_original": old.get("importance_original", old.get("importance", 5)),
-                     "importance": 1})
+        now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _invalidate(coll, old_k, new_k,
+                    f"superseded by near-duplicate (cosine {round(top['s'], 4)})", now_iso)
         superseded = {"new": new_k, "old": old_k, "sim": round(top["s"], 4)}
     return rel_edges, superseded
 
@@ -332,11 +365,29 @@ async def pattern_search(
     model: str = Field(default="", description="Optional embedding model override."),
     project_id: str = Field(default="", description="Calling project id (from CLAUDE.md) — logged "
                             "for per-project read-path analytics; optional."),
+    as_of: str = Field(default="", description="Bi-temporal time-travel: ISO timestamp. Returns "
+                       "memories VALID AT that moment (valid_from <= as_of < valid_to), including "
+                       "ones since superseded — 'what did we know then?'. Default: current view."),
 ):
     lim = max(1, min(int(limit), 25))
+    as_of = _arg(as_of, "")
     try:
         db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
+
+        def temporal(aql, var):
+            """Swap the default validity filter for the as_of interval filter.
+
+            The default view excludes superseded memories; the as_of view instead
+            includes exactly what was valid at that instant (a memory superseded
+            LATER still shows — that is the point of time travel).
+            """
+            if not as_of:
+                return aql
+            return aql.replace(
+                f"FILTER {var}.superseded != true",
+                f"FILTER ({var}.valid_from == null OR {var}.valid_from <= @as_of) "
+                f"AND ({var}.valid_to == null OR {var}.valid_to > @as_of)")
 
         qvec = None
         mode = "bm25"
@@ -348,23 +399,26 @@ async def pattern_search(
             except Exception:  # noqa: BLE001 — embeddings optional; degrade to BM25
                 qvec = None
 
+        extra = {"as_of": as_of} if as_of else {}
         use_graph = (qvec is not None and graph_expand
                      and await run_sync(db.has_collection, "pattern_relates_to"))
         if use_graph:
             mode = "hybrid+graph"
-            results = await run_sync(_run_query, db, _HYBRID_GRAPH_AQL, {
+            results = await run_sync(_run_query, db, temporal(_HYBRID_GRAPH_AQL, "p"), {
                 "q": query_text, "qvec": qvec, "lim": lim,
-                "@coll": collection_name, "@view": view_name})
+                "@coll": collection_name, "@view": view_name, **extra})
         elif qvec is not None:
-            results = await run_sync(_run_query, db, _HYBRID_AQL, {
+            results = await run_sync(_run_query, db, temporal(_HYBRID_AQL, "p"), {
                 "q": query_text, "qvec": qvec, "lim": lim,
-                "@coll": collection_name, "@view": view_name})
+                "@coll": collection_name, "@view": view_name, **extra})
         else:
-            results = await run_sync(_run_query, db, _BM25_AQL, {
-                "q": query_text, "lim": lim, "@view": view_name})
+            results = await run_sync(_run_query, db, temporal(_BM25_AQL, "c.p"), {
+                "q": query_text, "lim": lim, "@view": view_name, **extra})
 
-        await run_sync(_log_search, db, query_text, mode, results, project_id, collection_name)
-        return {"result": {"mode": mode, "count": len(results), "patterns": results}}
+        if not as_of:  # time-travel reads are analytical — keep the funnel organic
+            await run_sync(_log_search, db, query_text, mode, results, project_id, collection_name)
+        return {"result": {"mode": mode + ("+as_of" if as_of else ""), "count": len(results),
+                           "patterns": results}}
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc)
 
@@ -444,7 +498,11 @@ async def pattern_index(
     fails: the index rejects docs lacking the vector). It then maintains the graph
     (pattern_relates_to + supersede check), exactly like pattern-index.
 
-    Generates a timestamped _key, sets usage_count=0 and last_used=created_at.
+    Generates a timestamped _key, sets usage_count=0 and last_used=created_at, and
+    stamps the memory taxonomy SERVER-SIDE (memory_type; why/how_to_apply for
+    feedback) — pass those fields here instead of merging them in a second call
+    after the save (the historical post-save merge step was routinely skipped,
+    leaving memories typeless until the next migration backfill).
     Requires OPENAI_API_KEY when a vector index is present. Returns a small summary
     (no raw vectors). LLM-derived edges are maintained separately by a periodic
     batch job.
@@ -456,6 +514,10 @@ async def save_pattern(
     problem_category: str = Field(description="e.g. auth|api-design|data-model|testing|deployment|other."),
     project_id: str = Field(description="Originating project id (from CLAUDE.md)."),
     project_type: str = Field(default="other", description="Project type."),
+    memory_type: str = Field(default="pattern",
+                             description="Taxonomy: pattern|feedback|user|project|reference."),
+    why: str = Field(default="", description="feedback memories: the reason behind the guidance."),
+    how_to_apply: str = Field(default="", description="feedback memories: how to apply it next time."),
     tags: List[str] = Field(default=[], description="2-5 keyword tags."),
     importance: int = Field(default=5, description="LLM-rated salience 1-10 (drives ranking)."),
     source_file: str = Field(default="", description="Relevant file:line, if any."),
@@ -467,8 +529,29 @@ async def save_pattern(
     rel_sim: float = Field(default=0.30, description="Min cosine for a relates_to edge."),
     sup_sim: float = Field(default=0.90, description="Min cosine to treat as a near-duplicate."),
     top_k: int = Field(default=3, description="Neighbours to consider for graph edges."),
+    consolidate_sim: float = Field(
+        default=0.80,
+        description="Consolidation gate: if an existing valid memory is at least this "
+                    "similar, the save is BLOCKED and the candidates are returned for a "
+                    "decision (update the existing one, supersede it, or force)."),
+    force: bool = Field(
+        default=False,
+        description="Bypass the consolidation gate after reviewing its candidates — "
+                    "insert as genuinely new despite the similarity."),
+    supersedes_key: str = Field(
+        default="",
+        description="_key of an existing memory this save REPLACES: the old one is "
+                    "invalidated bi-temporally (valid_to closed, importance demoted) and "
+                    "linked via pattern_supersedes. Implies bypassing the gate for that key."),
 ):
     try:
+        memory_type = _arg(memory_type, "pattern")
+        why, how_to_apply = _arg(why, ""), _arg(how_to_apply, "")
+        consolidate_sim = _arg(consolidate_sim, 0.80)
+        force, supersedes_key = _arg(force, False), _arg(supersedes_key, "")
+        if memory_type not in _MEMORY_TYPES:
+            return {"result": {"error": f"invalid memory_type {memory_type!r} — "
+                                        f"must be one of {sorted(_MEMORY_TYPES)}"}}
         db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
         now = datetime.datetime.now(datetime.timezone.utc)
@@ -485,12 +568,57 @@ async def save_pattern(
         except Exception as exc:  # noqa: BLE001
             embed_error = str(exc)
 
+        # --- Consolidation gate (write-time): if a sufficiently-similar VALID memory
+        # already exists, do NOT insert — return the candidates so the caller (an LLM
+        # agent with judgment) decides: update the existing memory, supersede it
+        # (supersedes_key), or force-insert as genuinely new. This makes the duplicate
+        # check non-skippable instead of an optional pre-save query, and keeps the
+        # curation decision where the judgment is. Skipped when: force=true, the gate
+        # target is the memory being explicitly superseded, or no embedding (BM25-only
+        # deployments and outage saves — availability beats consolidation).
+        if embedding is not None and not force and await run_sync(_has_vector_index, coll):
+            nbrs = await run_sync(_run_query, db, _KNN_AQL, {
+                "vec": embedding, "lim": 4, "@coll": collection_name})
+            cand_keys = [n["k"] for n in nbrs
+                         if n["s"] >= consolidate_sim and n["k"] != supersedes_key]
+            if cand_keys:
+                sims = {n["k"]: round(n["s"], 4) for n in nbrs}
+                cands = await run_sync(_run_query, db,
+                    "FOR k IN @keys LET p = DOCUMENT(@@coll, k) "
+                    "FILTER p != null AND p.superseded != true AND p.valid_to == null "
+                    "RETURN { _key: p._key, memory_type: p.memory_type, "
+                    "project_id: p.project_id, usage_count: p.usage_count, "
+                    "problem_description: p.problem_description, "
+                    "solution_summary: LEFT(p.solution_summary, 400) }",
+                    {"keys": cand_keys, "@coll": collection_name})
+                if cands:
+                    for c in cands:
+                        c["similarity"] = sims.get(c["_key"])
+                    return {"result": {
+                        "consolidation_required": True,
+                        "saved": False,
+                        "candidates": cands,
+                        "guidance": "A very similar valid memory already exists. Decide: "
+                                    "(a) UPDATE the existing memory instead of saving a new one "
+                                    "(merge new details via upsert-document; set "
+                                    "embedding_pending=true if you change its text); "
+                                    "(b) REPLACE it — re-call save-pattern with "
+                                    "supersedes_key='<candidate _key>'; or "
+                                    "(c) it is genuinely different — re-call save-pattern "
+                                    "with force=true."}}
+
         doc = {"_key": key, "project_id": project_id, "project_type": project_type,
                "problem_category": problem_category, "problem_description": problem_description,
                "solution_summary": solution_summary, "tags": tags, "worked": worked,
                "created_at": created, "importance": importance, "usage_count": 0,
                "last_used": created, "source_file": source_file,
-               "saved_by": _current_user()}
+               "saved_by": _current_user(),
+               "memory_type": memory_type,
+               "valid_from": created, "valid_to": None}
+        if why:
+            doc["why"] = why
+        if how_to_apply:
+            doc["how_to_apply"] = how_to_apply
         pending = False
         if embedding is not None:
             doc["embedding"] = embedding
@@ -513,6 +641,24 @@ async def save_pattern(
         rel_edges, superseded = await run_sync(
             _maintain_graph, db, coll, collection_name, key, (None if pending else embedding),
             created, rel_sim, sup_sim, top_k, project_id)
+
+        # Explicit replacement decided by the caller (consolidation outcome b):
+        # supersede edge + bi-temporal invalidation of the named memory.
+        if supersedes_key and supersedes_key != key:
+            def _explicit_supersede():
+                if db.has_collection("pattern_supersedes"):
+                    db.collection("pattern_supersedes").insert(
+                        {"_key": _ekey(key, supersedes_key),
+                         "_from": f"{collection_name}/{key}",
+                         "_to": f"{collection_name}/{supersedes_key}",
+                         "explicit": True}, overwrite=True)
+                _invalidate(coll, supersedes_key, key,
+                            "explicitly replaced via save-pattern supersedes_key",
+                            datetime.datetime.now(datetime.timezone.utc)
+                            .strftime("%Y-%m-%dT%H:%M:%SZ"))
+            await run_sync(_explicit_supersede)
+            superseded = superseded or {"new": key, "old": supersedes_key, "explicit": True}
+
         result = {"_key": key, "embedded": embedding is not None,
                   "embedding_pending": pending,
                   "relates_edges": rel_edges, "superseded": superseded}
