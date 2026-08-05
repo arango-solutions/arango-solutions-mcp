@@ -270,3 +270,56 @@ class TestSavePattern:
         assert res["relates_edges"] == 0
         coll.insert.assert_called_once()
         assert "coll" not in res  # sanity: no raw handles leak into the response
+
+    def _near_duplicate_db(self):
+        """A db whose KNN always returns one OLDER neighbour far above sup_sim."""
+        db = MagicMock()
+        colls: dict = {}
+        db.collection.side_effect = lambda name: colls.setdefault(name, MagicMock())
+        coll = db.collection("shared_patterns")
+        coll.indexes.return_value = [{"type": "vector", "params": {"dimension": 3}}]
+        db.has_collection.return_value = True
+        db.aql.execute.return_value = [{"k": "older", "s": 0.97,
+                                        "created": "2020-01-01T00:00:00Z"}]
+        return db, colls
+
+    def _save(self, **kw):
+        args = dict(problem_description="p", solution_summary="s", problem_category="testing",
+                    project_id="arango-solutions-mcp-server", project_type="mcp-server",
+                    tags=["t"], importance=7, source_file="", worked=True, created_at="",
+                    collection_name="shared_patterns", database_name="", model="",
+                    rel_sim=0.3, sup_sim=0.9, top_k=3, consolidate_sim=0.8)
+        args.update(kw)
+        return asyncio.run(pm.save_pattern(**args))
+
+    def test_force_does_not_implicitly_supersede_the_neighbour(self, monkeypatch):
+        """force=True is the consolidation gate's own option (c): the caller reviewed the
+        candidates and decided this memory is genuinely new. The implicit near-duplicate
+        supersede must not then invalidate that neighbour behind the caller's back — in a
+        multi-writer corpus the loser is decided by created_at, so it would silently demote
+        whichever teammate saved first, without telling them."""
+        db, colls = self._near_duplicate_db()
+        spy = _dispatch_spy()
+        monkeypatch.setattr(pm, "run_sync", spy)
+        with patch.object(pm.arango_connector, "get_db", return_value=db), \
+                patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)):
+            out = self._save(force=True)
+        assert out["result"]["superseded"] is None
+        # not even opened, let alone written to
+        sup = colls.get("pattern_supersedes")
+        assert sup is None or not sup.insert.called
+
+    def test_without_force_a_near_duplicate_still_supersedes(self, monkeypatch):
+        """Guard the fix above: the implicit supersede is still the default when the caller
+        has not declared the memory genuinely new. consolidate_sim=0.99 keeps the gate quiet
+        at sim 0.97 so this exercises the supersede path rather than the gate's early return."""
+        db, colls = self._near_duplicate_db()
+        spy = _dispatch_spy()
+        monkeypatch.setattr(pm, "run_sync", spy)
+        with patch.object(pm.arango_connector, "get_db", return_value=db), \
+                patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)):
+            out = self._save(consolidate_sim=0.99)
+        res = out["result"]
+        # ours is newer than the 2020 neighbour, so ours supersedes it
+        assert res["superseded"] == {"new": res["_key"], "old": "older", "sim": 0.97}
+        assert colls["pattern_supersedes"].insert.called
