@@ -129,7 +129,7 @@ _KNN_AQL = ("FOR q IN @@coll LET s = APPROX_NEAR_COSINE(q.embedding, @vec) "
 
 
 def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, sup_sim, top_k,
-                    project_id=None):
+                    project_id=None, allow_supersede=True):
     """Maintain graph edges for one just-saved pattern. Sync.
 
     ALWAYS records provenance (pattern_from_project: pattern -> project_registry),
@@ -138,6 +138,11 @@ def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, su
     the pattern nor the project becomes an orphan in the graph. Then, when an
     embedding + vector index exist, builds pattern_relates_to (KNN) edges and a
     supersede check.
+
+    ``allow_supersede=False`` keeps the relates_to edges but skips the IMPLICIT
+    near-duplicate supersede. Callers pass this when the human/agent has already
+    ruled on the duplicate question (save-pattern force=True), so the ruling is not
+    silently reversed here.
 
     Returns (relates_edges:int, superseded:dict|None).
     """
@@ -166,7 +171,7 @@ def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, su
 
     superseded = None
     top = nbrs[0] if nbrs else None
-    if top and top["s"] >= sup_sim and db.has_collection("pattern_supersedes"):
+    if allow_supersede and top and top["s"] >= sup_sim and db.has_collection("pattern_supersedes"):
         new_k, old_k = ((key, top["k"]) if (created_at or "") >= (top["created"] or "")
                         else (top["k"], key))
         db.collection("pattern_supersedes").insert({
@@ -655,9 +660,14 @@ async def save_pattern(
 
         # Provenance always; pass embedding=None when pending so the placeholder is not
         # used to build bogus KNN relates_to edges (provenance needs no embedding).
+        # force=True is the consolidation gate's option (c): the caller reviewed the
+        # candidates and ruled this memory genuinely new. Honour that ruling -- the implicit
+        # near-duplicate supersede would otherwise invalidate the neighbour anyway, and the
+        # loser is picked by created_at, so it would quietly demote whichever teammate saved
+        # first without telling them. Explicit replacement still works via supersedes_key.
         rel_edges, superseded = await run_sync(
             _maintain_graph, db, coll, collection_name, key, (None if pending else embedding),
-            created, rel_sim, sup_sim, top_k, project_id)
+            created, rel_sim, sup_sim, top_k, project_id, allow_supersede=not force)
 
         # Explicit replacement decided by the caller (consolidation outcome b):
         # supersede edge + bi-temporal invalidation of the named memory.
