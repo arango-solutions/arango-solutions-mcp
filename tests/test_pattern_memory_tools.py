@@ -117,6 +117,39 @@ class TestPatternSearch:
                 database_name="", model="", project_id=""))
         assert out["result"]["error_code"] == 1203
 
+    def test_invalid_memory_type_errors_before_db(self):
+        # Guard runs before any DB call; bogus type returns the standard envelope.
+        out = asyncio.run(pm.pattern_search(query_text="x", limit=8, memory_type="bogus"))
+        assert "memory_type" in out["result"]["error"]
+
+    def test_memory_type_filter_injected_into_aql_and_binds(self, monkeypatch):
+        db = MagicMock()
+        coll = MagicMock()
+        coll.indexes.return_value = []          # no vector index -> BM25 path
+        db.collection.return_value = coll
+        db.has_collection.return_value = True
+        db.aql.execute.return_value = []
+        spy = _dispatch_spy()
+        monkeypatch.setattr(pm, "run_sync", spy)
+        captured = {}
+        real = pm._run_query
+
+        def _cap(db_, aql, binds):
+            captured["aql"] = aql
+            captured["binds"] = binds
+            return real(db_, aql, binds)
+
+        monkeypatch.setattr(pm, "_run_query", _cap)
+        with patch.object(pm.arango_connector, "get_db", return_value=db):
+            asyncio.run(pm.pattern_search(
+                query_text="x", limit=8, graph_expand=True,
+                collection_name="shared_patterns", view_name="patterns_search",
+                database_name="", model="", project_id="", memory_type="feedback"))
+        assert captured["binds"].get("mtype") == "feedback"
+        assert "memory_type == @mtype" in captured["aql"]
+        # superseded exclusion must remain in place alongside the type filter
+        assert "superseded != true" in captured["aql"]
+
 
 # ---------------------------------------------------------------------------
 # pattern-applied

@@ -352,6 +352,9 @@ def _log_search(db, query_text, mode, results, project_id, collection_name):
     Falls back to BM25-only when embeddings are unavailable (no OPENAI_API_KEY) or
     the collection has no vector index yet. Use this instead of composing
     embed-text + AQL by hand.
+
+    Optionally restrict results to one memory_type
+    (pattern|feedback|user|project|reference); empty returns all types.
     """,
 )
 async def pattern_search(
@@ -365,29 +368,39 @@ async def pattern_search(
     model: str = Field(default="", description="Optional embedding model override."),
     project_id: str = Field(default="", description="Calling project id (from CLAUDE.md) — logged "
                             "for per-project read-path analytics; optional."),
+    memory_type: str = Field(default="", description="Optional filter: return only memories of this "
+                             "type (pattern|feedback|user|project|reference). Empty = all types."),
     as_of: str = Field(default="", description="Bi-temporal time-travel: ISO timestamp. Returns "
                        "memories VALID AT that moment (valid_from <= as_of < valid_to), including "
                        "ones since superseded — 'what did we know then?'. Default: current view."),
 ):
     lim = max(1, min(int(limit), 25))
     as_of = _arg(as_of, "")
+    mtype = _arg(memory_type, "")
+    if mtype and mtype not in _MEMORY_TYPES:
+        return arango_error_result(ValueError(
+            f"memory_type must be one of {sorted(_MEMORY_TYPES)} or empty; got {mtype!r}"))
     try:
         db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
 
-        def temporal(aql, var):
-            """Swap the default validity filter for the as_of interval filter.
+        def prepare(aql, var):
+            """Rewrite the default validity filter for as_of, and AND-on an optional
+            memory_type filter.
 
             The default view excludes superseded memories; the as_of view instead
             includes exactly what was valid at that instant (a memory superseded
-            LATER still shows — that is the point of time travel).
+            LATER still shows — that is the point of time travel). The optional
+            memory_type filter applies in either mode.
             """
-            if not as_of:
-                return aql
-            return aql.replace(
-                f"FILTER {var}.superseded != true",
-                f"FILTER ({var}.valid_from == null OR {var}.valid_from <= @as_of) "
-                f"AND ({var}.valid_to == null OR {var}.valid_to > @as_of)")
+            if as_of:
+                base = (f"FILTER ({var}.valid_from == null OR {var}.valid_from <= @as_of) "
+                        f"AND ({var}.valid_to == null OR {var}.valid_to > @as_of)")
+            else:
+                base = f"FILTER {var}.superseded != true"
+            if mtype:
+                base += f" FILTER {var}.memory_type == @mtype"
+            return aql.replace(f"FILTER {var}.superseded != true", base)
 
         qvec = None
         mode = "bm25"
@@ -399,20 +412,24 @@ async def pattern_search(
             except Exception:  # noqa: BLE001 — embeddings optional; degrade to BM25
                 qvec = None
 
-        extra = {"as_of": as_of} if as_of else {}
+        extra = {}
+        if as_of:
+            extra["as_of"] = as_of
+        if mtype:
+            extra["mtype"] = mtype
         use_graph = (qvec is not None and graph_expand
                      and await run_sync(db.has_collection, "pattern_relates_to"))
         if use_graph:
             mode = "hybrid+graph"
-            results = await run_sync(_run_query, db, temporal(_HYBRID_GRAPH_AQL, "p"), {
+            results = await run_sync(_run_query, db, prepare(_HYBRID_GRAPH_AQL, "p"), {
                 "q": query_text, "qvec": qvec, "lim": lim,
                 "@coll": collection_name, "@view": view_name, **extra})
         elif qvec is not None:
-            results = await run_sync(_run_query, db, temporal(_HYBRID_AQL, "p"), {
+            results = await run_sync(_run_query, db, prepare(_HYBRID_AQL, "p"), {
                 "q": query_text, "qvec": qvec, "lim": lim,
                 "@coll": collection_name, "@view": view_name, **extra})
         else:
-            results = await run_sync(_run_query, db, temporal(_BM25_AQL, "c.p"), {
+            results = await run_sync(_run_query, db, prepare(_BM25_AQL, "c.p"), {
                 "q": query_text, "lim": lim, "@view": view_name, **extra})
 
         if not as_of:  # time-travel reads are analytical — keep the funnel organic
