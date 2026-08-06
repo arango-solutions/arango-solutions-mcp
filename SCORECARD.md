@@ -2,7 +2,7 @@
 
 **Product:** ArangoDB MCP Server<br>
 **Assessment date:** August 5, 2026<br>
-**Repository baseline:** Phase 0 worktree based on `main` at `a49d9b7`<br>
+**Repository baseline:** Phase 0 implementation on `main` at `8eb5d40`<br>
 **Product version:** 2.0.0 (`pyproject.toml:3`, `config.py:76`)
 
 ## Executive verdict
@@ -42,8 +42,8 @@ The defensible market position is:
   ordinary near-duplicates still do (`tests/test_pattern_memory_tools.py:295-325`).
 - `[V]` PRD item P-2 now distinguishes implicit superseding from explicit replacement
   (`PRD.md:270`).
-- `[V]` The two Docker-backed CI test jobs pass on Python 3.10 and 3.11, but `main` is not green:
-  the lint job fails on a pre-existing Ruff import-order violation
+- `[V]` At the prior `a49d9b7` baseline, the two Docker-backed CI test jobs passed on Python 3.10
+  and 3.11, but the lint job failed on a pre-existing Ruff import-order violation
   ([CI run](https://github.com/arango-solutions/arango-solutions-mcp/actions/runs/31053199522)).
 - `[V]` Phase 0 established 44 stable, owned, evidence-gated v3 requirements in the PRD and
   replaced the blanket implementation claim with requirement-level states (`PRD.md:39-55`,
@@ -64,15 +64,15 @@ The defensible market position is:
   scorecard claims (`scripts/verify_docs.py:19-109`, `.github/workflows/ci.yml:43-44`).
 - `[V]` A pinned ArangoDB Starter deployment was exercised locally with three agents, DBServers,
   and coordinators; the corrected cluster tier passed 4 tests with one Community-edition skip.
-  The same deployment now runs nightly (`tests/test_cluster.py:17-63`,
+  The same deployment is now scheduled nightly (`tests/test_cluster.py:17-63`,
   `.github/workflows/cluster-nightly.yml:1-113`).
 
 The total is now **71/B-**. The secure, vector-capable Compose path closes two deployment points;
 enforced coverage and a locally green quality baseline restore one reliability point; dependency
 automation and security scanning add one maturity point; live nightly cluster verification adds one
 reliability point. Mechanical documentation checks close the remaining Phase 0 consistency gap
-without changing a weighted category score. Published `main` remains red at the assessed commit
-until these worktree changes land and pass GitHub CI.
+without changing a weighted category score. The implementation is published at `8eb5d40`; GitHub
+Actions had not registered runs for that commit when this scorecard was finalized.
 
 ## Method
 
