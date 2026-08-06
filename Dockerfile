@@ -22,4 +22,7 @@ ENV LOG_LEVEL=INFO
 #   docker run -e MCP_AUTH_TOKEN=$(openssl rand -hex 32) ...
 # Without it, the server will refuse to start on a non-loopback host.
 
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+
 CMD ["python", "main.py"]

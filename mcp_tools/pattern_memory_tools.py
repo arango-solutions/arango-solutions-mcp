@@ -27,7 +27,7 @@ index. Keep these AQLs in sync with scripts/eval_retrieval.py.
 
 import datetime
 import re
-from typing import List
+from typing import Any, List, cast
 
 from pydantic import Field
 from pydantic.fields import FieldInfo
@@ -37,7 +37,6 @@ from config import settings
 from mcp_tools._support import arango_error_result, run_sync
 from mcp_tools.embedding_tools import generate_embeddings
 from server import mcp_app
-
 
 _MEMORY_TYPES = {"pattern", "feedback", "user", "project", "reference"}
 
@@ -69,11 +68,18 @@ def _invalidate(coll, old_key, new_key, reason, now_iso):
     old = coll.get(old_key)
     if not old:
         return
-    coll.update({"_key": old_key, "superseded": True, "superseded_by": new_key,
-                 "valid_to": now_iso, "invalidated_by": new_key,
-                 "invalidation_reason": reason,
-                 "importance_original": old.get("importance_original", old.get("importance", 5)),
-                 "importance": 1})
+    coll.update(
+        {
+            "_key": old_key,
+            "superseded": True,
+            "superseded_by": new_key,
+            "valid_to": now_iso,
+            "invalidated_by": new_key,
+            "invalidation_reason": reason,
+            "importance_original": old.get("importance_original", old.get("importance", 5)),
+            "importance": 1,
+        }
+    )
 
 
 def _current_user():
@@ -115,21 +121,41 @@ def _ensure_provenance(db, edge_coll, src_id, project_id, relation):
             "INSERT { _key: @pid, project_id: @pid, project_name: @pid, "
             "project_type: 'other', open_gaps: 0, patterns_contributed: 0, "
             "last_sync: null, autocreated: true } UPDATE { } IN project_registry",
-            bind_vars={"pid": project_id})
+            bind_vars={"pid": project_id},
+        )
     src_key = src_id.split("/", 1)[-1]
     db.collection(edge_coll).insert(
-        {"_key": _ekey(src_key, project_id), "_from": src_id,
-         "_to": f"project_registry/{project_id}", "relation": relation}, overwrite=True)
+        {
+            "_key": _ekey(src_key, project_id),
+            "_from": src_id,
+            "_to": f"project_registry/{project_id}",
+            "relation": relation,
+        },
+        overwrite=True,
+    )
     return True
 
 
 # KNN over stored embeddings: APPROX_NEAR_COSINE must be bound via LET + used once in SORT.
-_KNN_AQL = ("FOR q IN @@coll LET s = APPROX_NEAR_COSINE(q.embedding, @vec) "
-            "SORT s DESC LIMIT @lim RETURN {k: q._key, s: s, created: q.created_at}")
+_KNN_AQL = (
+    "FOR q IN @@coll LET s = APPROX_NEAR_COSINE(q.embedding, @vec) "
+    "SORT s DESC LIMIT @lim RETURN {k: q._key, s: s, created: q.created_at}"
+)
 
 
-def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, sup_sim, top_k,
-                    project_id=None, allow_supersede=True):
+def _maintain_graph(
+    db,
+    coll,
+    coll_name,
+    key,
+    embedding,
+    created_at,
+    rel_sim,
+    sup_sim,
+    top_k,
+    project_id=None,
+    allow_supersede=True,
+):
     """Maintain graph edges for one just-saved pattern. Sync.
 
     ALWAYS records provenance (pattern_from_project: pattern -> project_registry),
@@ -150,38 +176,67 @@ def _maintain_graph(db, coll, coll_name, key, embedding, created_at, rel_sim, su
     # was recorded only by an out-of-band setup step, so patterns saved via the
     # tool never got a provenance edge and their projects showed up as orphan
     # nodes; it now happens here on the write path. ---
-    _ensure_provenance(db, "pattern_from_project", f"{coll_name}/{key}",
-                       project_id or (coll.get(key) or {}).get("project_id"), "from_project")
+    _ensure_provenance(
+        db,
+        "pattern_from_project",
+        f"{coll_name}/{key}",
+        project_id or (coll.get(key) or {}).get("project_id"),
+        "from_project",
+    )
 
     if not embedding or not _has_vector_index(coll):
         return 0, None
     k = max(1, min(int(top_k), 10))
-    nbrs = [n for n in db.aql.execute(_KNN_AQL, bind_vars={
-        "vec": embedding, "lim": k + 1, "@coll": coll_name}) if n["k"] != key]
+    nbrs = [
+        n
+        for n in db.aql.execute(
+            _KNN_AQL, bind_vars={"vec": embedding, "lim": k + 1, "@coll": coll_name}
+        )
+        if n["k"] != key
+    ]
 
     rel_edges = 0
     if db.has_collection("pattern_relates_to"):
         rc = db.collection("pattern_relates_to")
         for n in nbrs:
             if n["s"] >= rel_sim:
-                rc.insert({"_key": _ekey(key, n["k"]),
-                           "_from": f"{coll_name}/{key}", "_to": f"{coll_name}/{n['k']}",
-                           "sim": round(n["s"], 4)}, overwrite=True)
+                rc.insert(
+                    {
+                        "_key": _ekey(key, n["k"]),
+                        "_from": f"{coll_name}/{key}",
+                        "_to": f"{coll_name}/{n['k']}",
+                        "sim": round(n["s"], 4),
+                    },
+                    overwrite=True,
+                )
                 rel_edges += 1
 
     superseded = None
     top = nbrs[0] if nbrs else None
     if allow_supersede and top and top["s"] >= sup_sim and db.has_collection("pattern_supersedes"):
-        new_k, old_k = ((key, top["k"]) if (created_at or "") >= (top["created"] or "")
-                        else (top["k"], key))
-        db.collection("pattern_supersedes").insert({
-            "_key": _ekey(new_k, old_k), "_from": f"{coll_name}/{new_k}",
-            "_to": f"{coll_name}/{old_k}", "sim": round(top["s"], 4)}, overwrite=True)
+        new_k, old_k = (
+            (key, top["k"]) if (created_at or "") >= (top["created"] or "") else (top["k"], key)
+        )
+        db.collection("pattern_supersedes").insert(
+            {
+                "_key": _ekey(new_k, old_k),
+                "_from": f"{coll_name}/{new_k}",
+                "_to": f"{coll_name}/{old_k}",
+                "sim": round(top["s"], 4),
+            },
+            overwrite=True,
+        )
         now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _invalidate(coll, old_k, new_k,
-                    f"superseded by near-duplicate (cosine {round(top['s'], 4)})", now_iso)
+        _invalidate(
+            coll,
+            old_k,
+            new_k,
+            f"superseded by near-duplicate (cosine {round(top['s'], 4)})",
+            now_iso,
+        )
         superseded = {"new": new_k, "old": old_k, "sim": round(top["s"], 4)}
     return rel_edges, superseded
+
 
 # Hybrid: vector ⊕ BM25 via RRF, then graded scoring.
 _HYBRID_AQL = """
@@ -316,29 +371,37 @@ def _log_search(db, query_text, mode, results, project_id, collection_name):
         if not db.has_collection("search_log"):
             db.create_collection("search_log")  # lazy provision
         top = results[0] if results else None
-        db.collection("search_log").insert({
-            "query": query_text[:500],
-            "project_id": project_id or None,
-            "by": _current_user(),
-            "mode": mode,
-            "count": len(results),
-            "top_key": top["_key"] if top else None,
-            "top_score": top.get("score") if top else None,
-            "top_relevance": top.get("relevance") if top else None,
-            "hit": bool(top and (top.get("relevance") or 0) >= _HIT_RELEVANCE),
-            "result_keys": [r["_key"] for r in results],
-            "created_at": datetime.datetime.now(datetime.timezone.utc)
-                          .strftime("%Y-%m-%dT%H:%M:%SZ"),
-        })
+        db.collection("search_log").insert(
+            {
+                "query": query_text[:500],
+                "project_id": project_id or None,
+                "by": _current_user(),
+                "mode": mode,
+                "count": len(results),
+                "top_key": top["_key"] if top else None,
+                "top_score": top.get("score") if top else None,
+                "top_relevance": top.get("relevance") if top else None,
+                "hit": bool(top and (top.get("relevance") or 0) >= _HIT_RELEVANCE),
+                "result_keys": [r["_key"] for r in results],
+                "created_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            }
+        )
         keys = [r["_key"] for r in results]
         if keys:
             db.aql.execute(
                 "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
                 "UPDATE p WITH { surfaced_count: (p.surfaced_count == null ? 0 : p.surfaced_count) + 1, "
                 "last_surfaced: @now } IN @@coll",
-                bind_vars={"keys": keys, "@coll": collection_name,
-                           "now": datetime.datetime.now(datetime.timezone.utc)
-                                  .strftime("%Y-%m-%dT%H:%M:%SZ")})
+                bind_vars={
+                    "keys": keys,
+                    "@coll": collection_name,
+                    "now": datetime.datetime.now(datetime.timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                },
+            )
     except Exception:  # noqa: BLE001 — instrumentation must never break search
         pass
 
@@ -365,26 +428,43 @@ def _log_search(db, query_text, mode, results, project_id, collection_name):
 async def pattern_search(
     query_text: str = Field(description="Free-text problem description to search for."),
     limit: int = Field(default=8, description="Max patterns to return (1-25)."),
-    graph_expand: bool = Field(default=True, description="Also pull 1-hop pattern_relates_to "
-                               "neighbors of the top semantic hits into the candidate pool (Phase 2)."),
+    graph_expand: bool = Field(
+        default=True,
+        description="Also pull 1-hop pattern_relates_to "
+        "neighbors of the top semantic hits into the candidate pool (Phase 2).",
+    ),
     collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
     view_name: str = Field(default="patterns_search", description="ArangoSearch view for BM25."),
-    database_name: str = Field(default="", description="Target database (default: server default)."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
     model: str = Field(default="", description="Optional embedding model override."),
-    project_id: str = Field(default="", description="Calling project id (from CLAUDE.md) — logged "
-                            "for per-project read-path analytics; optional."),
-    memory_type: str = Field(default="", description="Optional filter: return only memories of this "
-                             "type (pattern|feedback|user|project|reference). Empty = all types."),
-    as_of: str = Field(default="", description="Bi-temporal time-travel: ISO timestamp. Returns "
-                       "memories VALID AT that moment (valid_from <= as_of < valid_to), including "
-                       "ones since superseded — 'what did we know then?'. Default: current view."),
+    project_id: str = Field(
+        default="",
+        description="Calling project id (from CLAUDE.md) — logged "
+        "for per-project read-path analytics; optional.",
+    ),
+    memory_type: str = Field(
+        default="",
+        description="Optional filter: return only memories of this "
+        "type (pattern|feedback|user|project|reference). Empty = all types.",
+    ),
+    as_of: str = Field(
+        default="",
+        description="Bi-temporal time-travel: ISO timestamp. Returns "
+        "memories VALID AT that moment (valid_from <= as_of < valid_to), including "
+        "ones since superseded — 'what did we know then?'. Default: current view.",
+    ),
 ):
     lim = max(1, min(int(limit), 25))
     as_of = _arg(as_of, "")
     mtype = _arg(memory_type, "")
     if mtype and mtype not in _MEMORY_TYPES:
-        return arango_error_result(ValueError(
-            f"memory_type must be one of {sorted(_MEMORY_TYPES)} or empty; got {mtype!r}"))
+        return arango_error_result(
+            ValueError(
+                f"memory_type must be one of {sorted(_MEMORY_TYPES)} or empty; got {mtype!r}"
+            )
+        )
     try:
         db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
@@ -399,8 +479,10 @@ async def pattern_search(
             memory_type filter applies in either mode.
             """
             if as_of:
-                base = (f"FILTER ({var}.valid_from == null OR {var}.valid_from <= @as_of) "
-                        f"AND ({var}.valid_to == null OR {var}.valid_to > @as_of)")
+                base = (
+                    f"FILTER ({var}.valid_from == null OR {var}.valid_from <= @as_of) "
+                    f"AND ({var}.valid_to == null OR {var}.valid_to > @as_of)"
+                )
             else:
                 base = f"FILTER {var}.superseded != true"
             if mtype:
@@ -422,25 +504,57 @@ async def pattern_search(
             extra["as_of"] = as_of
         if mtype:
             extra["mtype"] = mtype
-        use_graph = (qvec is not None and graph_expand
-                     and await run_sync(db.has_collection, "pattern_relates_to"))
+        use_graph = (
+            qvec is not None
+            and graph_expand
+            and await run_sync(db.has_collection, "pattern_relates_to")
+        )
         if use_graph:
             mode = "hybrid+graph"
-            results = await run_sync(_run_query, db, prepare(_HYBRID_GRAPH_AQL, "p"), {
-                "q": query_text, "qvec": qvec, "lim": lim,
-                "@coll": collection_name, "@view": view_name, **extra})
+            results = await run_sync(
+                _run_query,
+                db,
+                prepare(_HYBRID_GRAPH_AQL, "p"),
+                {
+                    "q": query_text,
+                    "qvec": qvec,
+                    "lim": lim,
+                    "@coll": collection_name,
+                    "@view": view_name,
+                    **extra,
+                },
+            )
         elif qvec is not None:
-            results = await run_sync(_run_query, db, prepare(_HYBRID_AQL, "p"), {
-                "q": query_text, "qvec": qvec, "lim": lim,
-                "@coll": collection_name, "@view": view_name, **extra})
+            results = await run_sync(
+                _run_query,
+                db,
+                prepare(_HYBRID_AQL, "p"),
+                {
+                    "q": query_text,
+                    "qvec": qvec,
+                    "lim": lim,
+                    "@coll": collection_name,
+                    "@view": view_name,
+                    **extra,
+                },
+            )
         else:
-            results = await run_sync(_run_query, db, prepare(_BM25_AQL, "c.p"), {
-                "q": query_text, "lim": lim, "@view": view_name, **extra})
+            results = await run_sync(
+                _run_query,
+                db,
+                prepare(_BM25_AQL, "c.p"),
+                {"q": query_text, "lim": lim, "@view": view_name, **extra},
+            )
 
         if not as_of:  # time-travel reads are analytical — keep the funnel organic
             await run_sync(_log_search, db, query_text, mode, results, project_id, collection_name)
-        return {"result": {"mode": mode + ("+as_of" if as_of else ""), "count": len(results),
-                           "patterns": results}}
+        return {
+            "result": {
+                "mode": mode + ("+as_of" if as_of else ""),
+                "count": len(results),
+                "patterns": results,
+            }
+        }
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc)
 
@@ -469,15 +583,19 @@ async def pattern_index(
     document_key: str = Field(description="_key of the just-saved shared_patterns doc."),
     collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
     rel_sim: float = Field(default=0.30, description="Min cosine to create a relates_to edge."),
-    sup_sim: float = Field(default=0.90, description="Min cosine to treat as a near-duplicate/supersede."),
+    sup_sim: float = Field(
+        default=0.90, description="Min cosine to treat as a near-duplicate/supersede."
+    ),
     top_k: int = Field(default=3, description="Neighbours to consider (1-10)."),
-    database_name: str = Field(default="", description="Target database (default: server default)."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
     model: str = Field(default="", description="Optional embedding model override."),
 ):
     try:
         db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
-        doc = await run_sync(coll.get, document_key)
+        doc = cast(dict[str, Any] | None, await run_sync(coll.get, document_key))
         if not doc:
             return {"result": {"error": f"document {document_key!r} not found"}}
 
@@ -486,26 +604,49 @@ async def pattern_index(
         #    the flag once the real vector lands.
         embedded = False
         if not doc.get("embedding") or doc.get("embedding_pending"):
-            text = "\n".join(str(doc[f]) for f in ("problem_description", "solution_summary")
-                             if doc.get(f))
+            text = "\n".join(
+                str(doc[f]) for f in ("problem_description", "solution_summary") if doc.get(f)
+            )
             if text.strip():
                 vecs, _m, _d = await generate_embeddings([text], model)
-                await run_sync(coll.update, {"_key": document_key, "embedding": vecs[0],
-                                             "embedding_pending": False})
+                await run_sync(
+                    coll.update,
+                    {"_key": document_key, "embedding": vecs[0], "embedding_pending": False},
+                )
                 doc["embedding"] = vecs[0]
                 doc["embedding_pending"] = False
                 embedded = True
 
-        if (not doc.get("embedding") or doc.get("embedding_pending")
-                or not await run_sync(_has_vector_index, coll)):
-            return {"result": {"embedded": embedded, "relates_edges": 0, "superseded": None,
-                               "note": "no real embedding or vector index; skipped graph maintenance"}}
+        if (
+            not doc.get("embedding")
+            or doc.get("embedding_pending")
+            or not await run_sync(_has_vector_index, coll)
+        ):
+            return {
+                "result": {
+                    "embedded": embedded,
+                    "relates_edges": 0,
+                    "superseded": None,
+                    "note": "no real embedding or vector index; skipped graph maintenance",
+                }
+            }
 
         rel_edges, superseded = await run_sync(
-            _maintain_graph, db, coll, collection_name, document_key, doc["embedding"],
-            doc.get("created_at"), rel_sim, sup_sim, top_k, doc.get("project_id"))
-        return {"result": {"embedded": embedded, "relates_edges": rel_edges,
-                           "superseded": superseded}}
+            _maintain_graph,
+            db,
+            coll,
+            collection_name,
+            document_key,
+            doc["embedding"],
+            doc.get("created_at"),
+            rel_sim,
+            sup_sim,
+            top_k,
+            doc.get("project_id"),
+        )
+        return {
+            "result": {"embedded": embedded, "relates_edges": rel_edges, "superseded": superseded}
+        }
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc)
 
@@ -533,20 +674,27 @@ async def pattern_index(
 async def save_pattern(
     problem_description: str = Field(description="One-sentence problem description."),
     solution_summary: str = Field(description="2-5 sentence solution, reusable across projects."),
-    problem_category: str = Field(description="e.g. auth|api-design|data-model|testing|deployment|other."),
+    problem_category: str = Field(
+        description="e.g. auth|api-design|data-model|testing|deployment|other."
+    ),
     project_id: str = Field(description="Originating project id (from CLAUDE.md)."),
     project_type: str = Field(default="other", description="Project type."),
-    memory_type: str = Field(default="pattern",
-                             description="Taxonomy: pattern|feedback|user|project|reference."),
+    memory_type: str = Field(
+        default="pattern", description="Taxonomy: pattern|feedback|user|project|reference."
+    ),
     why: str = Field(default="", description="feedback memories: the reason behind the guidance."),
-    how_to_apply: str = Field(default="", description="feedback memories: how to apply it next time."),
+    how_to_apply: str = Field(
+        default="", description="feedback memories: how to apply it next time."
+    ),
     tags: List[str] = Field(default=[], description="2-5 keyword tags."),
     importance: int = Field(default=5, description="LLM-rated salience 1-10 (drives ranking)."),
     source_file: str = Field(default="", description="Relevant file:line, if any."),
     worked: bool = Field(default=True, description="Whether the solution was verified to work."),
     created_at: str = Field(default="", description="ISO timestamp; defaults to now (UTC)."),
     collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
-    database_name: str = Field(default="", description="Target database (default: server default)."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
     model: str = Field(default="", description="Optional embedding model override."),
     rel_sim: float = Field(default=0.30, description="Min cosine for a relates_to edge."),
     sup_sim: float = Field(default=0.90, description="Min cosine to treat as a near-duplicate."),
@@ -554,17 +702,20 @@ async def save_pattern(
     consolidate_sim: float = Field(
         default=0.80,
         description="Consolidation gate: if an existing valid memory is at least this "
-                    "similar, the save is BLOCKED and the candidates are returned for a "
-                    "decision (update the existing one, supersede it, or force)."),
+        "similar, the save is BLOCKED and the candidates are returned for a "
+        "decision (update the existing one, supersede it, or force).",
+    ),
     force: bool = Field(
         default=False,
         description="Bypass the consolidation gate after reviewing its candidates — "
-                    "insert as genuinely new despite the similarity."),
+        "insert as genuinely new despite the similarity.",
+    ),
     supersedes_key: str = Field(
         default="",
         description="_key of an existing memory this save REPLACES: the old one is "
-                    "invalidated bi-temporally (valid_to closed, importance demoted) and "
-                    "linked via pattern_supersedes. Implies bypassing the gate for that key."),
+        "invalidated bi-temporally (valid_to closed, importance demoted) and "
+        "linked via pattern_supersedes. Implies bypassing the gate for that key.",
+    ),
 ):
     try:
         memory_type = _arg(memory_type, "pattern")
@@ -572,20 +723,28 @@ async def save_pattern(
         consolidate_sim = _arg(consolidate_sim, 0.80)
         force, supersedes_key = _arg(force, False), _arg(supersedes_key, "")
         if memory_type not in _MEMORY_TYPES:
-            return {"result": {"error": f"invalid memory_type {memory_type!r} — "
-                                        f"must be one of {sorted(_MEMORY_TYPES)}"}}
+            return {
+                "result": {
+                    "error": f"invalid memory_type {memory_type!r} — "
+                    f"must be one of {sorted(_MEMORY_TYPES)}"
+                }
+            }
         db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
         now = datetime.datetime.now(datetime.timezone.utc)
         created = created_at or now.strftime("%Y-%m-%dT%H:%M:%SZ")
-        key = re.sub(r"[^A-Za-z0-9_-]", "-",
-                     f"{project_id}_{problem_category}_{now.strftime('%Y%m%d_%H%M%S')}")[:250]
+        key = re.sub(
+            r"[^A-Za-z0-9_-]",
+            "-",
+            f"{project_id}_{problem_category}_{now.strftime('%Y%m%d_%H%M%S')}",
+        )[:250]
 
         # Embed BEFORE insert so the doc satisfies a non-sparse vector index.
         embedding, embed_error = None, None
         try:
             vecs, _m, _d = await generate_embeddings(
-                [f"{problem_description}\n{solution_summary}"], model)
+                [f"{problem_description}\n{solution_summary}"], model
+            )
             embedding = vecs[0]
         except Exception as exc:  # noqa: BLE001
             embed_error = str(exc)
@@ -599,44 +758,63 @@ async def save_pattern(
         # target is the memory being explicitly superseded, or no embedding (BM25-only
         # deployments and outage saves — availability beats consolidation).
         if embedding is not None and not force and await run_sync(_has_vector_index, coll):
-            nbrs = await run_sync(_run_query, db, _KNN_AQL, {
-                "vec": embedding, "lim": 4, "@coll": collection_name})
-            cand_keys = [n["k"] for n in nbrs
-                         if n["s"] >= consolidate_sim and n["k"] != supersedes_key]
+            nbrs = await run_sync(
+                _run_query, db, _KNN_AQL, {"vec": embedding, "lim": 4, "@coll": collection_name}
+            )
+            cand_keys = [
+                n["k"] for n in nbrs if n["s"] >= consolidate_sim and n["k"] != supersedes_key
+            ]
             if cand_keys:
                 sims = {n["k"]: round(n["s"], 4) for n in nbrs}
-                cands = await run_sync(_run_query, db,
+                cands = await run_sync(
+                    _run_query,
+                    db,
                     "FOR k IN @keys LET p = DOCUMENT(@@coll, k) "
                     "FILTER p != null AND p.superseded != true AND p.valid_to == null "
                     "RETURN { _key: p._key, memory_type: p.memory_type, "
                     "project_id: p.project_id, usage_count: p.usage_count, "
                     "problem_description: p.problem_description, "
                     "solution_summary: LEFT(p.solution_summary, 400) }",
-                    {"keys": cand_keys, "@coll": collection_name})
+                    {"keys": cand_keys, "@coll": collection_name},
+                )
                 if cands:
                     for c in cands:
                         c["similarity"] = sims.get(c["_key"])
-                    return {"result": {
-                        "consolidation_required": True,
-                        "saved": False,
-                        "candidates": cands,
-                        "guidance": "A very similar valid memory already exists. Decide: "
-                                    "(a) UPDATE the existing memory instead of saving a new one "
-                                    "(merge new details via upsert-document; set "
-                                    "embedding_pending=true if you change its text); "
-                                    "(b) REPLACE it — re-call save-pattern with "
-                                    "supersedes_key='<candidate _key>'; or "
-                                    "(c) it is genuinely different — re-call save-pattern "
-                                    "with force=true."}}
+                    return {
+                        "result": {
+                            "consolidation_required": True,
+                            "saved": False,
+                            "candidates": cands,
+                            "guidance": "A very similar valid memory already exists. Decide: "
+                            "(a) UPDATE the existing memory instead of saving a new one "
+                            "(merge new details via upsert-document; set "
+                            "embedding_pending=true if you change its text); "
+                            "(b) REPLACE it — re-call save-pattern with "
+                            "supersedes_key='<candidate _key>'; or "
+                            "(c) it is genuinely different — re-call save-pattern "
+                            "with force=true.",
+                        }
+                    }
 
-        doc = {"_key": key, "project_id": project_id, "project_type": project_type,
-               "problem_category": problem_category, "problem_description": problem_description,
-               "solution_summary": solution_summary, "tags": tags, "worked": worked,
-               "created_at": created, "importance": importance, "usage_count": 0,
-               "last_used": created, "source_file": source_file,
-               "saved_by": _current_user(),
-               "memory_type": memory_type,
-               "valid_from": created, "valid_to": None}
+        doc = {
+            "_key": key,
+            "project_id": project_id,
+            "project_type": project_type,
+            "problem_category": problem_category,
+            "problem_description": problem_description,
+            "solution_summary": solution_summary,
+            "tags": tags,
+            "worked": worked,
+            "created_at": created,
+            "importance": importance,
+            "usage_count": 0,
+            "last_used": created,
+            "source_file": source_file,
+            "saved_by": _current_user(),
+            "memory_type": memory_type,
+            "valid_from": created,
+            "valid_to": None,
+        }
         if why:
             doc["why"] = why
         if how_to_apply:
@@ -666,33 +844,59 @@ async def save_pattern(
         # loser is picked by created_at, so it would quietly demote whichever teammate saved
         # first without telling them. Explicit replacement still works via supersedes_key.
         rel_edges, superseded = await run_sync(
-            _maintain_graph, db, coll, collection_name, key, (None if pending else embedding),
-            created, rel_sim, sup_sim, top_k, project_id, allow_supersede=not force)
+            _maintain_graph,
+            db,
+            coll,
+            collection_name,
+            key,
+            (None if pending else embedding),
+            created,
+            rel_sim,
+            sup_sim,
+            top_k,
+            project_id,
+            allow_supersede=not force,
+        )
 
         # Explicit replacement decided by the caller (consolidation outcome b):
         # supersede edge + bi-temporal invalidation of the named memory.
         if supersedes_key and supersedes_key != key:
+
             def _explicit_supersede():
                 if db.has_collection("pattern_supersedes"):
                     db.collection("pattern_supersedes").insert(
-                        {"_key": _ekey(key, supersedes_key),
-                         "_from": f"{collection_name}/{key}",
-                         "_to": f"{collection_name}/{supersedes_key}",
-                         "explicit": True}, overwrite=True)
-                _invalidate(coll, supersedes_key, key,
-                            "explicitly replaced via save-pattern supersedes_key",
-                            datetime.datetime.now(datetime.timezone.utc)
-                            .strftime("%Y-%m-%dT%H:%M:%SZ"))
+                        {
+                            "_key": _ekey(key, supersedes_key),
+                            "_from": f"{collection_name}/{key}",
+                            "_to": f"{collection_name}/{supersedes_key}",
+                            "explicit": True,
+                        },
+                        overwrite=True,
+                    )
+                _invalidate(
+                    coll,
+                    supersedes_key,
+                    key,
+                    "explicitly replaced via save-pattern supersedes_key",
+                    datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                )
+
             await run_sync(_explicit_supersede)
             superseded = superseded or {"new": key, "old": supersedes_key, "explicit": True}
 
-        result = {"_key": key, "embedded": embedding is not None,
-                  "embedding_pending": pending,
-                  "relates_edges": rel_edges, "superseded": superseded}
+        result = {
+            "_key": key,
+            "embedded": embedding is not None,
+            "embedding_pending": pending,
+            "relates_edges": rel_edges,
+            "superseded": superseded,
+        }
         if pending:
-            result["note"] = (f"embedding deferred ({embed_error}); pattern saved and "
-                              f"keyword-searchable now. Backfill with pattern-index on this "
-                              f"_key.")
+            result["note"] = (
+                f"embedding deferred ({embed_error}); pattern saved and "
+                f"keyword-searchable now. Backfill with pattern-index on this "
+                f"_key."
+            )
         return {"result": result}
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc)
@@ -726,7 +930,9 @@ async def save_drift_alert(
     closed_at: str = Field(default="", description="ISO timestamp when the gap was closed."),
     closed_evidence: str = Field(default="", description="file:line proving implementation."),
     collection_name: str = Field(default="drift_alerts", description="Alerts collection."),
-    database_name: str = Field(default="", description="Target database (default: server default)."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
 ):
     try:
         db = await run_sync(arango_connector.get_db, database_name or None)
@@ -735,11 +941,18 @@ async def save_drift_alert(
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         key = re.sub(r"[^A-Za-z0-9_-]", "-", f"{project_id}_{req_id}")[:250]
 
-        full = {"_key": key, "project_id": project_id, "req_id": req_id,
-                "requirement": requirement, "classification": classification,
-                "status": status, "evidence": evidence,
-                "gap_description": gap_description, "detected_at": detected_at or now,
-                "detected_by": _current_user()}
+        full = {
+            "_key": key,
+            "project_id": project_id,
+            "req_id": req_id,
+            "requirement": requirement,
+            "classification": classification,
+            "status": status,
+            "evidence": evidence,
+            "gap_description": gap_description,
+            "detected_at": detected_at or now,
+            "detected_by": _current_user(),
+        }
         if status == "closed":
             full["closed_at"] = closed_at or now
             full["closed_evidence"] = closed_evidence
@@ -749,16 +962,26 @@ async def save_drift_alert(
         # upsert-document search_fields/update_data semantics). detected_by is
         # insert-only attribution: the original detector is never overwritten
         # on re-detection (closed_by, by contrast, records whoever closes it).
-        upd = {k: v for k, v in full.items()
-               if k not in ("_key", "project_id", "req_id", "detected_by")
-               and v not in ("", None)}
+        upd = {
+            k: v
+            for k, v in full.items()
+            if k not in ("_key", "project_id", "req_id", "detected_by") and v not in ("", None)
+        }
 
-        await run_sync(db.aql.execute,
-                       "UPSERT { _key: @key } INSERT @full UPDATE @upd IN @@coll",
-                       bind_vars={"key": key, "full": full, "upd": upd, "@coll": collection_name})
+        await run_sync(
+            db.aql.execute,
+            "UPSERT { _key: @key } INSERT @full UPDATE @upd IN @@coll",
+            bind_vars={"key": key, "full": full, "upd": upd, "@coll": collection_name},
+        )
 
-        prov = await run_sync(_ensure_provenance, db, "alert_from_project",
-                              f"{collection_name}/{key}", project_id, "alert_from_project")
+        prov = await run_sync(
+            _ensure_provenance,
+            db,
+            "alert_from_project",
+            f"{collection_name}/{key}",
+            project_id,
+            "alert_from_project",
+        )
         return {"result": {"_key": key, "status": status, "provenance_edge": prov}}
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc)
@@ -779,13 +1002,18 @@ async def save_drift_alert(
 )
 async def pattern_applied(
     keys: List[str] = Field(description="_key(s) of the pattern(s) actually applied."),
-    outcome: str = Field(default="worked", description="Apply outcome: 'worked' (default) or "
-                         "'failed'. 'failed' records negative signal (bumps applied_failed) "
-                         "WITHOUT boosting usage_count / last_used, so a pattern that was tried "
-                         "but did not help is down-weighted in /pattern-search ranking rather "
-                         "than rewarded."),
+    outcome: str = Field(
+        default="worked",
+        description="Apply outcome: 'worked' (default) or "
+        "'failed'. 'failed' records negative signal (bumps applied_failed) "
+        "WITHOUT boosting usage_count / last_used, so a pattern that was tried "
+        "but did not help is down-weighted in /pattern-search ranking rather "
+        "than rewarded.",
+    ),
     collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
-    database_name: str = Field(default="", description="Target database (default: server default)."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
 ):
     try:
         if not keys:
@@ -793,7 +1021,9 @@ async def pattern_applied(
         worked = str(outcome).strip().lower() != "failed"
         db = await run_sync(arango_connector.get_db, database_name or None)
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        updated = await run_sync(_run_query, db,
+        updated = await run_sync(
+            _run_query,
+            db,
             # Positive signals (usage_count, last_used) bump ONLY on a 'worked' apply so a
             # failed application can never reward the pattern; a 'failed' apply bumps
             # applied_failed, feeding the success-rate penalty in the search ranking.
@@ -812,10 +1042,23 @@ async def pattern_applied(
             "[{ by: @by, at: @now, outcome: @outcome }]) } IN @@coll "
             "RETURN { _key: NEW._key, usage_count: NEW.usage_count, "
             "applied_worked: NEW.applied_worked, applied_failed: NEW.applied_failed }",
-            {"keys": keys, "@coll": collection_name, "now": now, "by": _current_user(),
-             "worked": worked, "outcome": "worked" if worked else "failed"})
+            {
+                "keys": keys,
+                "@coll": collection_name,
+                "now": now,
+                "by": _current_user(),
+                "worked": worked,
+                "outcome": "worked" if worked else "failed",
+            },
+        )
         missing = [k for k in keys if k not in [u["_key"] for u in updated]]
-        return {"result": {"applied": updated, "count": len(updated),
-                           "outcome": "worked" if worked else "failed", "not_found": missing}}
+        return {
+            "result": {
+                "applied": updated,
+                "count": len(updated),
+                "outcome": "worked" if worked else "failed",
+                "not_found": missing,
+            }
+        }
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc)

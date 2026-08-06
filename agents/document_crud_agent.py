@@ -80,7 +80,7 @@ class DocumentCRUDAgent(ArangoAgentBase):
             if not filters:
                 return {"error": "Filters are required."}
             cursor = await self.run_sync(collection.find, filters, skip=skip, limit=limit)
-            docs = await self.run_sync(list, cursor)
+            docs: List[Dict[str, Any]] = await self.run_sync(list, cursor)
             return {
                 "documents": docs,
                 "count": len(docs),

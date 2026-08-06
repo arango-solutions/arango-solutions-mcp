@@ -1,0 +1,84 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: security-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Enforce temporary FastMCP exception expiry
+        run: |
+          poetry run python - <<'PY'
+          from datetime import date
+
+          expiry = date(2026, 10, 1)
+          if date.today() >= expiry:
+              raise SystemExit(
+                  "FastMCP 0.2 vulnerability exceptions expired; complete the SDK migration."
+              )
+          PY
+
+      - name: Audit installed dependencies
+        # FastMCP 0.2 is pinned by the current server architecture. These
+        # advisories require the breaking SDK migration tracked by DEP-001.
+        run: >-
+          poetry run python -m pip_audit
+          --ignore-vuln PYSEC-2026-1364
+          --ignore-vuln PYSEC-2026-1365
+          --ignore-vuln PYSEC-2026-2474
+          --ignore-vuln PYSEC-2026-2475
+          --ignore-vuln PYSEC-2026-2476
+          --ignore-vuln GHSA-rcfx-77hg-w2wv

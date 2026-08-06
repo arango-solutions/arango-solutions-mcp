@@ -40,8 +40,11 @@ jobs:
       - name: Ruff format check
         run: poetry run ruff format --check .
 
+      - name: Documentation consistency
+        run: poetry run python scripts/verify_docs.py
+
       - name: Mypy type check
-        run: poetry run mypy --ignore-missing-imports --no-error-summary --namespace-packages --explicit-package-bases --disable-error-code=union-attr --disable-error-code=no-any-return --disable-error-code=no-untyped-def --disable-error-code=call-arg --disable-error-code=arg-type --disable-error-code=operator --disable-error-code=assignment agents/ mcp_tools/ aql_utils.py config.py arango_connector.py server.py main.py
+        run: poetry run python -m mypy --ignore-missing-imports --no-error-summary --namespace-packages --explicit-package-bases --disable-error-code=union-attr --disable-error-code=no-any-return --disable-error-code=no-untyped-def --disable-error-code=call-arg --disable-error-code=arg-type --disable-error-code=operator --disable-error-code=assignment agents/ mcp_tools/ aql_utils.py config.py arango_connector.py server.py main.py
 
   test:
     name: Test (Python ${{ matrix.python-version }}, ArangoDB ${{ matrix.arango-version }})
@@ -88,3 +91,4 @@ jobs:
           --cov=config --cov=arango_connector --cov=server --cov=main
           --cov=auth_middleware
           --cov-report=term-missing
+          --cov-fail-under=79

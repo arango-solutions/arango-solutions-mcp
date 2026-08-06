@@ -2,12 +2,13 @@ services:
   arangodb-mcp:
     build: .
     ports:
-      - "8000:8000"
+      - "${MCP_HTTP_PORT:-8000}:8000"
     environment:
       - ARANGO_HOSTS=http://arangodb:8529
       - ARANGO_ROOT_USERNAME=root
       - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:?Set ARANGO_ROOT_PASSWORD before running}
       - ARANGO_DEFAULT_DB_NAME=${ARANGO_DEFAULT_DB_NAME:-_system}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN before running}
       - MCP_TRANSPORT=streamable-http
       - MCP_HOST=0.0.0.0
       - MCP_PORT=8000
@@ -20,14 +21,19 @@ services:
 
   arangodb:
     image: arangodb/arangodb:3.12
+    command: ["--experimental-vector-index"]
     ports:
-      - "8529:8529"
+      - "${ARANGO_HTTP_PORT:-8529}:8529"
     environment:
       - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:?Set ARANGO_ROOT_PASSWORD before running}
     volumes:
       - arangodb-data:/var/lib/arangodb3
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8529/_api/version"]
+      test:
+        [
+          "CMD-SHELL",
+          "arangosh --server.endpoint http+tcp://127.0.0.1:8529 --server.username root --server.password \"$$ARANGO_ROOT_PASSWORD\" --javascript.execute-string 'db._version()' >/dev/null 2>&1",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10

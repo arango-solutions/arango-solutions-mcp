@@ -1,8 +1,9 @@
 # Product Requirements Document — ArangoDB MCP Server
 
-**Version:** 2.0.0
-**Last Updated:** May 5, 2026
-**Status:** Implemented
+**PRD Version:** 3.0
+**Current Product Version:** 2.0.0
+**Last Updated:** August 5, 2026
+**Status:** Requirement-level tracking; approved v3 requirements are not implementation claims
 **Repository:** [arango-solutions/arango-solutions-mcp](https://github.com/arango-solutions/arango-solutions-mcp)
 
 ---
@@ -11,7 +12,7 @@
 
 ### 1.1 Product Summary
 
-The ArangoDB MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that exposes **74 tools** giving AI assistants (Cursor, Claude Desktop, and any MCP-compatible client) comprehensive, programmatic access to ArangoDB's multi-model database capabilities. It bridges the gap between natural-language AI interactions and ArangoDB's document, graph, search, and cluster features — enabling AI agents to build, query, manage, and administer ArangoDB deployments without hand-written driver code.
+The ArangoDB MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that exposes **81 tools** giving AI assistants (Cursor, Claude Desktop, and any MCP-compatible client) comprehensive, programmatic access to ArangoDB's multi-model database capabilities. It bridges the gap between natural-language AI interactions and ArangoDB's document, graph, search, and cluster features — enabling AI agents to build, query, manage, and administer ArangoDB deployments without hand-written driver code.
 
 ### 1.2 Problem Statement
 
@@ -32,11 +33,32 @@ AI coding assistants need structured access to databases to be effective. Withou
 2. **Multi-model first** — Every ArangoDB data model (document, graph, key-value, search, vector) is a first-class citizen with dedicated tools.
 3. **Safety by default** — Destructive operations require explicit parameters; AQL identifier injection is prevented by validation; sensitive data is redacted from logs. The HTTP / SSE transport refuses to bind to a non-loopback interface unless `MCP_AUTH_TOKEN` is set, so the server cannot be exposed publicly without authentication.
 4. **AI-optimized ergonomics** — Tool descriptions, server instructions, and error messages are written for LLM consumption, not human CLI users.
-5. **Thin tools, smart agents** — MCP tool definitions are thin Pydantic-validated wrappers; all business logic lives in testable agent classes.
+5. **Testable domain logic** — Core MCP tool definitions are thin Pydantic-validated wrappers around agent classes. Explicit tool-layer exceptions (currently embedding and pattern-memory tools) MUST use the shared async/error contract, remain independently testable, and be tracked as an architecture exception until extracted or accepted.
+
+### 1.5 Contract Status and Version Policy
+
+Every requirement has a stable ID and one state:
+
+| State | Meaning |
+|-------|---------|
+| **CURRENT** | Implemented in product code or documentation and backed by the cited verification path |
+| **PARTIAL** | Some implementation exists, but the acceptance gate is not yet satisfied |
+| **APPROVED** | Accepted product requirement; implementation and tests are still required |
+| **NON-GOAL** | Explicitly excluded from the current product contract |
+
+The current 2.x behavior remains available during migration. Version 3 is a deliberate breaking
+contract: `readonly` becomes the default access profile, the result envelope is versioned, and
+legacy full-access/shared-token modes are temporary compatibility options with explicit
+deprecation warnings. No scorecard or release may claim a requirement is CURRENT without the
+required evidence class.
 
 ---
 
-## 2. Functional Requirements
+## 2. Current Functional Baseline
+
+The tool rows in this section describe the current 81-tool surface. Registration and schema
+inventory are mechanically checked by `tests/test_mcp_e2e.py`; future product requirements and
+their implementation states are tracked separately in §3.8.
 
 ### 2.1 Document Operations (10 tools)
 
@@ -345,6 +367,93 @@ Cross-project "dark factory" memory (see `CLAUDE.md`): reusable solution pattern
 | **Relevance-dominant ranking** | `pattern-search` fuses ANN vector + BM25 via Reciprocal Rank Fusion (k=10), then applies multiplicative salience — `score = relevance × (1 + 0.15·importance + 0.10·recency + 0.05·usage) × (0.6 + 0.4·success_rate)` — so importance, recency, usage and apply success-rate modulate ranking but can never substitute for semantic relevance. |
 | **Measurable quality** | Retrieval quality MUST be measurable against a versioned golden query set (recall@1 / MRR), and ranking changes MUST be scored against it before merge. Harness: `arango-shared-memory/scripts/eval_retrieval.py` + `eval/golden_queries.json`. |
 
+### 3.8 Approved v3 Requirements and Traceability
+
+Evidence classes are **STATIC** (source/configuration inspection), **TEST** (deterministic automated
+test), **LIVE** (runtime integration, interoperability, load, or telemetry evidence), and
+**EXTERNAL** (published artifact or independently observable adoption/governance evidence).
+Acceptance requires every listed evidence class; a test is never a substitute for missing product
+implementation.
+
+#### Documentation and contract integrity
+
+| ID | State | Owner | Requirement and acceptance gate | Required evidence |
+|----|-------|-------|---------------------------------|-------------------|
+| DOC-001 | CURRENT | Product | Tool-count claims MUST equal the registered MCP inventory; the current count is 81. | STATIC: `server.py:18-66`; TEST: `tests/test_mcp_e2e.py:59-63` |
+| DOC-002 | CURRENT | Quality | Test-count and test-tier claims MUST be generated or mechanically verified against the repository. | TEST: `scripts/verify_docs.py:33-42`, `tests/test_doc_consistency.py:21-37` |
+| DOC-003 | CURRENT | Product | The PRD MUST use requirement-level states rather than a blanket implementation claim. | STATIC: `PRD.md:38-55`, `PRD.md:370-457` |
+| DOC-004 | CURRENT | Architecture | Tool-layer business-logic exceptions MUST be explicit and retain async/error/test parity. | STATIC: `mcp_tools/_support.py:33-59`; TEST: `tests/test_embedding_tools.py:44-60`, `tests/test_pattern_memory_tools.py:94-112` |
+| DOC-005 | CURRENT | Release | Release-history entries MUST reference immutable commits or releases and MUST NOT say “uncommitted.” | STATIC: `PRD.md:713-732`; TEST: `scripts/verify_docs.py:108-109` |
+| DOC-006 | CURRENT | Platform | The documented Compose quick start MUST require secret injection and start successfully without disabling the non-loopback auth guard. | STATIC: `docker-compose.yml:4-20`, `README.md:142-164`; TEST: `tests/test_deployment_contract.py:12-38`; LIVE: clean Compose smoke reached healthy MCP |
+| DOC-007 | CURRENT | Platform | Vector capability claims MUST match the default Compose configuration or clearly document degraded mode. | STATIC: `docker-compose.yml:22-39`; TEST: `tests/test_deployment_contract.py:12-21`; LIVE: Compose vector-index probe passed |
+| DOC-008 | PARTIAL | Architecture | Every tool MUST return one versioned success/error envelope, with a time-bounded legacy adapter. | TEST: contract test covers every registered tool |
+| DOC-009 | CURRENT | Operations | `LOG_FORMAT`, redaction behavior, and supported structured fields MUST be documented from configuration. | STATIC: `README.md:103-128`, `PRD.md:526-550`; TEST: `scripts/verify_docs.py:45-51`, `scripts/verify_docs.py:100-106` |
+| DOC-010 | PARTIAL | Operations | `/healthz`, readiness semantics, authentication behavior, and container health checks MUST be documented and executable. | TEST + LIVE: health probes pass/fail with dependency state |
+| DOC-011 | CURRENT | Quality | Documented environment variables, defaults, and conditional requirements MUST match `Settings`. | TEST: `scripts/verify_docs.py:45-51`, `scripts/verify_docs.py:100-106` |
+| DOC-012 | CURRENT | Quality | CI MUST fail when tool counts, test inventory, configuration, or release evidence drifts from documentation. | STATIC: `.github/workflows/ci.yml:43-44`; TEST: `tests/test_doc_consistency.py:21-37` |
+
+#### Agent ergonomics
+
+| ID | State | Owner | Requirement and acceptance gate | Required evidence |
+|----|-------|-------|---------------------------------|-------------------|
+| AE-001 | APPROVED | Architecture | A canonical catalog MUST classify every tool by category, risk tier, read/write/admin class, scope, and confirmation policy; unknown tools fail registration. | STATIC + TEST: catalog completeness contract |
+| AE-002 | APPROVED | Product | Startup profiles MUST include `readonly`, `developer`, `operator`, and `admin`, with additive graph/search toolsets. | TEST: exact tool inventory per profile |
+| AE-003 | APPROVED | Product | The default profile MUST expose a compact, task-appropriate surface rather than all 81 schemas. | TEST + LIVE: default `tools/list` inventory and token-size ceiling |
+| AE-004 | APPROVED | Architecture | Runtime, rows, bytes, bulk input, and concurrency MUST have server-enforced maxima with machine-readable truncation/denial metadata. | TEST + LIVE: boundary and load tests |
+| AE-005 | APPROVED | Product | Manuals, schema summaries, active profile, and status MUST be resources; safe AQL/graph/search workflows SHOULD be prompts. | TEST: MCP resource/prompt interoperability |
+| AE-006 | APPROVED | Architecture | All tools MUST use one v3 result contract; compatibility mode MUST preserve schema introspection and have a removal date. | STATIC + TEST: all-tool contract suite |
+
+#### Security and authorization
+
+| ID | State | Owner | Requirement and acceptance gate | Required evidence |
+|----|-------|-------|---------------------------------|-------------------|
+| SEC-001 | APPROVED | Security | Version 3 MUST default to readonly; write/admin tools are absent or denied unless explicitly enabled. | TEST: readonly conformance across the full catalog |
+| SEC-002 | APPROVED | Security | AQL policy MUST classify parsed queries as read, mutation, or ambiguous; readonly mode rejects mutation and fails closed on ambiguity. Keyword regex alone is insufficient. | TEST: mutation corpus and ambiguity cases |
+| SEC-003 | APPROVED | Security | Production policy MUST enforce non-disableable maxima for query runtime, output, bulk input, and concurrent work. | TEST + LIVE: bypass attempts fail |
+| SEC-004 | APPROVED | Security | Irreversible actions MUST require actor/action/parameter/expiry-bound human confirmation and MUST NOT be self-approved by an automated client. | TEST: destructive refusal and replay/expiry suite |
+| SEC-005 | APPROVED | Security | Deployments MUST support explicit tool/category denylists in addition to profiles. | TEST: denied tools never register or execute |
+| SEC-006 | APPROVED | Identity | HTTP production mode MUST support OAuth 2.1/OIDC resource-server validation, RFC 9728 metadata, per-request identity, audience/expiry validation, and scopes. | TEST + LIVE: reference authorization client |
+| SEC-007 | APPROVED | Identity | Effective authority MUST intersect token scopes, profile, database allowlist, tool policy, and least-privilege credential provider. | TEST + LIVE: concurrent actor isolation |
+
+#### Deployment and protocol
+
+| ID | State | Owner | Requirement and acceptance gate | Required evidence |
+|----|-------|-------|---------------------------------|-------------------|
+| DEP-001 | APPROVED | Protocol | The server MUST pass pinned MCP 2026-07-28 stateless interoperability, routing-header, cache-scope/TTL, Host, and Origin checks while retaining documented compatibility mode. | TEST + LIVE: reference-client interoperability suite |
+| DEP-002 | CURRENT | Platform | Docker Compose MUST provide authenticated MCP startup, vector-capable ArangoDB, dependency-aware MCP health checks, and an executable quick start. | STATIC: `Dockerfile:20-28`, `docker-compose.yml:4-39`, `README.md:142-164`; TEST: `tests/test_deployment_contract.py:12-38`, `tests/test_health_endpoint.py:84-164`; LIVE: both containers healthy, `/healthz` 200, vector probe passed, unauthenticated MCP rejected |
+| DEP-003 | APPROVED | Release | The project MUST publish installable Python and immutable non-root container artifacts. | TEST + EXTERNAL: clean install/start from published artifacts |
+| DEP-004 | APPROVED | Platform | A supported Kubernetes/Helm deployment MUST define probes, resources, secrets, and upgrade guidance. | TEST + LIVE: chart validation and cluster smoke test |
+
+#### Operations and observability
+
+| ID | State | Owner | Requirement and acceptance gate | Required evidence |
+|----|-------|-------|---------------------------------|-------------------|
+| OPS-001 | APPROVED | Operations | Every request MUST receive a propagated request/trace ID across MCP, tool, ArangoDB, and embedding calls. | TEST + LIVE: correlation in logs/traces |
+| OPS-002 | APPROVED | Operations | Prometheus metrics MUST expose tool counts, latency, errors, AQL runtime, pool pressure, and dependency calls with bounded cardinality. | TEST + LIVE: metrics scrape and cardinality assertions |
+| OPS-003 | APPROVED | Operations | OpenTelemetry traces MUST cover request, tool, database, and embedding spans using a pinned internal-to-MCP convention mapping. | TEST + LIVE: trace export verification |
+| OPS-004 | APPROVED | Security | Every mutation and privileged action MUST emit one structured redacted audit event with actor, action, target, outcome, and correlation ID. | TEST + LIVE: mutation audit completeness and secret-leak scan |
+| OPS-005 | APPROVED | Operations | Per-actor rate limits and global/tool-class concurrency limits MUST return retry metadata and export limiter metrics. | TEST + LIVE: configured in-flight maximum is never exceeded |
+| OPS-006 | PARTIAL | Operations | Liveness and dependency-aware readiness MUST be distinct, containerized, documented, and tied to explicit SLOs. | STATIC: `main.py:74-115`; TEST + LIVE: probe and failure-mode suite |
+
+#### Reliability and verification
+
+| ID | State | Owner | Requirement and acceptance gate | Required evidence |
+|----|-------|-------|---------------------------------|-------------------|
+| REL-001 | PARTIAL | Quality | Required CI MUST be green and enforce a measured non-regression coverage floor. | STATIC: `.github/workflows/ci.yml:37-94`, `pyproject.toml:76-78`; TEST: Ruff, Mypy, 392 tests, and 79% floor pass locally; EXTERNAL: protected required checks pending |
+| REL-002 | PARTIAL | Security | CI MUST run dependency audit, CodeQL, secret scanning, and container/dependency vulnerability checks with a documented severity policy. | STATIC: `.github/dependabot.yml:1-24`, `.github/workflows/security.yml:1-84`; TEST: pip-audit passes with six expiring FastMCP exceptions; secret and image scans remain |
+| REL-003 | PARTIAL | Quality | A scheduled job MUST execute real multi-server cluster tests rather than deselecting them. | STATIC: `.github/workflows/cluster-nightly.yml:1-113`; TEST + LIVE: 4 passed and 1 Community-edition skip against a local three-machine cluster; EXTERNAL: first scheduled or dispatched GitHub run pending |
+| REL-004 | APPROVED | Protocol | CI MUST verify supported MCP transports and strict/legacy interoperability with pinned reference clients. | TEST + LIVE: interoperability matrix |
+| REL-005 | APPROVED | Quality | Deterministic task replays MUST gate tool selection and destructive refusal; live-model evaluations MAY run as advisory nightly checks. | TEST + LIVE: selection ≥90%, destructive refusal 100% |
+| REL-006 | PARTIAL | Quality | Retrieval quality and performance MUST have versioned in-repository baselines and blocking regression thresholds. | TEST + LIVE: MRR/recall and p50/p95/p99 gates |
+
+#### Release maturity and governance
+
+| ID | State | Owner | Requirement and acceptance gate | Required evidence |
+|----|-------|-------|---------------------------------|-------------------|
+| MAT-001 | APPROVED | Release | Releases MUST use trusted publishing, signed provenance, SBOMs, keyless image signatures, changelogs, and automated verification. | EXTERNAL: published wheel/image attestations verify |
+| MAT-002 | APPROVED | Product | The repository MUST publish `SECURITY.md`, `CONTRIBUTING.md`, `CODEOWNERS`, threat model, support policy, and deprecation policy. | STATIC + EXTERNAL: public governance files and response paths |
+| MAT-003 | APPROVED | Product | An A claim requires an independent scorecard rerun at ≥90 after at least 30 days of green CI, telemetry, interoperability, release, and external-use evidence. | LIVE + EXTERNAL: dated evidence report and regrade |
+
 ---
 
 ## 4. Architecture
@@ -425,6 +534,7 @@ Cross-project "dark factory" memory (see `CLAUDE.md`): reusable solution pattern
 | `ARANGO_VERIFY_SSL` | No | `true` | `ARANGO_` | Enable SSL certificate verification |
 | `ARANGO_SSL_CERT_PATH` | No | `""` | `ARANGO_` | Path to SSL certificate file |
 | `LOG_LEVEL` | No | `INFO` | — | Server log level |
+| `LOG_FORMAT` | No | `text` | — | Log format: human-readable `text` or one-line `json` |
 | `ENABLE_JS_TRANSACTIONS` | No | `false` | — | Enable server-side JavaScript transactions (security-sensitive) |
 | `SERVER_NAME` | No | `ArangoDB MCP Server` | — | MCP server display name |
 | `SERVER_VERSION` | No | `2.0.0` | — | MCP server version string |
@@ -433,6 +543,9 @@ Cross-project "dark factory" memory (see `CLAUDE.md`): reusable solution pattern
 | `MCP_PORT` | No | `8000` | — | Bind port for `sse`/`streamable-http` transport |
 | `MCP_AUTH_TOKEN` | Conditional | — | — | Bearer token required for `sse` / `streamable-http` transports. **REQUIRED** when `MCP_HOST` is non-loopback (anything other than `127.0.0.1`, `localhost`, or `::1`); the server exits with code `2` if unset in that configuration. Ignored for `stdio`. Stored in-process as `pydantic.SecretStr`. |
 | `DEFAULT_AQL_MAX_RUNTIME` | No | `30` | — | Default per-query AQL max runtime, in seconds. Applied server-side to every `execute-aql-query` call; the tool also accepts a per-call `max_runtime` override. Set to `0` to disable. |
+| `LOG_AQL_QUERIES` | No | `false` | — | Log the first 100 characters of user AQL; disabled by default to redact literals |
+| `CONNECT_MAX_RETRIES` | No | `5` | — | Maximum transient connection retries at startup (`0` disables retries) |
+| `CONNECT_INITIAL_BACKOFF` | No | `1.0` | — | Initial retry backoff in seconds, doubled up to 30 seconds |
 | `OPENAI_API_KEY` | No | — | — | OpenAI API key for the embeddings endpoint (§2.16–2.17). Required for vector/hybrid `pattern-search` and for embedding new patterns; when unset those tools degrade to keyword-only (BM25) behaviour. Stored in-process as `pydantic.SecretStr`. |
 | `EMBEDDING_MODEL` | No | `text-embedding-3-small` | — | OpenAI embedding model (1536 dimensions for the default). |
 
@@ -479,10 +592,16 @@ The server ships with a `Dockerfile` and `docker-compose.yml` for standalone dep
 
 ```bash
 export ARANGO_ROOT_PASSWORD=your_password
+export MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
 docker compose up -d
-# MCP server at http://localhost:8000/mcp
-# ArangoDB UI at http://localhost:8529
+docker compose ps
+curl --fail http://localhost:8000/healthz
 ```
+
+Compose requires independent database and MCP secrets, enables ArangoDB's
+`--experimental-vector-index` flag, and uses the database-backed MCP health endpoint. The MCP
+endpoint is `http://localhost:8000/mcp` and requires
+`Authorization: Bearer <MCP_AUTH_TOKEN>`; the ArangoDB UI is at `http://localhost:8529`.
 
 **Docker only** (connect to existing ArangoDB):
 
@@ -530,9 +649,13 @@ The suite is organized into three tiers based on what infrastructure they need:
 | `test_traversal.py` | Integration | GraphTraversalAgent, AQL explain/validate |
 | `test_transactions.py` | Integration | TransactionManagementAgent, BackupManagementAgent |
 | `test_users.py` | Integration | UserManagementAgent (users + permissions, `SecretStr` password handling) |
-| `test_cluster.py` | Integration (cluster) | Cluster-specific tests; excluded from CI (requires multi-server deployment) |
+| `test_cluster.py` | Integration (cluster) | Coordinator detection, DBServer count, sharding, replication; scheduled nightly against a pinned three-machine deployment |
 | `test_agent_unit.py` | Mock | Per-agent unit tests with `arango_connector` patched out — covers logic branches in every agent without DB I/O |
+| `test_arango_connector.py` | Mock | Connector configuration, retry, lifecycle, and health behavior |
 | `test_base_and_decorator.py` | Mock | `ArangoAgentBase` (`resolve_db`, `pack_optional`, `run_sync`) and the `handle_arango_errors` decorator (specific exceptions, `on_arango_error` callback, fallthrough) |
+| `test_deployment_contract.py` | Static contract | Compose, image health, quick-start, and nightly cluster workflow invariants |
+| `test_doc_consistency.py` | Static contract | Executable tool/test/config inventory matches README, PRD, and scorecard claims |
+| `test_health_endpoint.py` | Mock | `/healthz`, JSON logging, and standalone HTTP database lifecycle |
 | `test_mcp_tools.py` | Mock | Verifies each `@mcp_app.tool` wrapper builds the correct operation dict and delegates to its agent's `arun` |
 | `test_embedding_tools.py` | Mock | `embed-text` / `embed-document` plus the `mcp_tools/_support.py` helpers — standardized error envelope, `run_sync` off-loop dispatch, TLS-env sanitisation, API-key guard |
 | `test_pattern_memory_tools.py` | Mock | The five shared-memory tools — BM25 fallback path, provenance upsert, usage bump + missing-key reporting, standardized errors, off-loop dispatch |
@@ -546,10 +669,12 @@ The suite is organized into three tiers based on what infrastructure they need:
 |-----------|---------------|
 | **Platform** | GitHub Actions (`ci.yml`) |
 | **Triggers** | Push/PR to `main` |
-| **Lint job** | Ruff check + Ruff format check + Mypy type check |
+| **Lint job** | Ruff check + Ruff format check + documentation consistency + Mypy type check |
 | **Test job** | pytest with coverage across Python 3.10 and 3.11, ArangoDB 3.12 Docker |
+| **Security jobs** | CodeQL and dependency audit on push/PR, weekly schedule, and manual dispatch |
+| **Cluster job** | Pinned three-machine ArangoDB Starter deployment and real cluster tests nightly/manual |
 | **Coverage** | `pytest-cov` reports on `agents`, `mcp_tools`, `aql_utils`, `config`, `arango_connector`, `server`, `main`, `auth_middleware` |
-| **Exclusions** | `test_cluster.py` excluded (requires multi-server deployment) |
+| **PR exclusions** | `test_cluster.py` remains outside the normal PR matrix; it runs in the scheduled/manual cluster workflow |
 
 ---
 
@@ -571,14 +696,15 @@ The suite is organized into three tiers based on what infrastructure they need:
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `pytest` | ^8.0 | Test framework |
-| `pytest-asyncio` | ^0.24 | Async test support |
+| `pytest` | ^9.1 | Test framework |
+| `pytest-asyncio` | ^1.4 | Async test support |
 | `pytest-timeout` | ^2.2 | Test timeout enforcement |
-| `black` | ^24.0 | Code formatter |
-| `isort` | ^5.13 | Import sorter |
+| `black` | ^26.5 | Legacy compatibility formatter; CI uses Ruff |
+| `isort` | ^5.13 | Legacy compatibility import sorter; CI uses Ruff |
 | `mypy` | ^1.0 | Static type checker |
 | `ruff` | ^0.8 | Fast linter and formatter |
-| `pytest-cov` | ^5.0 | Test coverage reporting |
+| `pytest-cov` | ^7.1 | Test coverage reporting and 79% floor enforcement |
+| `pip-audit` | ^2.10 | Dependency vulnerability audit |
 
 ---
 
@@ -602,8 +728,8 @@ The suite is organized into three tiers based on what infrastructure they need:
 | CI | `fcd3a0e`–`66b603e` | GitHub Actions CI workflow |
 | Users | `f311408` | User and permission management (9 tools, 74 total) |
 | Hardening | `5e941b2` | Security fixes, code quality, test expansion, tooling |
-| Async-safety & auth | `(uncommitted)` | Async-safety pass: `run_sync` wrapping across all 15 agents; `@handle_arango_errors` adopted by remaining 2 agents (Cluster, Backup) with the new `on_arango_error` callback for Enterprise / cluster-mode rewrites; HTTP bearer-token auth (`auth_middleware.BearerTokenAuthMiddleware`) plus non-loopback startup guard; `MCP_AUTH_TOKEN` and `DEFAULT_AQL_MAX_RUNTIME` settings added; `SecretStr` extended to user-create / user-update passwords; orphan config fields (`max_connections`, `timeout`, `enable_metrics`) removed; broken docker-test cluster mode removed. |
-| Shared-memory tooling | `01583ae`–`(uncommitted)` | Embedding tools (`embed-text`, `embed-document`) and shared-memory pattern/drift tools (`pattern-search`, `save-pattern`, `pattern-index`, `pattern-applied`, `save-drift-alert`) — **7 tools, 81 total** (PRD §2.16–2.17); auto-create target database; graph provenance on the write path. Async-safety + standardized-error retrofit via `mcp_tools/_support.py`; embedding config (`OPENAI_API_KEY`, `EMBEDDING_MODEL`); unit tests `test_embedding_tools.py` + `test_pattern_memory_tools.py`. |
+| Async-safety & auth | `09a2eb1`–`e942878` | Async-safety pass: `run_sync` wrapping across all 15 agents; `@handle_arango_errors` adopted by remaining 2 agents (Cluster, Backup) with the new `on_arango_error` callback for Enterprise / cluster-mode rewrites; HTTP bearer-token auth (`auth_middleware.BearerTokenAuthMiddleware`) plus non-loopback startup guard; `MCP_AUTH_TOKEN` and `DEFAULT_AQL_MAX_RUNTIME` settings added; `SecretStr` extended to user-create / user-update passwords; orphan config fields (`max_connections`, `timeout`, `enable_metrics`) removed; broken docker-test cluster mode removed. |
+| Shared-memory tooling | `01583ae`–`fbb2b1b` | Embedding tools (`embed-text`, `embed-document`) and shared-memory pattern/drift tools (`pattern-search`, `save-pattern`, `pattern-index`, `pattern-applied`, `save-drift-alert`) — **7 tools, 81 total** (PRD §2.16–2.17); auto-create target database; graph provenance on the write path. Async-safety + standardized-error retrofit via `mcp_tools/_support.py`; embedding config (`OPENAI_API_KEY`, `EMBEDDING_MODEL`); unit tests `test_embedding_tools.py` + `test_pattern_memory_tools.py`. |
 
 ### 8.2 Adding New Tools
 
@@ -614,7 +740,8 @@ The suite is organized into three tiers based on what infrastructure they need:
 5. Create tool definitions in `mcp_tools/` using `@mcp_app.tool` with Pydantic `Field` descriptions; for any password / secret parameter, use `pydantic.SecretStr` so values are not echoed in logs.
 6. Import the new tool module in both `mcp_tools/__init__.py` and `server.py`.
 7. Add tests in `tests/` — at minimum a mock-based unit test in `test_agent_unit.py` and, for the wrapper, a delegation test in `test_mcp_tools.py`.
-8. Update the tool count in `server.py` instructions, `PRD.md`, and `README.md`.
+8. Update the tool-count claims in `server.py`, `PRD.md`, and `README.md`, then run
+   `poetry run python scripts/verify_docs.py` to reconcile executable inventories.
 
 ---
 
@@ -627,7 +754,7 @@ The suite is organized into three tiers based on what infrastructure they need:
 | **Authorization granularity** | A valid `MCP_AUTH_TOKEN` grants the bearer full `ARANGO_ROOT_*` access through the connector. There is no per-tool, per-database, or per-tenant RBAC layer; multi-tenant or per-tool authorization is future work. |
 | **Connection pooling** | Driver pool/timeout tuning not yet exposed via configuration |
 | **Metrics** | Not implemented; consumers wanting Prometheus / OpenTelemetry can wrap the ASGI app themselves. |
-| **Cluster CI** | Cluster-specific tests excluded from CI (require multi-server deployment) |
+| **Cluster CI evidence** | The nightly workflow is configured and passes locally; the first published scheduled/manual GitHub run is pending. |
 
 ### 9.2 Planned Features (per branch history)
 

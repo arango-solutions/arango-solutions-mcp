@@ -9,8 +9,11 @@ build/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 manuals.zip
 .prd-drift-queue/
+.pattern-capture-queue/
 .claude/
 CLAUDE.md
 .no-drift-gate
