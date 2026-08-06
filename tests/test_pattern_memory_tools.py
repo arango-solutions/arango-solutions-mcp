@@ -86,7 +86,7 @@ class TestPatternSearch:
     def test_bm25_fallback_returns_patterns_and_dispatches_off_thread(self, monkeypatch):
         db = MagicMock()
         coll = MagicMock()
-        coll.indexes.return_value = []          # no vector index -> BM25 mode
+        coll.indexes.return_value = []  # no vector index -> BM25 mode
         db.collection.return_value = coll
         db.has_collection.return_value = True
         db.aql.execute.return_value = [{"_key": "p1", "relevance": 0.9}]
@@ -94,10 +94,18 @@ class TestPatternSearch:
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
         with patch.object(pm.arango_connector, "get_db", return_value=db):
-            out = asyncio.run(pm.pattern_search(
-                query_text="anything", limit=8, graph_expand=True,
-                collection_name="shared_patterns", view_name="patterns_search",
-                database_name="", model="", project_id="arango-solutions-mcp-server"))
+            out = asyncio.run(
+                pm.pattern_search(
+                    query_text="anything",
+                    limit=8,
+                    graph_expand=True,
+                    collection_name="shared_patterns",
+                    view_name="patterns_search",
+                    database_name="",
+                    model="",
+                    project_id="arango-solutions-mcp-server",
+                )
+            )
 
         assert out["result"]["mode"] == "bm25"
         assert out["result"]["count"] == 1
@@ -111,10 +119,18 @@ class TestPatternSearch:
         monkeypatch.setattr(pm, "run_sync", spy)
         err = _arango_server_error("view missing", 1203)
         with patch.object(pm.arango_connector, "get_db", side_effect=err):
-            out = asyncio.run(pm.pattern_search(
-                query_text="x", limit=8, graph_expand=True,
-                collection_name="shared_patterns", view_name="patterns_search",
-                database_name="", model="", project_id=""))
+            out = asyncio.run(
+                pm.pattern_search(
+                    query_text="x",
+                    limit=8,
+                    graph_expand=True,
+                    collection_name="shared_patterns",
+                    view_name="patterns_search",
+                    database_name="",
+                    model="",
+                    project_id="",
+                )
+            )
         assert out["result"]["error_code"] == 1203
 
     def test_invalid_memory_type_errors_before_db(self):
@@ -125,7 +141,7 @@ class TestPatternSearch:
     def test_memory_type_filter_injected_into_aql_and_binds(self, monkeypatch):
         db = MagicMock()
         coll = MagicMock()
-        coll.indexes.return_value = []          # no vector index -> BM25 path
+        coll.indexes.return_value = []  # no vector index -> BM25 path
         db.collection.return_value = coll
         db.has_collection.return_value = True
         db.aql.execute.return_value = []
@@ -141,10 +157,19 @@ class TestPatternSearch:
 
         monkeypatch.setattr(pm, "_run_query", _cap)
         with patch.object(pm.arango_connector, "get_db", return_value=db):
-            asyncio.run(pm.pattern_search(
-                query_text="x", limit=8, graph_expand=True,
-                collection_name="shared_patterns", view_name="patterns_search",
-                database_name="", model="", project_id="", memory_type="feedback"))
+            asyncio.run(
+                pm.pattern_search(
+                    query_text="x",
+                    limit=8,
+                    graph_expand=True,
+                    collection_name="shared_patterns",
+                    view_name="patterns_search",
+                    database_name="",
+                    model="",
+                    project_id="",
+                    memory_type="feedback",
+                )
+            )
         assert captured["binds"].get("mtype") == "feedback"
         assert "memory_type == @mtype" in captured["aql"]
         # superseded exclusion must remain in place alongside the type filter
@@ -158,20 +183,27 @@ class TestPatternSearch:
 
 class TestPatternApplied:
     def test_empty_keys_short_circuits(self):
-        out = asyncio.run(pm.pattern_applied(keys=[], collection_name="shared_patterns",
-                                             database_name=""))
+        out = asyncio.run(
+            pm.pattern_applied(keys=[], collection_name="shared_patterns", database_name="")
+        )
         assert out == {"result": {"error": "no keys provided"}}
 
     def test_bumps_usage_and_reports_missing(self, monkeypatch):
         db = MagicMock()
-        db.aql.execute.return_value = [{"_key": "k1", "usage_count": 3, "applied_worked": 3,
-                                        "applied_failed": 0}]
+        db.aql.execute.return_value = [
+            {"_key": "k1", "usage_count": 3, "applied_worked": 3, "applied_failed": 0}
+        ]
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
         with patch.object(pm.arango_connector, "get_db", return_value=db):
-            out = asyncio.run(pm.pattern_applied(keys=["k1", "gone"], outcome="worked",
-                                                 collection_name="shared_patterns",
-                                                 database_name=""))
+            out = asyncio.run(
+                pm.pattern_applied(
+                    keys=["k1", "gone"],
+                    outcome="worked",
+                    collection_name="shared_patterns",
+                    database_name="",
+                )
+            )
         assert out["result"]["count"] == 1
         assert out["result"]["outcome"] == "worked"
         assert out["result"]["not_found"] == ["gone"]
@@ -179,8 +211,9 @@ class TestPatternApplied:
 
     def test_failed_outcome_records_negative_signal(self, monkeypatch):
         db = MagicMock()
-        db.aql.execute.return_value = [{"_key": "k1", "usage_count": 2, "applied_worked": 2,
-                                        "applied_failed": 1}]
+        db.aql.execute.return_value = [
+            {"_key": "k1", "usage_count": 2, "applied_worked": 2, "applied_failed": 1}
+        ]
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
         captured = {}
@@ -193,9 +226,14 @@ class TestPatternApplied:
 
         monkeypatch.setattr(pm, "_run_query", _cap)
         with patch.object(pm.arango_connector, "get_db", return_value=db):
-            out = asyncio.run(pm.pattern_applied(keys=["k1"], outcome="failed",
-                                                 collection_name="shared_patterns",
-                                                 database_name=""))
+            out = asyncio.run(
+                pm.pattern_applied(
+                    keys=["k1"],
+                    outcome="failed",
+                    collection_name="shared_patterns",
+                    database_name="",
+                )
+            )
         assert out["result"]["outcome"] == "failed"
         # a failed apply must NOT reward usage/recency, and must record negative signal
         assert captured["binds"]["worked"] is False
@@ -214,11 +252,22 @@ class TestSaveDriftAlert:
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
         with patch.object(pm.arango_connector, "get_db", return_value=db):
-            out = asyncio.run(pm.save_drift_alert(
-                project_id="p", req_id="REQ-001", requirement="r", classification="MISSING",
-                status="open", evidence="", gap_description="g", detected_at="",
-                closed_at="", closed_evidence="", collection_name="drift_alerts",
-                database_name=""))
+            out = asyncio.run(
+                pm.save_drift_alert(
+                    project_id="p",
+                    req_id="REQ-001",
+                    requirement="r",
+                    classification="MISSING",
+                    status="open",
+                    evidence="",
+                    gap_description="g",
+                    detected_at="",
+                    closed_at="",
+                    closed_evidence="",
+                    collection_name="drift_alerts",
+                    database_name="",
+                )
+            )
         assert "not found" in out["result"]["error"]
 
     def test_success_upserts_and_links_provenance(self, monkeypatch):
@@ -228,11 +277,22 @@ class TestSaveDriftAlert:
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
         with patch.object(pm.arango_connector, "get_db", return_value=db):
-            out = asyncio.run(pm.save_drift_alert(
-                project_id="proj", req_id="REQ-007", requirement="r", classification="PARTIAL",
-                status="open", evidence="f.py:1", gap_description="g", detected_at="2026-01-01T00:00:00Z",
-                closed_at="", closed_evidence="", collection_name="drift_alerts",
-                database_name=""))
+            out = asyncio.run(
+                pm.save_drift_alert(
+                    project_id="proj",
+                    req_id="REQ-007",
+                    requirement="r",
+                    classification="PARTIAL",
+                    status="open",
+                    evidence="f.py:1",
+                    gap_description="g",
+                    detected_at="2026-01-01T00:00:00Z",
+                    closed_at="",
+                    closed_evidence="",
+                    collection_name="drift_alerts",
+                    database_name="",
+                )
+            )
         assert out["result"]["_key"] == "proj_REQ-007"
         assert out["result"]["status"] == "open"
         assert "_ensure_provenance" in spy.dispatched
@@ -251,19 +311,35 @@ class TestSavePattern:
         colls: dict = {}
         db.collection.side_effect = lambda name: colls.setdefault(name, MagicMock())
         coll = db.collection("shared_patterns")
-        coll.indexes.return_value = []           # no vector index
+        coll.indexes.return_value = []  # no vector index
         db.has_collection.return_value = True
         db.aql.execute.return_value = []
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
-        with patch.object(pm.arango_connector, "get_db", return_value=db), \
-                patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)):
-            out = asyncio.run(pm.save_pattern(
-                problem_description="p", solution_summary="s", problem_category="testing",
-                project_id="arango-solutions-mcp-server", project_type="mcp-server", tags=["t"],
-                importance=7, source_file="", worked=True, created_at="",
-                collection_name="shared_patterns", database_name="", model="",
-                rel_sim=0.3, sup_sim=0.9, top_k=3))
+        with (
+            patch.object(pm.arango_connector, "get_db", return_value=db),
+            patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)),
+        ):
+            out = asyncio.run(
+                pm.save_pattern(
+                    problem_description="p",
+                    solution_summary="s",
+                    problem_category="testing",
+                    project_id="arango-solutions-mcp-server",
+                    project_type="mcp-server",
+                    tags=["t"],
+                    importance=7,
+                    source_file="",
+                    worked=True,
+                    created_at="",
+                    collection_name="shared_patterns",
+                    database_name="",
+                    model="",
+                    rel_sim=0.3,
+                    sup_sim=0.9,
+                    top_k=3,
+                )
+            )
         res = out["result"]
         assert res["embedded"] is True
         assert res["embedding_pending"] is False
@@ -279,16 +355,29 @@ class TestSavePattern:
         coll = db.collection("shared_patterns")
         coll.indexes.return_value = [{"type": "vector", "params": {"dimension": 3}}]
         db.has_collection.return_value = True
-        db.aql.execute.return_value = [{"k": "older", "s": 0.97,
-                                        "created": "2020-01-01T00:00:00Z"}]
+        db.aql.execute.return_value = [{"k": "older", "s": 0.97, "created": "2020-01-01T00:00:00Z"}]
         return db, colls
 
     def _save(self, **kw):
-        args = dict(problem_description="p", solution_summary="s", problem_category="testing",
-                    project_id="arango-solutions-mcp-server", project_type="mcp-server",
-                    tags=["t"], importance=7, source_file="", worked=True, created_at="",
-                    collection_name="shared_patterns", database_name="", model="",
-                    rel_sim=0.3, sup_sim=0.9, top_k=3, consolidate_sim=0.8)
+        args = dict(
+            problem_description="p",
+            solution_summary="s",
+            problem_category="testing",
+            project_id="arango-solutions-mcp-server",
+            project_type="mcp-server",
+            tags=["t"],
+            importance=7,
+            source_file="",
+            worked=True,
+            created_at="",
+            collection_name="shared_patterns",
+            database_name="",
+            model="",
+            rel_sim=0.3,
+            sup_sim=0.9,
+            top_k=3,
+            consolidate_sim=0.8,
+        )
         args.update(kw)
         return asyncio.run(pm.save_pattern(**args))
 
@@ -301,8 +390,10 @@ class TestSavePattern:
         db, colls = self._near_duplicate_db()
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
-        with patch.object(pm.arango_connector, "get_db", return_value=db), \
-                patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)):
+        with (
+            patch.object(pm.arango_connector, "get_db", return_value=db),
+            patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)),
+        ):
             out = self._save(force=True)
         assert out["result"]["superseded"] is None
         # not even opened, let alone written to
@@ -316,8 +407,10 @@ class TestSavePattern:
         db, colls = self._near_duplicate_db()
         spy = _dispatch_spy()
         monkeypatch.setattr(pm, "run_sync", spy)
-        with patch.object(pm.arango_connector, "get_db", return_value=db), \
-                patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)):
+        with (
+            patch.object(pm.arango_connector, "get_db", return_value=db),
+            patch.object(pm, "generate_embeddings", return_value=([[0.1, 0.2, 0.3]], "m", 3)),
+        ):
             out = self._save(consolidate_sim=0.99)
         res = out["result"]
         # ours is newer than the 2020 neighbour, so ours supersedes it

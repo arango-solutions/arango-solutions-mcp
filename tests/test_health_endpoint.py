@@ -14,8 +14,11 @@ import logging
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 # Required env so config / server imports don't fail at collection time.
 os.environ.setdefault("ARANGO_HOSTS", "http://localhost:8529")
@@ -134,6 +137,36 @@ def test_healthz_body_is_valid_json_for_all_branches():
     # Wrong method
     bad_method = asyncio.run(_drive(health_app, method="DELETE"))
     json.loads(bad_method["body"])
+
+
+def test_http_server_owns_database_lifecycle():
+    server = SimpleNamespace(serve=AsyncMock())
+    connect = AsyncMock()
+    disconnect = AsyncMock()
+
+    with (
+        patch.object(main.arango_connector, "connect", connect),
+        patch.object(main.arango_connector, "disconnect", disconnect),
+    ):
+        asyncio.run(main._serve_http_with_database(server))
+
+    connect.assert_awaited_once_with()
+    server.serve.assert_awaited_once_with()
+    disconnect.assert_awaited_once_with()
+
+
+def test_http_server_disconnects_database_when_serve_fails():
+    server = SimpleNamespace(serve=AsyncMock(side_effect=RuntimeError("serve failed")))
+    disconnect = AsyncMock()
+
+    with (
+        patch.object(main.arango_connector, "connect", AsyncMock()),
+        patch.object(main.arango_connector, "disconnect", disconnect),
+        pytest.raises(RuntimeError, match="serve failed"),
+    ):
+        asyncio.run(main._serve_http_with_database(server))
+
+    disconnect.assert_awaited_once_with()
 
 
 # ---------------------------------------------------------------------------

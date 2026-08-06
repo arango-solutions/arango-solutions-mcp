@@ -1,13 +1,13 @@
 # SOTA MCP Competitive Scorecard
 
-**Product:** ArangoDB MCP Server  
-**Assessment date:** August 5, 2026  
-**Repository baseline:** `main` at `fbb2b1b`  
+**Product:** ArangoDB MCP Server<br>
+**Assessment date:** August 5, 2026<br>
+**Repository baseline:** Phase 0 worktree based on `main` at `a49d9b7`<br>
 **Product version:** 2.0.0 (`pyproject.toml:3`, `config.py:76`)
 
 ## Executive verdict
 
-**Overall: 66/100 — C+**
+**Overall: 71/100 — B-**
 
 This server is the **functional-breadth leader** in the comparison: its 81 verified tools cover
 documents, graphs, AQL, search, vectors, transactions, cluster administration, backups, users,
@@ -24,14 +24,55 @@ compact graph ergonomics and per-request remote identity. This server's largest 
 3. one shared MCP bearer token maps to one broadly privileged database identity;
 4. no Prometheus/OpenTelemetry instrumentation or unified audit trail;
 5. no automated package/container release or provenance;
-6. incomplete compatibility with the stateless MCP 2026-07-28 bar;
-7. a recommended Docker Compose path that currently conflicts with the auth startup guard.
+6. incomplete compatibility with the stateless MCP 2026-07-28 bar.
 
 The defensible market position is:
 
 > **The broadest ArangoDB-native MCP control plane, with above-average code-level safety and test
 > depth, but behind the strongest competitors in agent ergonomics, least privilege, observability,
 > protocol currency, and release maturity.**
+
+### Change since the prior baseline
+
+- `[V]` Contributor PR [#2](https://github.com/arango-solutions/arango-solutions-mcp/pull/2)
+  corrected a multi-writer data-integrity defect: `save-pattern(force=true)` now preserves the
+  caller's "genuinely distinct" ruling instead of implicitly superseding a near-duplicate
+  (`mcp_tools/pattern_memory_tools.py:131-145`, `mcp_tools/pattern_memory_tools.py:172-183`).
+- `[V]` Two regression tests pin both sides of the invariant: forced saves do not supersede, while
+  ordinary near-duplicates still do (`tests/test_pattern_memory_tools.py:295-325`).
+- `[V]` PRD item P-2 now distinguishes implicit superseding from explicit replacement
+  (`PRD.md:270`).
+- `[V]` The two Docker-backed CI test jobs pass on Python 3.10 and 3.11, but `main` is not green:
+  the lint job fails on a pre-existing Ruff import-order violation
+  ([CI run](https://github.com/arango-solutions/arango-solutions-mcp/actions/runs/31053199522)).
+- `[V]` Phase 0 established 44 stable, owned, evidence-gated v3 requirements in the PRD and
+  replaced the blanket implementation claim with requirement-level states (`PRD.md:39-55`,
+  `PRD.md:367-473`).
+- `[V]` The Compose path now requires independent MCP/database secrets, enables vector indexes,
+  provides working dependency and container health checks, and initializes the database connector
+  for HTTP service startup (`docker-compose.yml:1-40`, `Dockerfile:20-28`,
+  `main.py:130-144`).
+- `[V]` A clean live smoke test reached healthy ArangoDB and MCP containers, returned HTTP 200 from
+  `/healthz`, rejected an unauthenticated MCP request with 401, and created a vector index.
+- `[V]` The Phase 0 quality baseline is locally green: Ruff check/format, the CI-equivalent Mypy
+  command, and all 392 non-cluster tests pass; coverage is measured at 79.16% and fails below 79%.
+- `[V]` Dependabot now covers Python, Actions, and Docker dependencies; CodeQL and dependency audit
+  workflows are present. Compatible dependencies were upgraded, leaving only six explicitly
+  time-bounded FastMCP 0.2 exceptions pending the SDK migration.
+- `[V]` A new CI gate derives the registered tool count, test-function count, configuration
+  variables, and source inventories from executable code and rejects stale README, PRD, or
+  scorecard claims (`scripts/verify_docs.py:19-109`, `.github/workflows/ci.yml:43-44`).
+- `[V]` A pinned ArangoDB Starter deployment was exercised locally with three agents, DBServers,
+  and coordinators; the corrected cluster tier passed 4 tests with one Community-edition skip.
+  The same deployment now runs nightly (`tests/test_cluster.py:17-63`,
+  `.github/workflows/cluster-nightly.yml:1-113`).
+
+The total is now **71/B-**. The secure, vector-capable Compose path closes two deployment points;
+enforced coverage and a locally green quality baseline restore one reliability point; dependency
+automation and security scanning add one maturity point; live nightly cluster verification adds one
+reliability point. Mechanical documentation checks close the remaining Phase 0 consistency gap
+without changing a weighted category score. Published `main` remains red at the assessed commit
+until these worktree changes land and pass GitHub CI.
 
 ## Method
 
@@ -42,9 +83,12 @@ The defensible market position is:
 - `[U]` Unknown from available public evidence.
 
 The local repository received a static source audit. Competitors were assessed from public
-vendor documentation, repositories, package registries, and release metadata. Tests were **not**
-executed for this update, so green CI status, live coverage percentage, latency, and production
-reliability are not claimed.
+vendor documentation, repositories, package registries, and release metadata. For this update,
+the full 392-test non-cluster suite and the live multi-server cluster tier passed locally, a clean
+Compose deployment was exercised live,
+and GitHub CI status was inspected.
+The full local suite, live coverage percentage, latency, and production reliability were not
+independently measured.
 
 ### Weighted rubric
 
@@ -72,12 +116,12 @@ such as Qdrant intentionally trade breadth for simplicity.
 | 1 | MongoDB MCP | 18 | 11 | 12 | 14 | 14 | 9 | 10 | **88** | **A-** | Medium-high |
 | 2 | Bytebase DBHub | 10 | 15 | 13 | 13 | 10 | 10 | 9 | **80** | **B+** | Medium-high |
 | 3 | Neo4j MCP | 10 | 14 | 13 | 13 | 9 | 9 | 9 | **77** | **B** | Medium-high |
-| 4 | **ArangoDB MCP Server** | **19** | **10** | **9** | **12** | **7** | **6** | **3** | **66** | **C+** | High static / low live |
+| 4 | **ArangoDB MCP Server** | **19** | **10** | **9** | **13** | **7** | **8** | **5** | **71** | **B-** | High static / medium deployment |
 | 5 | Qdrant MCP | 6 | 15 | 9 | 10 | 4 | 7 | 8 | **59** | **D** | Medium |
 | 6 | Amazon Neptune MCP | 9 | 12 | 10 | 10 | 4 | 6 | 7 | **58** | **D** | Medium |
 
 The best observed category scores combine to **95/100**, but they are distributed across multiple
-products. ArangoDB's 29-point gap to that composite benchmark is mainly operational and
+products. ArangoDB's 25-point gap to that composite benchmark is mainly operational and
 productization debt, not missing database functionality.
 
 ## ArangoDB category grades
@@ -93,6 +137,10 @@ productization debt, not missing database functionality.
   cluster administration, transactions, backups, users, and permissions (`server.py:18-61`).
 - `[V]` Embedding and shared-memory tools add hybrid retrieval, provenance, reuse outcomes, and
   drift capture (`server.py:63-66`, `PRD.md:263-275`).
+- `[V]` Shared-memory consolidation now preserves an explicit `force=true` ruling while retaining
+  default implicit and caller-selected explicit replacement behavior
+  (`mcp_tools/pattern_memory_tools.py:142-145`,
+  `mcp_tools/pattern_memory_tools.py:663-687`).
 - `[V]` Dedicated graph and vector tools reduce the need to synthesize raw AQL
   (`server.py:29-43`).
 
@@ -159,30 +207,37 @@ productization debt, not missing database functionality.
 - `[V]` The per-call AQL budget can be disabled with `max_runtime=0`
   (`mcp_tools/aql_tools.py:56-60`).
 
-### 4. Reliability and verification — 12/15 (B)
+### 4. Reliability and verification — 13/15 (A-)
 
 **Strengths**
 
-- `[V]` The repository contains 346 test functions across mock, framework-contract, integration,
+- `[V]` The repository contains 355 test functions across mock, framework-contract, integration,
   and cluster tiers; 81-tool registration is explicitly enforced
   (`tests/test_mcp_e2e.py:59-74`, `PRD.md:503-552`).
 - `[V]` CI runs Ruff, formatting, mypy, and Docker-backed tests on Python 3.10 and 3.11 with
   ArangoDB 3.12 (`.github/workflows/ci.yml:10-90`).
+- `[V]` The force/supersede regression is tested in both directions, and PR #2's Docker-backed
+  Python 3.10 and 3.11 jobs passed (`tests/test_pattern_memory_tools.py:295-325`).
 - `[V]` Blocking driver work is dispatched off the event loop
   (`agents/agent_base.py:100-105`, `PRD.md:305-312`).
 - `[V]` Startup uses retry/backoff and a lifespan-managed connection
   (`config.py:114-123`, `PRD.md:295-303`).
+- `[V]` The full 392-test non-cluster suite passes locally at 79.16% coverage, and CI now enforces
+  a 79% floor (`pyproject.toml:76-78`, `.github/workflows/ci.yml:82-94`).
+- `[V]` Repository-wide Ruff check/format and the CI-equivalent Mypy command pass locally.
+- `[V]` The multi-server cluster tier passes against a live three-machine starter deployment and is
+  scheduled nightly with pinned container digests (`tests/test_cluster.py:17-63`,
+  `.github/workflows/cluster-nightly.yml:1-113`).
 
 **Gaps**
 
-- `[V]` CI reports coverage but enforces no minimum (`.github/workflows/ci.yml:84-90`).
-- `[V]` Cluster tests are excluded from normal CI (`PRD.md:527-533`,
-  `.github/workflows/ci.yml:85-90`).
 - `[V]` No load, concurrency, MCP interoperability, or in-repository retrieval-quality gate is
   present.
 - `[V]` Type checking disables several material error classes in CI
   (`.github/workflows/ci.yml:43-44`).
-- `[U]` Current green CI status and live test coverage were not verified for this scorecard.
+- `[V]` Published `main` is still red at the assessed commit; the green worktree baseline has not
+  yet been independently verified by GitHub CI
+  ([CI run](https://github.com/arango-solutions/arango-solutions-mcp/actions/runs/31053199522)).
 
 ### 5. Operations and observability — 7/15 (C+)
 
@@ -207,7 +262,7 @@ productization debt, not missing database functionality.
 MongoDB is the benchmark here: public evidence shows separate health/metrics endpoints, tool
 duration and count metrics, structured logging, telemetry, and agent evaluations.
 
-### 6. Deployment and integration — 6/10 (C)
+### 6. Deployment and integration — 8/10 (B+)
 
 **Strengths**
 
@@ -216,14 +271,16 @@ duration and count metrics, structured logging, telemetry, and agent evaluations
 - `[V]` Dockerfile and Docker Compose deployment paths are included (`README.md:138-184`).
 - `[V]` The server fails closed if configured auth cannot be wrapped around the FastMCP ASGI app
   (`main.py:160-169`).
+- `[V]` Compose requires `MCP_AUTH_TOKEN`, enables ArangoDB vector indexing, supports configurable
+  host ports, and waits for an authenticated ArangoDB health probe
+  (`docker-compose.yml:4-39`).
+- `[V]` The MCP image has a database-backed health check, and standalone HTTP startup explicitly
+  owns the ArangoDB connector lifecycle (`Dockerfile:25-26`, `main.py:130-144`).
+- `[V]` Static deployment contracts and a clean live Compose smoke test verify the documented
+  secret, health, and vector behavior (`tests/test_deployment_contract.py:12-38`).
 
 **Gaps**
 
-- `[V]` The recommended Compose service binds `0.0.0.0` without supplying
-  `MCP_AUTH_TOKEN`; the server therefore exits with code 2
-  (`docker-compose.yml:11-13`, `main.py:228-236`).
-- `[V]` Compose does not enable ArangoDB's experimental vector index, although the test fixture
-  does (`tests/conftest.py:116-154`).
 - `[V]` The project is not built as a distributable Python package (`pyproject.toml:7`) and has no
   repository release or container-publishing workflow.
 - `[V]` No Kubernetes, Helm, cloud deployment, or multi-instance guidance is provided.
@@ -231,26 +288,32 @@ duration and count metrics, structured logging, telemetry, and agent evaluations
   for required method/name headers, origin validation, stateless operation, and current
   authorization discovery is not demonstrated.
 
-### 7. Ecosystem and release maturity — 3/10 (D)
+### 7. Ecosystem and release maturity — 5/10 (D)
 
 **Strengths**
 
 - `[V]` Apache-2.0 licensing and a repeatable CI workflow are present (`LICENSE:1`,
   `.github/workflows/ci.yml:1-90`).
 - `[V]` The repository has current implementation activity through August 5, 2026.
+- `[V]` A non-owner collaborator submitted a focused correctness fix that was reviewed and merged
+  through PR [#2](https://github.com/arango-solutions/arango-solutions-mcp/pull/2).
+- `[V]` Dependabot covers Python, GitHub Actions, and Docker; CodeQL and pip-audit workflows run on
+  pull requests, `main`, and a weekly schedule (`.github/dependabot.yml:1-24`,
+  `.github/workflows/security.yml:1-84`).
 
 **Gaps**
 
 - `[V]` There are no git tags, GitHub release workflow, PyPI publication, automated container
   publication, changelog, or artifact provenance in this repository.
-- `[V]` No Dependabot/Renovate, CodeQL, dependency audit, SBOM, or image scan is configured.
+- `[V]` No SBOM, image scan, secret scan, signed provenance, or artifact verification is configured.
+- `[V]` Six FastMCP 0.2 advisories are temporarily excepted until October 1, 2026; removal requires
+  the planned breaking SDK migration (`.github/workflows/security.yml:62-84`).
 - `[V]` No `SECURITY.md`, `CONTRIBUTING.md`, or public support policy is present.
-- `[V]` Public adoption evidence is effectively absent, while the compared peers have measurable
-  stars, downloads, releases, or vendor distribution.
-- `[V]` The PRD still says 74 tools in its product summary despite 81 being implemented
-  (`PRD.md:12-15`, `tests/test_mcp_e2e.py:59-63`).
-- `[V]` README test claims conflict: 344 in the tree description and 223 in the feature list,
-  versus 346 statically counted test functions (`README.md:408`, `README.md:508`).
+- `[V]` Public adoption evidence remains limited to an initial collaborator contribution, while
+  the compared peers have measurable stars, downloads, releases, or vendor distribution.
+- `[V]` Tool/test inventories, configuration variables, and immutable release-history references
+  are now checked mechanically in CI (`scripts/verify_docs.py:19-109`,
+  `.github/workflows/ci.yml:43-44`).
 
 ## Head-to-head assessment
 
@@ -293,26 +356,29 @@ Qdrant is the **focused semantic-memory ergonomics benchmark**.
 |---:|---|---|---|---:|
 | P0 | Progressive disclosure and tool profiles | DBHub: 2 default tools; Qdrant: 2 tools | 81 always registered (`tests/test_mcp_e2e.py:59-63`) | +4 |
 | P0 | Read-only, denylist, and confirmation framework | MongoDB/DBHub/Neo4j provide mechanical restrictions | No global mode; arbitrary AQL (`agents/aql_execution_agent.py:69`) | +5 |
-| P0 | Fix default deployment path | Peers ship working package/container quick starts | Compose conflicts with auth guard (`docker-compose.yml:11-13`) | +2 |
 | P0 | MCP 2026-07-28 interoperability | DBHub documents current stateless compatibility | Current support not demonstrated | +3 |
 | P1 | OAuth/per-request identity and scopes | Neo4j uses per-request DB identity; Toolbox sets broader SOTA | One static token → one DB identity (`PRD.md:625-630`) | +4 |
 | P1 | Metrics, traces, and audit events | MongoDB exposes Prometheus; DBHub exposes request traces | Logs + health only (`PRD.md:625-630`) | +5 |
 | P1 | Release automation and provenance | MongoDB, Neo4j, DBHub publish packages/images/releases | No tags or publish workflows | +4 |
-| P1 | Verification enforcement | MongoDB has accuracy/evaluation and security pipelines | No coverage floor; cluster CI excluded | +3 |
+| P1 | Verification enforcement | MongoDB has accuracy/evaluation and security pipelines | Published `main` is not yet green; cluster CI excluded | +2 |
 | P2 | Resources/prompts and schema-first discovery | Neptune exposes resources; peers have compact discovery | Tool-only discovery | +2 |
 | P2 | Adoption and governance | Competitors have releases, users, and contribution paths | No support/security/contribution policy | +2 |
 
-The score impacts are directional estimates and are not additive without re-audit.
+Closed in Phase 0: the secure, vector-capable default deployment path added **+2**; quality,
+security-automation, nightly-cluster, and documentation gates added **+3**. Remaining score impacts
+are directional estimates and are not additive without re-audit.
 
 ## Recommended roadmap
 
 ### Phase 0 — Repair credibility and defaults
 
-1. Make Docker Compose start successfully with an explicit secret-injection path and enable the
-   vector-index flag where vector tools are advertised.
-2. Reconcile the 74/81 tool count, test counts, architecture tree, and release-history claims.
-3. Add coverage enforcement, a security scan, a dependency update bot, and a nightly cluster
-   smoke test.
+1. **Completed:** Docker Compose starts with explicit secret injection, vector indexing, and
+   database-backed health checks.
+2. **Completed:** Reconciled tool/test counts, architecture inventories, configuration variables,
+   and release-history claims; CI now rejects documentation drift.
+3. **Completed:** lint/format/type-check are green locally; coverage enforcement, Dependabot,
+   CodeQL, dependency audit, and a real pinned nightly cluster tier are configured and locally
+   verified.
 
 ### Phase 1 — Make breadth safe and usable
 
@@ -419,7 +485,7 @@ verified by live interoperability, security, and agent-quality gates.
 - Public stars/downloads indicate adoption, not production quality.
 - No peer publishes directly comparable production usage, support SLA, independent security
   audit, standardized interoperability result, or latency/token benchmark.
-- `[U]` The local server's live coverage, current CI status, throughput, failure rate, and
-  production adoption remain unverified.
+- `[U]` The local server's live coverage, throughput, failure rate, and production adoption remain
+  unverified; current CI status is verified red.
 - Scores should be recalculated after material protocol, security, release, or tool-surface
   changes.

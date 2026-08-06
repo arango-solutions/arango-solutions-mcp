@@ -110,7 +110,10 @@ For remote/Docker deployments, Antigravity can connect via HTTP:
 | `ARANGO_DEFAULT_DB_NAME` | No | `_system` | Default database name |
 | `ARANGO_VERIFY_SSL` | No | `true` | Verify SSL certificates |
 | `ARANGO_SSL_CERT_PATH` | No | — | Path to SSL certificate file |
+| `SERVER_NAME` | No | `ArangoDB MCP Server` | MCP server display name |
+| `SERVER_VERSION` | No | `2.0.0` | MCP server version string |
 | `LOG_LEVEL` | No | `INFO` | Server log level |
+| `LOG_FORMAT` | No | `text` | `text` or one-line `json` structured logs |
 | `ENABLE_JS_TRANSACTIONS` | No | `false` | Enable server-side JavaScript transactions (security-sensitive) |
 | `MCP_TRANSPORT` | No | `stdio` | Transport protocol: `stdio`, `sse`, or `streamable-http` |
 | `MCP_HOST` | No | `0.0.0.0` | Bind host for `sse`/`streamable-http` transport |
@@ -118,6 +121,8 @@ For remote/Docker deployments, Antigravity can connect via HTTP:
 | `MCP_AUTH_TOKEN` | Conditional | — | Bearer token required for `sse`/`streamable-http` when `MCP_HOST` is non-loopback. See "HTTP transport security" below. |
 | `DEFAULT_AQL_MAX_RUNTIME` | No | `30.0` | Default per-query AQL max runtime in seconds (ArangoDB kills queries that exceed this). Set to `0` to disable. Per-call overrides via `execute-aql-query`. |
 | `LOG_AQL_QUERIES` | No | `false` | Whether to log the first 100 chars of user-supplied AQL. Default `false` because inline literals (`FILTER doc.token == "abc"`) can contain secrets. When `false`, the agent logs `<redacted len=N sha1=…>` instead. |
+| `CONNECT_MAX_RETRIES` | No | `5` | Maximum transient connection retries at startup (`0` disables retries) |
+| `CONNECT_INITIAL_BACKOFF` | No | `1.0` | Initial retry backoff in seconds, doubled up to 30 seconds |
 | `OPENAI_API_KEY` | No | — | OpenAI API key for the embedding tools (`embed-*`, `pattern-search` vector mode, `save-pattern`). When unset, the pattern tools degrade to keyword-only (BM25). Stored as `SecretStr`. |
 | `EMBEDDING_MODEL` | No | `text-embedding-3-small` | OpenAI embedding model (1536 dimensions for the default). |
 
@@ -144,15 +149,24 @@ The server can run as a standalone service using `streamable-http` or `sse` tran
 Launches both the MCP server and an ArangoDB instance:
 
 ```bash
-# Set your ArangoDB password
+# Set independent database and MCP credentials
 export ARANGO_ROOT_PASSWORD=your_password
+export MCP_AUTH_TOKEN="$(openssl rand -hex 32)"
 
 # Start the stack
 docker compose up -d
 
-# MCP server available at http://localhost:8000/mcp
-# ArangoDB UI available at http://localhost:8529
+# Wait for both containers to report healthy
+docker compose ps
+curl --fail http://localhost:8000/healthz
 ```
+
+Compose refuses to start when either required secret is missing. The bundled ArangoDB service
+enables `--experimental-vector-index`, and the MCP image health check probes the database-backed
+`/healthz` endpoint. The MCP endpoint is `http://localhost:8000/mcp`; clients must send
+`Authorization: Bearer <MCP_AUTH_TOKEN>`. The ArangoDB UI is available at
+`http://localhost:8529`. Set `MCP_HTTP_PORT` or `ARANGO_HTTP_PORT` before startup when those host
+ports are already in use.
 
 ### Docker only (connect to existing ArangoDB)
 
@@ -403,14 +417,29 @@ arango-solutions-mcp/
 │   ├── transaction_tools.py
 │   ├── backup_tools.py
 │   ├── user_tools.py
-│   └── manual_tools.py
+│   ├── manual_tools.py
+│   ├── embedding_tools.py
+│   ├── pattern_memory_tools.py
+│   └── _support.py
 │
-├── tests/                   # Pytest suite (344 tests)
+├── tests/                   # Pytest suite (355 test functions)
 │   ├── conftest.py          # Auto-provisions Docker containers
 │   ├── test_connectivity.py
 │   ├── test_agents.py
+│   ├── test_agent_unit.py
 │   ├── test_aql_utils.py
+│   ├── test_arango_connector.py
+│   ├── test_auth_middleware.py
+│   ├── test_base_and_decorator.py
+│   ├── test_coverage_gaps.py
 │   ├── test_database_manual_analyzer.py
+│   ├── test_deployment_contract.py
+│   ├── test_doc_consistency.py
+│   ├── test_embedding_tools.py
+│   ├── test_health_endpoint.py
+│   ├── test_mcp_e2e.py
+│   ├── test_mcp_tools.py
+│   ├── test_pattern_memory_tools.py
 │   ├── test_vector_search.py
 │   ├── test_traversal.py
 │   ├── test_transactions.py
@@ -446,18 +475,31 @@ ARANGO_ROOT_PASSWORD=your_password \
   poetry run pytest tests/ -v
 ```
 
-Cluster-specific tests require a multi-server deployment:
+Cluster-specific tests require a real multi-server deployment:
 
 ```bash
-poetry run pytest tests/test_cluster.py -v
+ARANGO_HOSTS=http://localhost:8529 \
+ARANGO_ROOT_USERNAME=root \
+ARANGO_ROOT_PASSWORD=your_password \
+  poetry run pytest tests/test_cluster.py -m cluster -v
 ```
+
+`.github/workflows/cluster-nightly.yml` provisions a pinned three-machine local cluster with
+ArangoDB Starter and runs this tier nightly. The normal PR matrix continues to use a single server.
 
 ### Linting & Formatting
 
 ```bash
 poetry run ruff check .         # lint
 poetry run ruff format --check . # format check (use without --check to auto-fix)
-poetry run mypy --ignore-missing-imports agents/ mcp_tools/ aql_utils.py config.py arango_connector.py server.py main.py
+poetry run python -m mypy \
+  --ignore-missing-imports --no-error-summary --namespace-packages --explicit-package-bases \
+  --disable-error-code=union-attr --disable-error-code=no-any-return \
+  --disable-error-code=no-untyped-def --disable-error-code=call-arg \
+  --disable-error-code=arg-type --disable-error-code=operator \
+  --disable-error-code=assignment \
+  agents/ mcp_tools/ aql_utils.py config.py arango_connector.py server.py main.py
+poetry run python scripts/verify_docs.py
 ```
 
 ### Pre-commit Hooks
@@ -505,7 +547,7 @@ pre-commit install
 - **Hybrid search** — combine vector similarity with BM25 text relevance
 - **AQL-first** — built-in manuals, explain plans, and syntax validation
 - **Security by default** — AQL injection prevention, JS transaction gating, SSL verification, log redaction
-- **Self-testing** — 223 automated tests with ephemeral Docker containers
+- **Self-testing** — 355 test functions across unit, framework, integration, and cluster tiers
 - **Cross-platform** — runs on macOS, Linux, Windows (via Docker)
 
 ## License

@@ -17,7 +17,7 @@ the agent's context.
 
 import asyncio
 import os
-from typing import List
+from typing import Any, List, cast
 
 import httpx
 from pydantic import Field
@@ -64,21 +64,25 @@ async def generate_embeddings(texts: List[str], model: str = ""):
     configured = settings.embedding.openai_api_key
     api_key = configured.get_secret_value() if configured else os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set in the server environment. "
-                           "Add it to the MCP server env and restart.")
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set in the server environment. "
+            "Add it to the MCP server env and restart."
+        )
     if not texts:
         raise RuntimeError("No texts provided.")
     chosen = model or settings.embedding.embedding_model or _DEFAULT_MODEL
     _sanitize_tls_env()
 
-    last_err = None
+    last_err: Exception | None = None
     for attempt in range(_MAX_ATTEMPTS):
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(
                     _OPENAI_URL,
-                    headers={"Authorization": f"Bearer {api_key}",
-                             "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
                     json={"model": chosen, "input": texts},
                 )
             if resp.status_code == 200:
@@ -95,9 +99,11 @@ async def generate_embeddings(texts: List[str], model: str = ""):
             tls = {v: os.environ.get(v) for v in _TLS_ENV_VARS if os.environ.get(v)}
             raise RuntimeError(
                 f"embedding TLS/socket setup failed: {exc!r}"
-                + (f" (TLS env overrides present: {tls})" if tls else "")) from exc
+                + (f" (TLS env overrides present: {tls})" if tls else "")
+            ) from exc
         if attempt < _MAX_ATTEMPTS - 1:
-            await asyncio.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s
+            await asyncio.sleep(0.5 * (2**attempt))  # 0.5s, 1s
+    assert last_err is not None
     raise last_err
 
 
@@ -117,15 +123,24 @@ async def generate_embeddings(texts: List[str], model: str = ""):
 )
 async def embed_text(
     texts: List[str] = Field(description="Text strings to embed; output order matches input."),
-    model: str = Field(default="", description="Optional model override (default EMBEDDING_MODEL "
-                                               "env, or text-embedding-3-small)."),
+    model: str = Field(
+        default="",
+        description="Optional model override (default EMBEDDING_MODEL "
+        "env, or text-embedding-3-small).",
+    ),
 ):
     try:
         embeddings, chosen, dim = await generate_embeddings(texts, model)
     except Exception as exc:  # noqa: BLE001
         return arango_error_result(exc, "Embedding")
-    return {"result": {"model": chosen, "dimension": dim, "count": len(embeddings),
-                       "embeddings": embeddings}}
+    return {
+        "result": {
+            "model": chosen,
+            "dimension": dim,
+            "count": len(embeddings),
+            "embeddings": embeddings,
+        }
+    }
 
 
 @mcp_app.tool(
@@ -146,19 +161,26 @@ async def embed_document(
     document_key: str = Field(description="_key of the document to embed."),
     source_fields: List[str] = Field(
         default=["problem_description", "solution_summary"],
-        description="Fields whose text is concatenated (newline-joined) and embedded."),
-    target_field: str = Field(default="embedding",
-                              description="Field to store the embedding vector in."),
-    database_name: str = Field(default="", description="Target database (default: server default)."),
+        description="Fields whose text is concatenated (newline-joined) and embedded.",
+    ),
+    target_field: str = Field(
+        default="embedding", description="Field to store the embedding vector in."
+    ),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
     model: str = Field(default="", description="Optional embedding model override."),
 ):
     try:
         db = await run_sync(arango_connector.get_db, database_name or None)
         coll = db.collection(collection_name)
-        doc = await run_sync(coll.get, document_key)
+        doc = cast(dict[str, Any] | None, await run_sync(coll.get, document_key))
         if not doc:
-            return {"result": {"error": f"document {document_key!r} not found in "
-                                        f"{collection_name!r}"}}
+            return {
+                "result": {
+                    "error": f"document {document_key!r} not found in " f"{collection_name!r}"
+                }
+            }
         text = "\n".join(str(doc[f]) for f in source_fields if doc.get(f))
         if not text.strip():
             return {"result": {"error": "no source text to embed in the given fields"}}

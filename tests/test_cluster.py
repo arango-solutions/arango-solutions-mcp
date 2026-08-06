@@ -1,11 +1,11 @@
 """Cluster-specific tests — only run against a cluster deployment.
 
 Usage:
-    pytest tests/test_cluster.py -m cluster
+    ARANGO_HOSTS=http://localhost:8529 \
+      pytest tests/test_cluster.py -m cluster
 
-These tests require the docker-compose cluster profile:
-    docker compose --profile cluster up -d
-    ARANGO_HOSTS=http://localhost:8530 pytest -m cluster
+These tests require a real multi-server deployment. The nightly CI workflow
+provisions a pinned three-machine local cluster with ArangoDB Starter.
 """
 
 import pytest
@@ -17,12 +17,8 @@ pytestmark = pytest.mark.cluster
 class TestClusterHealth:
     def test_cluster_detected(self, system_db: StandardDatabase):
         """Verify we're talking to a coordinator, not a single server."""
-        role = system_db.execute_transaction(
-            command="function() { return require('@arangodb').serverRole(); }",
-            read_collections=[],
-            write_collections=[],
-        )
-        assert role in ("COORDINATOR", "SINGLE"), f"Unexpected role: {role}"
+        role = system_db.cluster.server_role()
+        assert role == "COORDINATOR", f"Expected coordinator, got: {role}"
 
     def test_server_count(self, system_db: StandardDatabase):
         """Cluster should have at least 2 DB servers."""
@@ -35,22 +31,22 @@ class TestShardedCollection:
     def test_create_sharded_collection(self, test_db: StandardDatabase):
         col = test_db.create_collection(
             "sharded_test",
-            number_of_shards=4,
-            shard_keys=["region"],
+            shard_count=4,
+            shard_fields=["region"],
             replication_factor=2,
         )
         props = col.properties()
-        assert props["numberOfShards"] == 4
-        assert props["shardKeys"] == ["region"]
-        assert props["replicationFactor"] == 2
+        assert props["shard_count"] == 4
+        assert props["shard_fields"] == ["region"]
+        assert props["replication_factor"] == 2
 
     def test_shard_distribution(self, test_db: StandardDatabase):
-        test_db.create_collection("dist_test", number_of_shards=3)
+        test_db.create_collection("dist_test", shard_count=3)
         col = test_db.collection("dist_test")
         col.insert_many([{"i": i} for i in range(100)])
         # Verify we can read shard info (collection has shards across servers)
         props = col.properties()
-        assert props["numberOfShards"] == 3
+        assert props["shard_count"] == 3
 
     def test_satellite_collection_flag(self, test_db: StandardDatabase):
         """SatelliteCollections replicate to all DB servers (Enterprise only)."""
@@ -60,7 +56,7 @@ class TestShardedCollection:
                 replication_factor="satellite",
             )
             props = col.properties()
-            assert props["replicationFactor"] == "satellite"
+            assert props["replication_factor"] == "satellite"
         except Exception as e:
             if "enterprise" in str(e).lower() or "license" in str(e).lower():
                 pytest.skip("SatelliteCollections require Enterprise Edition")

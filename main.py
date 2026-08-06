@@ -13,6 +13,7 @@ import logging
 import platform
 import sys
 import time
+from typing import Any
 
 from config import settings
 
@@ -127,6 +128,23 @@ async def _health_or_app(health, app, scope, receive, send):
     await app(scope, receive, send)
 
 
+async def _serve_http_with_database(server) -> None:
+    """Own the database lifecycle for the standalone HTTP server.
+
+    FastMCP 0.2's ASGI app factories start their HTTP session manager but do
+    not invoke the custom MCP lifespan passed to ``FastMCP``. Without this
+    boundary, HTTP tools and the database-backed health endpoint see an
+    uninitialized connector even though uvicorn is accepting requests.
+    """
+    await arango_connector.connect()
+    logger.info("ArangoDB connection established successfully")
+    try:
+        await server.serve()
+    finally:
+        await arango_connector.disconnect()
+        logger.info("ArangoDB connection closed")
+
+
 def setup_event_loop_policy():
     """Configure the appropriate event loop policy for the current platform."""
     system = platform.system().lower()
@@ -179,6 +197,7 @@ def _run_http_transport(transport: str, host: str, port: int, plain_token: str) 
     else:
         inner_app = mcp_app.sse_app()
 
+    app: Any
     if plain_token:
         from auth_middleware import BearerTokenAuthMiddleware
 
@@ -204,7 +223,7 @@ def _run_http_transport(transport: str, host: str, port: int, plain_token: str) 
         log_level=settings.server.log_level.lower(),
     )
     server = uvicorn.Server(config)
-    asyncio.run(server.serve())
+    asyncio.run(_serve_http_with_database(server))
 
 
 def run_server_cli():

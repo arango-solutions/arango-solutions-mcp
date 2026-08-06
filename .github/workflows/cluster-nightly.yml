@@ -1,0 +1,112 @@
+name: Nightly Cluster
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-cluster
+  cancel-in-progress: false
+
+jobs:
+  cluster:
+    name: ArangoDB multi-server integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      STARTER_IMAGE: arangodb/arangodb-starter@sha256:456c1e658ba313b2cdc67d358e6730501e2d55723519faccac74a1011a60777d
+      ARANGO_IMAGE: arangodb/arangodb@sha256:258323b83ed5cd5bacc6e2d7574777db5a8a61ec75f663e4d690824c3301c7c2
+      ARANGO_HOSTS: http://127.0.0.1:8529
+      ARANGO_ROOT_USERNAME: root
+      ARANGO_ROOT_PASSWORD: cluster_test_password
+      ARANGO_TEST_TIMEOUT: "180"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: cluster-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Start pinned local cluster
+        run: |
+          docker pull "$STARTER_IMAGE"
+          docker pull "$ARANGO_IMAGE"
+          docker network create arango-cluster
+          docker volume create arango-cluster-data
+          docker run -d \
+            --name arango-cluster-starter \
+            --network arango-cluster \
+            -p 8528:8528 \
+            -p 8529:8529 \
+            -p 8539:8539 \
+            -p 8549:8549 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v arango-cluster-data:/data \
+            "$STARTER_IMAGE" \
+            --starter.local \
+            --starter.address=arango-cluster-starter \
+            --docker.container=arango-cluster-starter \
+            --docker.net-mode=container:arango-cluster-starter \
+            --docker.image="$ARANGO_IMAGE" \
+            --docker.imagePullPolicy=IfNotPresent \
+            --docker.tty=false
+
+      - name: Wait for coordinator
+        run: |
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent \
+              --user "$ARANGO_ROOT_USERNAME:$ARANGO_ROOT_PASSWORD" \
+              "$ARANGO_HOSTS/_api/version" >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Coordinator did not become ready" >&2
+          exit 1
+
+      - name: Run cluster tests
+        run: poetry run python -m pytest tests/test_cluster.py -m cluster -v
+
+      - name: Cluster diagnostics
+        if: failure()
+        run: |
+          docker ps -a \
+            --filter "name=^/arango-cluster-starter" \
+            --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+          docker logs arango-cluster-starter
+
+      - name: Remove cluster
+        if: always()
+        run: |
+          if docker inspect arango-cluster-starter >/dev/null 2>&1; then
+            docker stop --timeout 30 arango-cluster-starter || true
+            docker rm arango-cluster-starter || true
+          fi
+          ids="$(docker ps -aq --filter "name=^/arango-cluster-starter")"
+          if [ -n "$ids" ]; then
+            docker rm -f $ids || true
+          fi
+          docker volume rm arango-cluster-data || true
+          docker network rm arango-cluster || true

@@ -110,8 +110,9 @@ class TestEmbedText:
     def test_success_envelope(self):
         with patch.object(em, "generate_embeddings", return_value=([[0.1, 0.2]], "m", 2)):
             out = asyncio.run(em.embed_text(texts=["hi"], model=""))
-        assert out == {"result": {"model": "m", "dimension": 2, "count": 1,
-                                   "embeddings": [[0.1, 0.2]]}}
+        assert out == {
+            "result": {"model": "m", "dimension": 2, "count": 1, "embeddings": [[0.1, 0.2]]}
+        }
 
     def test_error_uses_standard_envelope(self):
         async def boom(*_a, **_k):
@@ -133,10 +134,16 @@ class TestEmbedDocument:
     def test_document_not_found(self):
         db, _coll = self._fake_db(doc=None)
         with patch.object(em.arango_connector, "get_db", return_value=db):
-            out = asyncio.run(em.embed_document(
-                collection_name="shared_patterns", document_key="missing",
-                source_fields=["problem_description"], target_field="embedding",
-                database_name="", model=""))
+            out = asyncio.run(
+                em.embed_document(
+                    collection_name="shared_patterns",
+                    document_key="missing",
+                    source_fields=["problem_description"],
+                    target_field="embedding",
+                    database_name="",
+                    model="",
+                )
+            )
         assert "not found" in out["result"]["error"]
 
     def test_success_writes_embedding_off_thread(self, monkeypatch):
@@ -150,12 +157,20 @@ class TestEmbedDocument:
             return fn(*a, **k)
 
         monkeypatch.setattr(em, "run_sync", spy)
-        with patch.object(em.arango_connector, "get_db", return_value=db), \
-                patch.object(em, "generate_embeddings", return_value=([[0.3, 0.4]], "m", 2)):
-            out = asyncio.run(em.embed_document(
-                collection_name="shared_patterns", document_key="k1",
-                source_fields=["problem_description", "solution_summary"],
-                target_field="embedding", database_name="", model=""))
+        with (
+            patch.object(em.arango_connector, "get_db", return_value=db),
+            patch.object(em, "generate_embeddings", return_value=([[0.3, 0.4]], "m", 2)),
+        ):
+            out = asyncio.run(
+                em.embed_document(
+                    collection_name="shared_patterns",
+                    document_key="k1",
+                    source_fields=["problem_description", "solution_summary"],
+                    target_field="embedding",
+                    database_name="",
+                    model="",
+                )
+            )
         assert out["result"] == {"ok": True, "key": "k1", "model": "m", "dimension": 2}
         coll.update.assert_called_once()
         # get_db, coll.get and coll.update were all routed through run_sync.
