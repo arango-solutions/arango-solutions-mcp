@@ -1,0 +1,14 @@
+vulnerabilities:
+  - id: GHSA-6v7p-g79w-8964
+    expired_at: 2026-08-20
+    statement: >-
+      Temporary false-positive exception tracked by GitHub issue #5. The upstream
+      python:3.11-alpine3.22 SBOM reports msgpack 1.1.2, but msgpack is absent from
+      the final runtime filesystem. Owner: repository security maintainers.
+  - id: CVE-2025-47273
+    expired_at: 2026-08-20
+    statement: >-
+      Temporary false-positive exception tracked by GitHub issue #5. The upstream
+      python:3.11-alpine3.22 SBOM reports setuptools 70.3.0, but setuptools is
+      removed from the final runtime filesystem. Owner: repository security
+      maintainers.

@@ -6,7 +6,7 @@ import uuid
 import pytest
 from arango.database import StandardDatabase
 
-from agents.user_management_agent import UserManagementAgent
+from arangodb_mcp.agents.user_management_agent import UserManagementAgent
 
 
 def _unique_user():
@@ -21,7 +21,7 @@ class TestUserManagement:
         self.agent = UserManagementAgent()
         self.created_users: list[str] = []
 
-        from arango_connector import arango_connector
+        from arangodb_mcp.arango_connector import arango_connector
         from tests.conftest import _PASSWORD, _USERNAME
 
         monkeypatch.setattr(arango_connector, "client", arango_client)
@@ -196,7 +196,7 @@ class TestPermissionManagement:
         self.col_name = test_collection
         self.username = _unique_user()
 
-        from arango_connector import arango_connector
+        from arangodb_mcp.arango_connector import arango_connector
         from tests.conftest import _PASSWORD, _USERNAME
 
         monkeypatch.setattr(arango_connector, "client", arango_client)

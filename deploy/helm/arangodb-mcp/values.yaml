@@ -1,0 +1,185 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/arango-solutions/arango-solutions-mcp
+  tag: "2.0.0"
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automountServiceAccountToken: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10000
+  runAsGroup: 10000
+  fsGroup: 10000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: arangodb-mcp.example.invalid
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+auth:
+  # Choose exactly one: legacy (shared bearer token) or oidc (recommended).
+  mode: legacy
+  legacy:
+    actorId: legacy-http
+  oidc:
+    issuer: ""
+    audience: ""
+    resourceUrl: ""
+    algorithms: RS256
+    actorClaim: sub
+    databaseClaim: arangodb_databases
+    clockSkewSeconds: 30
+    cacheTtlSeconds: 300
+    allowInsecureHttp: false
+
+arango:
+  hosts: http://arangodb:8529
+  username: root
+  database: _system
+  verifySsl: true
+  sslCertPath: ""
+
+secrets:
+  # Existing Secret is the production default. When empty, the release fullname
+  # is referenced; create that Secret before install or set this explicitly.
+  existingSecret: ""
+  keys:
+    arangoPassword: arango-root-password
+    authToken: mcp-auth-token
+    oidcCredentials: mcp-arango-credentials-json
+    confirmationSecret: mcp-confirmation-secret
+    otelHeaders: otel-exporter-otlp-headers
+    openaiApiKey: openai-api-key
+  # Map additional keys from the same existing/created Secret into the Pod.
+  # OIDC credential JSON can use password_env to reference these variables.
+  extraEnv: []
+  # Creating a Secret from Helm values exposes values in release history.
+  # It is intentionally opt-in and is not recommended for production.
+  create:
+    enabled: false
+    arangoPassword: ""
+    authToken: ""
+    oidcCredentials: ""
+    confirmationSecret: ""
+    otelHeaders: ""
+    openaiApiKey: ""
+    extraData: {}
+
+policy:
+  profile: readonly
+  toolsets: ""
+  deniedTools: ""
+  deniedCategories: ""
+  resultContract: v3
+  enableJsTransactions: false
+  defaultAqlMaxRuntime: 30
+  logAqlQueries: false
+  actorRateLimitPerMinute: 600
+  actorRateLimitBurst: 200
+  globalMaxConcurrency: 64
+  classConcurrencyLimits: standard=32,query=16,bulk=8,control=4,external=8
+  limiterRetryAfterMs: 250
+  confirmationSecretEnabled: false
+
+server:
+  logLevel: INFO
+  logFormat: json
+  protocolMode: auto
+  dnsRebindingProtection: true
+  allowedHosts: ""
+  allowedOrigins: ""
+  connectMaxRetries: 5
+  connectInitialBackoff: 1
+
+observability:
+  metrics:
+    enabled: true
+    path: /metrics
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+  tracing:
+    exporter: none
+    serviceName: arangodb-mcp-server
+    serviceVersion: "2.0.0"
+    endpoint: http://localhost:4318
+    timeoutSeconds: 10
+    headersSecretEnabled: false
+
+embedding:
+  enabled: false
+  model: text-embedding-3-small
+
+probes:
+  liveness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: null
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+extraEnv: []
+
+revisionHistoryLimit: 3
+terminationGracePeriodSeconds: 30

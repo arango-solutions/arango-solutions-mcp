@@ -5,12 +5,14 @@ The patched seam is ``arango_connector.ArangoClient``; ``asyncio.sleep`` is
 stubbed out so retries fast-forward.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import arango_connector
-from arango_connector import ArangoDBConnector, _is_auth_error
+from arangodb_mcp import arango_connector
+from arangodb_mcp.arango_connector import ArangoDBConnector, DatabaseAccessDenied, _is_auth_error
+from arangodb_mcp.policy.actor_context import ArangoCredentials, RequestIdentity, identity_scope
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -79,8 +81,10 @@ class TestIsAuthError:
 class TestConnectRetry:
     async def test_success_on_first_attempt(self, connector, fast_settings):
         with (
-            patch("arango_connector.ArangoClient", return_value=_ok_client()) as mock_client_cls,
-            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch(
+                "arangodb_mcp.arango_connector.ArangoClient", return_value=_ok_client()
+            ) as mock_client_cls,
+            patch("arangodb_mcp.arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
         ):
             await connector.connect()
 
@@ -96,8 +100,10 @@ class TestConnectRetry:
         ]
 
         with (
-            patch("arango_connector.ArangoClient", side_effect=clients) as mock_client_cls,
-            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch(
+                "arangodb_mcp.arango_connector.ArangoClient", side_effect=clients
+            ) as mock_client_cls,
+            patch("arangodb_mcp.arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
         ):
             await connector.connect()
 
@@ -109,8 +115,8 @@ class TestConnectRetry:
         err = _FakeAuthError("HTTP 401: unauthorized")
 
         with (
-            patch("arango_connector.ArangoClient", side_effect=err) as mock_client_cls,
-            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch("arangodb_mcp.arango_connector.ArangoClient", side_effect=err) as mock_client_cls,
+            patch("arangodb_mcp.arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
             pytest.raises(_FakeAuthError),
         ):
             await connector.connect()
@@ -123,8 +129,8 @@ class TestConnectRetry:
         err.http_code = 401  # type: ignore[attr-defined]
 
         with (
-            patch("arango_connector.ArangoClient", side_effect=err) as mock_client_cls,
-            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch("arangodb_mcp.arango_connector.ArangoClient", side_effect=err) as mock_client_cls,
+            patch("arangodb_mcp.arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
             pytest.raises(_FakeAuthError),
         ):
             await connector.connect()
@@ -139,8 +145,10 @@ class TestConnectRetry:
         monkeypatch.setattr(arango_connector.settings.arango, "root_password", fake_pw)
 
         with (
-            patch("arango_connector.ArangoClient", return_value=_ok_client()) as mock_client_cls,
-            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch(
+                "arangodb_mcp.arango_connector.ArangoClient", return_value=_ok_client()
+            ) as mock_client_cls,
+            patch("arangodb_mcp.arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
             pytest.raises(ValueError, match="ArangoDB password not configured"),
         ):
             await connector.connect()
@@ -152,10 +160,10 @@ class TestConnectRetry:
         # max_retries=3 → 4 total attempts, 3 sleeps between them.
         with (
             patch(
-                "arango_connector.ArangoClient",
+                "arangodb_mcp.arango_connector.ArangoClient",
                 side_effect=ConnectionError("connection refused"),
             ) as mock_client_cls,
-            patch("arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch("arangodb_mcp.arango_connector.asyncio.sleep", new=AsyncMock()) as mock_sleep,
             pytest.raises(ConnectionError, match="connection refused"),
         ):
             await connector.connect()
@@ -174,13 +182,81 @@ class TestConnectRetry:
 
         with (
             patch(
-                "arango_connector.ArangoClient",
+                "arangodb_mcp.arango_connector.ArangoClient",
                 side_effect=ConnectionError("connection refused"),
             ),
-            patch("arango_connector.asyncio.sleep", new=_record_sleep),
+            patch("arangodb_mcp.arango_connector.asyncio.sleep", new=_record_sleep),
             pytest.raises(ConnectionError),
         ):
             await connector.connect()
 
         # 20 → min(40, 30)=30 → 30 → 30 → 30; 5 sleeps for max_retries=5.
         assert sleep_calls == [20.0, 30.0, 30.0, 30.0, 30.0]
+
+
+def _request_identity(actor: str, database: str, username: str, password: str) -> RequestIdentity:
+    credentials = ArangoCredentials(
+        username=username,
+        password=password,
+        databases=frozenset({database}),
+    )
+    return RequestIdentity(
+        actor_id=actor,
+        issuer="https://issuer.example",
+        subject=actor,
+        oauth_scopes=frozenset({"mcp:read"}),
+        databases=frozenset({database}),
+        credentials=credentials,
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_actors_use_isolated_server_side_credentials():
+    connector = ArangoDBConnector()
+    connector.client = MagicMock()
+
+    async def connect_as(identity: RequestIdentity):
+        with identity_scope(identity):
+            await asyncio.sleep(0)
+            connector.get_db(next(iter(identity.databases)))
+
+    alice = _request_identity("alice", "tenant_a", "alice-db", "alice-secret")
+    bob = _request_identity("bob", "tenant_b", "bob-db", "bob-secret")
+    await asyncio.gather(connect_as(alice), connect_as(bob))
+
+    calls = connector.client.db.call_args_list
+    assert {
+        (
+            call.args[0],
+            call.kwargs["username"],
+            call.kwargs["password"],
+        )
+        for call in calls
+    } == {
+        ("tenant_a", "alice-db", "alice-secret"),
+        ("tenant_b", "bob-db", "bob-secret"),
+    }
+
+
+def test_connector_denies_database_outside_request_allowlist():
+    connector = ArangoDBConnector()
+    connector.client = MagicMock()
+    identity = _request_identity("alice", "tenant_a", "alice-db", "alice-secret")
+
+    with identity_scope(identity), pytest.raises(DatabaseAccessDenied):
+        connector.get_db("tenant_b")
+
+    connector.client.db.assert_not_called()
+
+
+def test_legacy_connector_path_preserves_configured_static_credentials():
+    connector = ArangoDBConnector()
+    connector.client = MagicMock()
+
+    connector.get_db("legacy-db")
+
+    connector.client.db.assert_called_once_with(
+        "legacy-db",
+        username=arango_connector.settings.arango.root_username,
+        password=arango_connector.settings.arango.root_password.get_secret_value(),
+    )

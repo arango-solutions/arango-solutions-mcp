@@ -1,9 +1,10 @@
-"""Tests for the ``/healthz`` ASGI app and the JSON log formatter.
+"""Tests for the probe ASGI app and the JSON log formatter.
 
 The health app and JSON log formatter both live in ``main.py``. We exercise
 them directly via a small in-process ASGI driver (no uvicorn / no real
 ArangoDB connection required). ``arango_connector.health_check`` is mocked
-so we can deterministically test both the healthy and unhealthy branches.
+so we can deterministically test both readiness branches. Setting
+``MCP_PROBE_BASE_URL`` runs the probe contract test against a live server.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import json
 import logging
 import os
 import sys
+import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -27,12 +29,13 @@ os.environ.setdefault("ARANGO_ROOT_PASSWORD", "test")
 os.environ.setdefault("ARANGO_DEFAULT_DB_NAME", "_system")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+_SRC = _REPO_ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 # Patch ArangoClient before main → server → arango_connector instantiates it.
-with patch("arango_connector.ArangoClient"):
-    import main  # noqa: E402
+with patch("arangodb_mcp.arango_connector.ArangoClient"):
+    from arangodb_mcp import main  # noqa: E402
 
 health_app = main.health_app
 JsonFormatter = main.JsonFormatter
@@ -80,41 +83,36 @@ async def _drive(app, *, path: str = "/healthz", method: str = "GET") -> dict[st
 
 
 # ---------------------------------------------------------------------------
-# /healthz tests
+# Probe tests
 # ---------------------------------------------------------------------------
 
 
-def test_healthz_ok_when_connection_healthy():
-    # ``server_version`` is a read-only @property backed by ``_server_version``;
-    # poke the backing attribute directly to override.
-    original_version = main.arango_connector._server_version
-    main.arango_connector._server_version = "3.12.5"
-    try:
-        with patch.object(main.arango_connector, "health_check", return_value=True):
-            response = asyncio.run(_drive(health_app))
-    finally:
-        main.arango_connector._server_version = original_version
+def test_livez_is_process_only_and_does_not_check_arangodb():
+    with patch.object(main.arango_connector, "health_check") as health_check:
+        response = asyncio.run(_drive(health_app, path="/livez"))
 
     assert response["status"] == 200
     assert (b"content-type", b"application/json") in response["headers"]
-    payload = json.loads(response["body"])
-    assert payload["status"] == "ok"
-    assert payload["server_version"] == "3.12.5"
+    assert (b"cache-control", b"no-store") in response["headers"]
+    assert json.loads(response["body"]) == {"status": "alive"}
+    health_check.assert_not_called()
 
 
-def test_healthz_503_when_connection_unhealthy():
+@pytest.mark.parametrize("path", ["/readyz", "/healthz"])
+def test_readiness_503_when_arangodb_unhealthy(path):
     with patch.object(main.arango_connector, "health_check", return_value=False):
-        response = asyncio.run(_drive(health_app))
+        response = asyncio.run(_drive(health_app, path=path))
 
     assert response["status"] == 503
     payload = json.loads(response["body"])
-    assert payload == {"status": "unhealthy"}
+    assert payload == {"status": "not_ready", "checks": {"arangodb": "unhealthy"}}
 
 
-def test_healthz_405_for_non_get():
+@pytest.mark.parametrize("path", ["/livez", "/readyz", "/healthz"])
+def test_probes_405_for_non_get(path):
     # health_check should NOT even be called for the wrong method.
     with patch.object(main.arango_connector, "health_check", return_value=True) as hc:
-        response = asyncio.run(_drive(health_app, method="POST"))
+        response = asyncio.run(_drive(health_app, path=path, method="POST"))
 
     assert response["status"] == 405
     assert hc.call_count == 0
@@ -123,20 +121,45 @@ def test_healthz_405_for_non_get():
     assert "error" in payload
 
 
-def test_healthz_body_is_valid_json_for_all_branches():
-    # Healthy
-    with patch.object(main.arango_connector, "health_check", return_value=True):
-        ok = asyncio.run(_drive(health_app))
-    json.loads(ok["body"])
+def test_readiness_alias_contract_in_process_or_live():
+    base_url = os.environ.get("MCP_PROBE_BASE_URL")
+    if base_url:
+        responses = {}
+        for path in ("/livez", "/readyz", "/healthz"):
+            with urllib.request.urlopen(f"{base_url.rstrip('/')}{path}", timeout=3) as response:
+                responses[path] = (
+                    response.status,
+                    dict(response.headers.items()),
+                    json.load(response),
+                )
 
-    # Unhealthy
-    with patch.object(main.arango_connector, "health_check", return_value=False):
-        bad = asyncio.run(_drive(health_app))
-    json.loads(bad["body"])
+        assert responses["/livez"][0] == 200
+        assert responses["/livez"][2] == {"status": "alive"}
+        assert responses["/readyz"][0] == 200
+        assert responses["/readyz"][2]["status"] == "ready"
+        assert responses["/healthz"][2] == responses["/readyz"][2]
+        assert responses["/healthz"][1]["Deprecation"] == "@1785888000"
+        return
 
-    # Wrong method
-    bad_method = asyncio.run(_drive(health_app, method="DELETE"))
-    json.loads(bad_method["body"])
+    original_version = main.arango_connector._server_version
+    main.arango_connector._server_version = "3.12.5"
+    try:
+        with patch.object(main.arango_connector, "health_check", return_value=True):
+            ready = asyncio.run(_drive(health_app, path="/readyz"))
+            alias = asyncio.run(_drive(health_app, path="/healthz"))
+    finally:
+        main.arango_connector._server_version = original_version
+
+    expected = {
+        "status": "ready",
+        "checks": {"arangodb": "ok"},
+        "server_version": "3.12.5",
+    }
+    assert ready["status"] == 200
+    assert json.loads(ready["body"]) == expected
+    assert json.loads(alias["body"]) == expected
+    assert (b"deprecation", b"@1785888000") in alias["headers"]
+    assert (b"link", b'</readyz>; rel="successor-version"') in alias["headers"]
 
 
 def test_http_server_owns_database_lifecycle():

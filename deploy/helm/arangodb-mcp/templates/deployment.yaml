@@ -1,0 +1,221 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "arangodb-mcp.fullname" . }}
+  labels:
+    {{- include "arangodb-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "arangodb-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "arangodb-mcp.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "arangodb-mcp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: arangodb-mcp
+          image: {{ include "arangodb-mcp.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: MCP_TRANSPORT
+              value: streamable-http
+            - name: MCP_HOST
+              value: 0.0.0.0
+            - name: MCP_PORT
+              value: {{ .Values.service.targetPort | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.server.logLevel | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.server.logFormat | quote }}
+            - name: MCP_PROTOCOL_MODE
+              value: {{ .Values.server.protocolMode | quote }}
+            - name: MCP_DNS_REBINDING_PROTECTION
+              value: {{ .Values.server.dnsRebindingProtection | quote }}
+            - name: MCP_ALLOWED_HOSTS
+              value: {{ default (printf "%s:*,%s.%s.svc:*" (include "arangodb-mcp.fullname" .) (include "arangodb-mcp.fullname" .) .Release.Namespace) .Values.server.allowedHosts | quote }}
+            - name: MCP_ALLOWED_ORIGINS
+              value: {{ .Values.server.allowedOrigins | quote }}
+            - name: CONNECT_MAX_RETRIES
+              value: {{ .Values.server.connectMaxRetries | quote }}
+            - name: CONNECT_INITIAL_BACKOFF
+              value: {{ .Values.server.connectInitialBackoff | quote }}
+            - name: ARANGO_HOSTS
+              value: {{ .Values.arango.hosts | quote }}
+            - name: ARANGO_ROOT_USERNAME
+              value: {{ .Values.arango.username | quote }}
+            - name: ARANGO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arangodb-mcp.secretName" . }}
+                  key: {{ .Values.secrets.keys.arangoPassword }}
+            - name: ARANGO_DEFAULT_DB_NAME
+              value: {{ .Values.arango.database | quote }}
+            - name: ARANGO_VERIFY_SSL
+              value: {{ .Values.arango.verifySsl | quote }}
+            - name: ARANGO_SSL_CERT_PATH
+              value: {{ .Values.arango.sslCertPath | quote }}
+            {{- if eq .Values.auth.mode "legacy" }}
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arangodb-mcp.secretName" . }}
+                  key: {{ .Values.secrets.keys.authToken }}
+            - name: MCP_LEGACY_ACTOR_ID
+              value: {{ .Values.auth.legacy.actorId | quote }}
+            {{- else }}
+            - name: MCP_OIDC_ISSUER
+              value: {{ .Values.auth.oidc.issuer | quote }}
+            - name: MCP_OIDC_AUDIENCE
+              value: {{ .Values.auth.oidc.audience | quote }}
+            - name: MCP_RESOURCE_URL
+              value: {{ .Values.auth.oidc.resourceUrl | quote }}
+            - name: MCP_OIDC_ALGORITHMS
+              value: {{ .Values.auth.oidc.algorithms | quote }}
+            - name: MCP_OIDC_ACTOR_CLAIM
+              value: {{ .Values.auth.oidc.actorClaim | quote }}
+            - name: MCP_OIDC_DATABASE_CLAIM
+              value: {{ .Values.auth.oidc.databaseClaim | quote }}
+            - name: MCP_OIDC_CLOCK_SKEW_SECONDS
+              value: {{ .Values.auth.oidc.clockSkewSeconds | quote }}
+            - name: MCP_OIDC_CACHE_TTL_SECONDS
+              value: {{ .Values.auth.oidc.cacheTtlSeconds | quote }}
+            - name: MCP_OIDC_ALLOW_INSECURE_HTTP
+              value: {{ .Values.auth.oidc.allowInsecureHttp | quote }}
+            - name: MCP_ARANGO_CREDENTIALS_JSON
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arangodb-mcp.secretName" . }}
+                  key: {{ .Values.secrets.keys.oidcCredentials }}
+            {{- end }}
+            - name: MCP_PROFILE
+              value: {{ .Values.policy.profile | quote }}
+            - name: MCP_TOOLSETS
+              value: {{ .Values.policy.toolsets | quote }}
+            - name: MCP_DENIED_TOOLS
+              value: {{ .Values.policy.deniedTools | quote }}
+            - name: MCP_DENIED_CATEGORIES
+              value: {{ .Values.policy.deniedCategories | quote }}
+            - name: MCP_RESULT_CONTRACT
+              value: {{ .Values.policy.resultContract | quote }}
+            - name: ENABLE_JS_TRANSACTIONS
+              value: {{ .Values.policy.enableJsTransactions | quote }}
+            - name: DEFAULT_AQL_MAX_RUNTIME
+              value: {{ .Values.policy.defaultAqlMaxRuntime | quote }}
+            - name: LOG_AQL_QUERIES
+              value: {{ .Values.policy.logAqlQueries | quote }}
+            - name: MCP_ACTOR_RATE_LIMIT_PER_MINUTE
+              value: {{ .Values.policy.actorRateLimitPerMinute | quote }}
+            - name: MCP_ACTOR_RATE_LIMIT_BURST
+              value: {{ .Values.policy.actorRateLimitBurst | quote }}
+            - name: MCP_GLOBAL_MAX_CONCURRENCY
+              value: {{ .Values.policy.globalMaxConcurrency | quote }}
+            - name: MCP_CLASS_CONCURRENCY_LIMITS
+              value: {{ .Values.policy.classConcurrencyLimits | quote }}
+            - name: MCP_LIMITER_RETRY_AFTER_MS
+              value: {{ .Values.policy.limiterRetryAfterMs | quote }}
+            {{- if .Values.policy.confirmationSecretEnabled }}
+            - name: MCP_CONFIRMATION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arangodb-mcp.secretName" . }}
+                  key: {{ .Values.secrets.keys.confirmationSecret }}
+            {{- end }}
+            - name: METRICS_ENABLED
+              value: {{ .Values.observability.metrics.enabled | quote }}
+            - name: METRICS_PATH
+              value: {{ .Values.observability.metrics.path | quote }}
+            - name: OTEL_TRACES_EXPORTER
+              value: {{ .Values.observability.tracing.exporter | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.observability.tracing.serviceName | quote }}
+            - name: OTEL_SERVICE_VERSION
+              value: {{ .Values.observability.tracing.serviceVersion | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.tracing.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS
+              value: {{ .Values.observability.tracing.timeoutSeconds | quote }}
+            {{- if .Values.observability.tracing.headersSecretEnabled }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arangodb-mcp.secretName" . }}
+                  key: {{ .Values.secrets.keys.otelHeaders }}
+            {{- end }}
+            {{- if .Values.embedding.enabled }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arangodb-mcp.secretName" . }}
+                  key: {{ .Values.secrets.keys.openaiApiKey }}
+            - name: EMBEDDING_MODEL
+              value: {{ .Values.embedding.model | quote }}
+            {{- end }}
+            {{- range .Values.secrets.extraEnv }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arangodb-mcp.secretName" $ }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            {{- toYaml .Values.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            {{- toYaml .Values.probes.readiness | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -2,7 +2,7 @@
 
 import pytest
 
-from aql_utils import validate_aql_identifier, validate_aql_identifiers
+from arangodb_mcp.aql_utils import validate_aql_identifier, validate_aql_identifiers
 
 
 class TestValidateAqlIdentifier:
