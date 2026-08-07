@@ -21,7 +21,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
-          version: latest
+          version: 2.1.3
           virtualenvs-create: true
           virtualenvs-in-project: true
 
@@ -43,8 +43,35 @@ jobs:
       - name: Documentation consistency
         run: poetry run python scripts/verify_docs.py
 
+      - name: Deterministic quality and retrieval gates
+        run: poetry run python evals/run_quality_gates.py --check
+
       - name: Mypy type check
-        run: poetry run python -m mypy --ignore-missing-imports --no-error-summary --namespace-packages --explicit-package-bases --disable-error-code=union-attr --disable-error-code=no-any-return --disable-error-code=no-untyped-def --disable-error-code=call-arg --disable-error-code=arg-type --disable-error-code=operator --disable-error-code=assignment agents/ mcp_tools/ aql_utils.py config.py arango_connector.py server.py main.py
+        run: poetry run python -m mypy --ignore-missing-imports --no-error-summary --disable-error-code=union-attr --disable-error-code=no-any-return --disable-error-code=no-untyped-def --disable-error-code=call-arg --disable-error-code=arg-type --disable-error-code=operator --disable-error-code=assignment src/arangodb_mcp evals/
+
+      - name: Validate project and lock file
+        run: poetry check --lock
+
+      - name: Clean wheel installation smoke test
+        run: poetry run python scripts/verify_wheel.py
+
+  helm:
+    name: Helm lint, schema, and kind smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Helm toolchain
+        run: |
+          scripts/install_helm_tools.sh
+          echo "$PWD/.tools/bin" >> "$GITHUB_PATH"
+
+      - name: Lint, render, and validate chart
+        run: scripts/verify_helm.sh
+
+      - name: Install and upgrade on kind
+        run: scripts/run_helm_kind_smoke.sh
 
   test:
     name: Test (Python ${{ matrix.python-version }}, ArangoDB ${{ matrix.arango-version }})
@@ -66,7 +93,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
-          version: latest
+          version: 2.1.3
           virtualenvs-create: true
           virtualenvs-in-project: true
 
@@ -87,8 +114,21 @@ jobs:
         run: >-
           poetry run pytest tests/ -v
           --ignore=tests/test_cluster.py
-          --cov=agents --cov=mcp_tools --cov=aql_utils
-          --cov=config --cov=arango_connector --cov=server --cov=main
-          --cov=auth_middleware
+          --cov=arangodb_mcp
           --cov-report=term-missing
           --cov-fail-under=79
+
+  phase4-integration:
+    name: Phase 4 OIDC and telemetry integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run containerized Phase 4 acceptance harness
+        run: python scripts/run_phase4_integration.py --timeout 300

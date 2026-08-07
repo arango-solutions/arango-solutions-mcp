@@ -6,12 +6,12 @@ that agents produce correct results against an ephemeral test database.
 
 import pytest
 
-from agents.aql_execution_agent import AQLExecutionAgent
-from agents.cluster_management_agent import ClusterManagementAgent
-from agents.collection_management_agent import CollectionManagementAgent
-from agents.document_crud_agent import DocumentCRUDAgent
-from agents.graph_management_agent import GraphManagementAgent
-from agents.index_management_agent import IndexManagementAgent
+from arangodb_mcp.agents.aql_execution_agent import AQLExecutionAgent
+from arangodb_mcp.agents.cluster_management_agent import ClusterManagementAgent
+from arangodb_mcp.agents.collection_management_agent import CollectionManagementAgent
+from arangodb_mcp.agents.document_crud_agent import DocumentCRUDAgent
+from arangodb_mcp.agents.graph_management_agent import GraphManagementAgent
+from arangodb_mcp.agents.index_management_agent import IndexManagementAgent
 
 # ── Collection Agent ──────────────────────────────────────────────────
 
@@ -754,7 +754,7 @@ class TestGraphAgent:
             }
         )
         # Insert vertices via the graph
-        from arango_connector import arango_connector
+        from arangodb_mcp.arango_connector import arango_connector
 
         db = arango_connector.get_db()
         db.collection("et_from").insert({"_key": "v1", "name": "vertex1"})

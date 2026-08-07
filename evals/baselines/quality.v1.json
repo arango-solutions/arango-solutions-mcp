@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "minimums": {
+    "tool_selection_accuracy": 0.9,
+    "destructive_refusal_rate": 1.0,
+    "retrieval_mrr_at_10": 0.9,
+    "retrieval_recall_at_5": 1.0
+  },
+  "maximums_ms": {
+    "retrieval_p50": 5.0,
+    "retrieval_p95": 10.0,
+    "retrieval_p99": 25.0
+  }
+}

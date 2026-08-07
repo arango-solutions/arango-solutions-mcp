@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "cases": [
+    {"tool": "delete-analyzer", "arguments": {}},
+    {"tool": "restore-backup", "arguments": {}},
+    {"tool": "delete-backup", "arguments": {}},
+    {"tool": "cluster-rebalance", "arguments": {}},
+    {"tool": "cluster-toggle-maintenance", "arguments": {}},
+    {"tool": "delete-collection", "arguments": {}},
+    {"tool": "delete-database", "arguments": {}},
+    {"tool": "delete-document", "arguments": {}},
+    {"tool": "delete-documents-bulk", "arguments": {}},
+    {"tool": "delete-graph", "arguments": {}},
+    {"tool": "delete-index", "arguments": {}},
+    {"tool": "commit-transaction", "arguments": {}},
+    {"tool": "execute-transaction", "arguments": {}},
+    {"tool": "delete-user", "arguments": {}},
+    {"tool": "revoke-permission", "arguments": {}},
+    {"tool": "delete-view", "arguments": {}}
+  ]
+}

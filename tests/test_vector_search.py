@@ -8,9 +8,9 @@ import math
 
 import pytest
 
-from agents.index_management_agent import IndexManagementAgent
-from agents.vector_search_agent import VectorSearchAgent
-from agents.view_management_agent import ViewManagementAgent
+from arangodb_mcp.agents.index_management_agent import IndexManagementAgent
+from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
+from arangodb_mcp.agents.view_management_agent import ViewManagementAgent
 
 
 def _requires_vector(vector_index_supported):
@@ -394,7 +394,7 @@ class TestSearchAliasView:
                 },
             }
         )
-        from agents.aql_execution_agent import AQLExecutionAgent
+        from arangodb_mcp.agents.aql_execution_agent import AQLExecutionAgent
 
         aql_agent = AQLExecutionAgent()
 

@@ -31,7 +31,7 @@ class CustomDomainError(Exception):
 # ---------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
 def _patch_arango_server_error():
-    with patch("agents.agent_base.ArangoServerError", FakeArangoServerError):
+    with patch("arangodb_mcp.agents.agent_base.ArangoServerError", FakeArangoServerError):
         yield
 
 
@@ -43,7 +43,7 @@ def _patch_arango_server_error():
 
 
 def _import_agent_base():
-    from agents.agent_base import SYSTEM_DB, ArangoAgentBase, handle_arango_errors
+    from arangodb_mcp.agents.agent_base import SYSTEM_DB, ArangoAgentBase, handle_arango_errors
 
     return ArangoAgentBase, handle_arango_errors, SYSTEM_DB
 
@@ -224,7 +224,7 @@ class TestArangoAgentBase:
         mock_db = MagicMock()
         mock_db.name = "fallback"
 
-        with patch("agents.agent_base.arango_connector") as mock_conn:
+        with patch("arangodb_mcp.agents.agent_base.arango_connector") as mock_conn:
             mock_conn.get_db.return_value = mock_db
             db, name = agent.resolve_db("my_database")
 
@@ -238,7 +238,7 @@ class TestArangoAgentBase:
         mock_db = MagicMock()
         mock_db.name = "fallback_db"
 
-        with patch("agents.agent_base.arango_connector") as mock_conn:
+        with patch("arangodb_mcp.agents.agent_base.arango_connector") as mock_conn:
             mock_conn.get_db.return_value = mock_db
             db, name = agent.resolve_db(None)
 
@@ -250,7 +250,7 @@ class TestArangoAgentBase:
         agent = Agent()
 
         mock_db = MagicMock()
-        with patch("agents.agent_base.arango_connector") as mock_conn:
+        with patch("arangodb_mcp.agents.agent_base.arango_connector") as mock_conn:
             mock_conn.get_db.return_value = mock_db
             agent.resolve_db("target_db")
             mock_conn.get_db.assert_called_once_with("target_db")

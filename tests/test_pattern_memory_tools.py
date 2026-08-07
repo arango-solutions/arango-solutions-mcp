@@ -19,10 +19,12 @@ from unittest.mock import MagicMock, patch  # noqa: E402
 
 from arango.exceptions import ArangoServerError  # noqa: E402
 
-with patch("arango_connector.ArangoClient"):
-    from server import mcp_app  # noqa: F401,E402 — import first so tool modules register in order
+with patch("arangodb_mcp.arango_connector.ArangoClient"):
+    from arangodb_mcp.server import (
+        mcp_app,  # noqa: F401,E402 — import first so tool modules register in order
+    )
 
-import mcp_tools.pattern_memory_tools as pm  # noqa: E402
+import arangodb_mcp.mcp_tools.pattern_memory_tools as pm  # noqa: E402
 
 
 def _arango_server_error(message: str, code: int) -> ArangoServerError:
