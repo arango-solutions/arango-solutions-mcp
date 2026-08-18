@@ -2,8 +2,18 @@
 
 **Product:** ArangoDB MCP Server<br>
 **Assessment date:** August 6, 2026<br>
-**Repository baseline:** Phases 1–5 local implementation worktree, mechanically verified before publication<br>
+**Repository baseline:** Phases 1–5 committed on the `phase1/platform-spine` branch (`fca17f4`) and pushed to origin — not yet merged to `main` or released; mechanically verified before publication<br>
 **Product version:** 2.0.0 (`pyproject.toml:3`, `src/arangodb_mcp/config.py:76`)
+
+**Revision — August 14, 2026:** The Phases 1–5 worktree this scorecard assessed was **committed**
+(`fca17f4`, Aug 7) and pushed to `origin/phase1/platform-spine`, with a breaking-changes changelog
+(`47aee61`, Aug 8); latest activity is Aug 8, 2026. Version remains `2.0.0`, but `CHANGELOG.md`
+records **two breaking client-facing changes** (the `main.py` → `arangodb-mcp` launch entrypoint,
+and the `readonly` default profile that gates the `memory` toolset), so the next release is a major
+**v3.0.0**. The **82/B+** score is unchanged: the external gates it depends on — merge to `main`,
+published signed PyPI/GHCR artifacts, a 30-day green operational window, and the independent MAT-003
+regrade — remain unmet (no release tag exists). This revision corrects temporal/state framing only;
+category scores and evidence are otherwise as of the August 6 assessment.
 
 ## Executive verdict
 
@@ -25,7 +35,7 @@ self-awarded score increase. The largest remaining deficits are:
 1. the legacy shared-token compatibility mode still maps to one configured database identity;
 2. no PyPI wheel, GHCR digest, SBOM, signature, or provenance attestation is externally published;
 3. required CI/branch-protection and interoperability evidence remains incomplete;
-4. governance files exist locally but are not yet public;
+4. governance files are committed on the branch but not yet merged to `main` or in a public release;
 5. MAT-003 still requires an independent regrade after at least 30 days of green operational,
    release, interoperability, and external-use evidence.
 
@@ -91,8 +101,8 @@ The defensible market position is:
   and passes strict Helm/kubeconform plus live kind install/upgrade/probe/authentication
   (`pyproject.toml:10-18`, `scripts/verify_wheel.py:61-121`,
   `scripts/verify_helm.sh:13-54`, `scripts/run_helm_kind_smoke.sh:47-180`).
-- `[V]` Security, contribution, ownership, support, threat-model, and deprecation documents exist in
-  the local worktree (`SECURITY.md:1-80`, `CONTRIBUTING.md:1-51`, `.github/CODEOWNERS:1-8`,
+- `[V]` Security, contribution, ownership, support, threat-model, and deprecation documents are
+  committed on the `phase1/platform-spine` branch (`SECURITY.md:1-80`, `CONTRIBUTING.md:1-51`, `.github/CODEOWNERS:1-8`,
   `SUPPORT.md:1-29`, `docs/threat-model.md:1-104`, `docs/deprecation-policy.md:1-35`).
 
 The evidence-backed total remains **82/B+**, eleven points above the Phase 0 baseline and five
@@ -354,7 +364,7 @@ duration and count metrics, structured logging, telemetry, and agent evaluations
 
 - `[V]` Apache-2.0 licensing and a repeatable CI workflow are present (`LICENSE:1`,
   `.github/workflows/ci.yml:1-90`).
-- `[V]` The repository has current implementation activity through August 5, 2026.
+- `[V]` The repository has current implementation activity through August 8, 2026.
 - `[V]` A non-owner collaborator submitted a focused correctness fix that was reviewed and merged
   through PR [#2](https://github.com/arango-solutions/arango-solutions-mcp/pull/2).
 - `[V]` Dependabot covers Python, GitHub Actions, and Docker; CodeQL and pip-audit workflows run on
@@ -372,8 +382,8 @@ duration and count metrics, structured logging, telemetry, and agent evaluations
 
 - `[U]` No release execution proves trusted publication, SBOMs, signatures, provenance, or
   verification against externally published artifacts.
-- `[U]` Governance files are present only in the local worktree and cannot be credited as public
-  response/contribution paths yet.
+- `[U]` Governance files are committed and pushed on the `phase1/platform-spine` branch but are not
+  yet on `main` or in a release, so they cannot yet be credited as public response/contribution paths.
 - `[V]` Public adoption evidence remains limited to an initial collaborator contribution, while
   the compared peers have measurable stars, downloads, releases, or vendor distribution.
 - `[V]` Tool/test inventories, configuration variables, and immutable release-history references
