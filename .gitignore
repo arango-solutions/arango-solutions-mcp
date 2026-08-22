@@ -11,9 +11,13 @@ build/
 .ruff_cache/
 .coverage
 htmlcov/
+.tools/
 manuals.zip
 .prd-drift-queue/
 .pattern-capture-queue/
 .claude/
 CLAUDE.md
 .no-drift-gate
+.cursor/.shared-memory-sessions/
+.cursor/hooks.json.pre-update.*
+.cursor/hooks/*.pre-update.*

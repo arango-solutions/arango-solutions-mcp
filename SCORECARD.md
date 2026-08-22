@@ -1,43 +1,56 @@
 # SOTA MCP Competitive Scorecard
 
 **Product:** ArangoDB MCP Server<br>
-**Assessment date:** August 5, 2026<br>
-**Repository baseline:** Phase 0 implementation on `main` at `8eb5d40`<br>
-**Product version:** 2.0.0 (`pyproject.toml:3`, `config.py:76`)
+**Assessment date:** August 6, 2026<br>
+**Repository baseline:** Phases 1–5 committed on the `phase1/platform-spine` branch (`fca17f4`) and pushed to origin — not yet merged to `main` or released; mechanically verified before publication<br>
+**Product version:** 2.0.0 (`pyproject.toml:3`, `src/arangodb_mcp/config.py:76`)
+
+**Revision — August 14, 2026:** The Phases 1–5 worktree this scorecard assessed was **committed**
+(`fca17f4`, Aug 7) and pushed to `origin/phase1/platform-spine`, with a breaking-changes changelog
+(`47aee61`, Aug 8); latest activity is Aug 8, 2026. Version remains `2.0.0`, but `CHANGELOG.md`
+records **two breaking client-facing changes** (the `main.py` → `arangodb-mcp` launch entrypoint,
+and the `readonly` default profile that gates the `memory` toolset), so the next release is a major
+**v3.0.0**. The **82/B+** score is unchanged: the external gates it depends on — merge to `main`,
+published signed PyPI/GHCR artifacts, a 30-day green operational window, and the independent MAT-003
+regrade — remain unmet (no release tag exists). This revision corrects temporal/state framing only;
+category scores and evidence are otherwise as of the August 6 assessment.
 
 ## Executive verdict
 
-**Overall: 71/100 — B-**
+**Overall: 82/100 — B+**
 
 This server is the **functional-breadth leader** in the comparison: its 81 verified tools cover
 documents, graphs, AQL, search, vectors, transactions, cluster administration, backups, users,
-permissions, embeddings, and shared memory (`server.py:18-66`,
+permissions, embeddings, and shared memory (`src/arangodb_mcp/server.py:18-66`,
 `tests/test_mcp_e2e.py:59-63`). No peer in this scorecard matches that native multi-model and
 administrative surface.
 
-It is **not yet SOTA as a production MCP service**. MongoDB leads on operations, evaluation, and
-release engineering; DBHub leads on progressive disclosure and token efficiency; Neo4j leads on
-compact graph ergonomics and per-request remote identity. This server's largest deficits are:
+It exceeds Neo4j's 77-point benchmark through a compact readonly default, catalog-driven policy,
+parser-backed AQL safety, human confirmations, current stateless protocol behavior, MCP resources
+and prompts, and blocking quality gates. Phases 4 and 5 now add local OIDC authority intersection,
+request-scoped credentials, Prometheus/OpenTelemetry/audit controls, package and immutable-image
+gates, a release workflow, and a supported Helm deployment. Those improvements do not justify a
+self-awarded score increase. The largest remaining deficits are:
 
-1. no progressive tool discovery or deploy-time tool profiles;
-2. no read-only mode, confirmation framework, or query-class enforcement;
-3. one shared MCP bearer token maps to one broadly privileged database identity;
-4. no Prometheus/OpenTelemetry instrumentation or unified audit trail;
-5. no automated package/container release or provenance;
-6. incomplete compatibility with the stateless MCP 2026-07-28 bar.
+1. the legacy shared-token compatibility mode still maps to one configured database identity;
+2. no PyPI wheel, GHCR digest, SBOM, signature, or provenance attestation is externally published;
+3. required CI/branch-protection and interoperability evidence remains incomplete;
+4. governance files are committed on the branch but not yet merged to `main` or in a public release;
+5. MAT-003 still requires an independent regrade after at least 30 days of green operational,
+   release, interoperability, and external-use evidence.
 
 The defensible market position is:
 
-> **The broadest ArangoDB-native MCP control plane, with above-average code-level safety and test
-> depth, but behind the strongest competitors in agent ergonomics, least privilege, observability,
-> protocol currency, and release maturity.**
+> **The broadest ArangoDB-native MCP control plane, with strong locally verified identity,
+> observability, package, and Helm foundations, while published distribution, independently
+> observed operations, and release/adoption maturity still trail the production leaders.**
 
 ### Change since the prior baseline
 
 - `[V]` Contributor PR [#2](https://github.com/arango-solutions/arango-solutions-mcp/pull/2)
   corrected a multi-writer data-integrity defect: `save-pattern(force=true)` now preserves the
   caller's "genuinely distinct" ruling instead of implicitly superseding a near-duplicate
-  (`mcp_tools/pattern_memory_tools.py:131-145`, `mcp_tools/pattern_memory_tools.py:172-183`).
+  (`src/arangodb_mcp/mcp_tools/pattern_memory_tools.py:131-145`, `src/arangodb_mcp/mcp_tools/pattern_memory_tools.py:172-183`).
 - `[V]` Two regression tests pin both sides of the invariant: forced saves do not supersede, while
   ordinary near-duplicates still do (`tests/test_pattern_memory_tools.py:295-325`).
 - `[V]` PRD item P-2 now distinguishes implicit superseding from explicit replacement
@@ -51,14 +64,14 @@ The defensible market position is:
 - `[V]` The Compose path now requires independent MCP/database secrets, enables vector indexes,
   provides working dependency and container health checks, and initializes the database connector
   for HTTP service startup (`docker-compose.yml:1-40`, `Dockerfile:20-28`,
-  `main.py:130-144`).
+  `src/arangodb_mcp/main.py:130-144`).
 - `[V]` A clean live smoke test reached healthy ArangoDB and MCP containers, returned HTTP 200 from
   `/healthz`, rejected an unauthenticated MCP request with 401, and created a vector index.
-- `[V]` The Phase 0 quality baseline is locally green: Ruff check/format, the CI-equivalent Mypy
-  command, and all 392 non-cluster tests pass; coverage is measured at 79.16% and fails below 79%.
-- `[V]` Dependabot now covers Python, Actions, and Docker dependencies; CodeQL and dependency audit
-  workflows are present. Compatible dependencies were upgraded, leaving only six explicitly
-  time-bounded FastMCP 0.2 exceptions pending the SDK migration.
+- `[V]` The latest completed local suite is green at 480 tests and 82.64% measured coverage; Ruff,
+  formatting, Mypy, and the enforced 79% coverage floor also pass.
+- `[V]` Dependabot covers Python, Actions, and Docker dependencies. CodeQL, exception-free
+  dependency audit, full-history secret scanning, and built-image vulnerability gates are
+  configured; the unused vulnerable `fastmcp` package was removed.
 - `[V]` A new CI gate derives the registered tool count, test-function count, configuration
   variables, and source inventories from executable code and rejects stale README, PRD, or
   scorecard claims (`scripts/verify_docs.py:19-109`, `.github/workflows/ci.yml:43-44`).
@@ -66,13 +79,36 @@ The defensible market position is:
   and coordinators; the corrected cluster tier passed 4 tests with one Community-edition skip.
   The same deployment is now scheduled nightly (`tests/test_cluster.py:17-63`,
   `.github/workflows/cluster-nightly.yml:1-113`).
+- `[V]` A canonical 81-tool policy catalog now drives readonly/developer/operator/admin profiles,
+  graph/search additions, and fail-closed denylists (`src/arangodb_mcp/catalog/tools.yaml:1-106`,
+  `src/arangodb_mcp/policy/profiles.py:10-89`).
+- `[V]` The default surface is 17 readonly tools and remains below the 9,000-token contract ceiling
+  (`tests/test_tool_policy.py:115-142`, `tests/test_tool_policy.py:199-207`).
+- `[V]` Parser-backed AQL classification, non-disableable runtime/output/bulk/concurrency ceilings,
+  and one-use bound confirmation tokens are enforced before dispatch
+  (`src/arangodb_mcp/policy/aql_classifier.py:10-84`, `src/arangodb_mcp/policy/limits.py:36-160`,
+  `src/arangodb_mcp/policy/confirmation.py:30-230`).
+- `[V]` Resources, prompts, a versioned v3 result envelope, stateless 2026-07-28 interoperability,
+  and Host/Origin controls are covered by executable contracts (`src/arangodb_mcp/mcp_content.py:22-164`,
+  `src/arangodb_mcp/contracts/v3_result.py:8-100`, `tests/test_protocol_interop.py:64-139`).
+- `[V]` CI now includes deterministic tool-selection, destructive-refusal, retrieval-quality, and
+  latency gates. The local baseline is 90% selection, 100% refusal, MRR@10 1.0, and recall@5 1.0
+  (`evals/run_quality_gates.py:40-170`, `.github/workflows/ci.yml:43-50`).
+- `[V]` Phase 4 locally verifies OIDC discovery/JWKS, a signed-JWT MCP request, Prometheus scraping,
+  and correlated OTLP spans (`scripts/run_phase4_integration.py:159-296`).
+- `[V]` Phase 5 moves the application into the installable `arangodb_mcp` package, verifies an
+  isolated wheel and immutable non-root wheel-based image, configures trusted release publication,
+  and passes strict Helm/kubeconform plus live kind install/upgrade/probe/authentication
+  (`pyproject.toml:10-18`, `scripts/verify_wheel.py:61-121`,
+  `scripts/verify_helm.sh:13-54`, `scripts/run_helm_kind_smoke.sh:47-180`).
+- `[V]` Security, contribution, ownership, support, threat-model, and deprecation documents are
+  committed on the `phase1/platform-spine` branch (`SECURITY.md:1-80`, `CONTRIBUTING.md:1-51`, `.github/CODEOWNERS:1-8`,
+  `SUPPORT.md:1-29`, `docs/threat-model.md:1-104`, `docs/deprecation-policy.md:1-35`).
 
-The total is now **71/B-**. The secure, vector-capable Compose path closes two deployment points;
-enforced coverage and a locally green quality baseline restore one reliability point; dependency
-automation and security scanning add one maturity point; live nightly cluster verification adds one
-reliability point. Mechanical documentation checks close the remaining Phase 0 consistency gap
-without changing a weighted category score. The implementation is published at `8eb5d40`; GitHub
-Actions had not registered runs for that commit when this scorecard was finalized.
+The evidence-backed total remains **82/B+**, eleven points above the Phase 0 baseline and five
+points above Neo4j's 77. Phase 4/5 implementation is recorded without changing category scores:
+publishing and governance still lack their EXTERNAL gates, and MAT-003 requires an independent
+post-30-day evidence review rather than a maintainer self-awarding an A.
 
 ## Method
 
@@ -82,12 +118,11 @@ Actions had not registered runs for that commit when this scorecard was finalize
 - `[I]` Reasoned inference from verified evidence.
 - `[U]` Unknown from available public evidence.
 
-The local repository received a static source audit. Competitors were assessed from public
-vendor documentation, repositories, package registries, and release metadata. For this update,
-the full 392-test non-cluster suite and the live multi-server cluster tier passed locally, a clean
-Compose deployment was exercised live,
-and GitHub CI status was inspected.
-The full local suite, live coverage percentage, latency, and production reliability were not
+The local repository received a static source audit. Competitors were assessed from public vendor
+documentation, repositories, package registries, and release metadata. The latest completed suite
+passed 480 tests at 82.64% measured coverage. Local live evidence includes the multi-server cluster,
+Compose, Phase 4 OIDC/telemetry harness, and Phase 5 kind Helm install/upgrade harness. Published
+artifact integrity, sustained production reliability, governance visibility, and adoption were not
 independently measured.
 
 ### Weighted rubric
@@ -114,15 +149,15 @@ such as Qdrant intentionally trade breadth for simplicity.
 | Rank | Server | Capability /20 | Ergonomics /15 | Security /15 | Reliability /15 | Operations /15 | Deployment /10 | Maturity /10 | Total | Grade | Evidence confidence |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
 | 1 | MongoDB MCP | 18 | 11 | 12 | 14 | 14 | 9 | 10 | **88** | **A-** | Medium-high |
-| 2 | Bytebase DBHub | 10 | 15 | 13 | 13 | 10 | 10 | 9 | **80** | **B+** | Medium-high |
-| 3 | Neo4j MCP | 10 | 14 | 13 | 13 | 9 | 9 | 9 | **77** | **B** | Medium-high |
-| 4 | **ArangoDB MCP Server** | **19** | **10** | **9** | **13** | **7** | **8** | **5** | **71** | **B-** | High static / medium deployment |
+| 2 | **ArangoDB MCP Server** | **19** | **14** | **13** | **14** | **8** | **9** | **5** | **82** | **B+** | High static/test / medium external |
+| 3 | Bytebase DBHub | 10 | 15 | 13 | 13 | 10 | 10 | 9 | **80** | **B+** | Medium-high |
+| 4 | Neo4j MCP | 10 | 14 | 13 | 13 | 9 | 9 | 9 | **77** | **B** | Medium-high |
 | 5 | Qdrant MCP | 6 | 15 | 9 | 10 | 4 | 7 | 8 | **59** | **D** | Medium |
 | 6 | Amazon Neptune MCP | 9 | 12 | 10 | 10 | 4 | 6 | 7 | **58** | **D** | Medium |
 
 The best observed category scores combine to **95/100**, but they are distributed across multiple
-products. ArangoDB's 25-point gap to that composite benchmark is mainly operational and
-productization debt, not missing database functionality.
+products. ArangoDB's 13-point gap to that composite benchmark is now concentrated in identity,
+operations, distribution, and ecosystem maturity rather than database or agent-safety capability.
 
 ## ArangoDB category grades
 
@@ -134,159 +169,194 @@ productization debt, not missing database functionality.
   (`tests/test_mcp_e2e.py:59-63`).
 - `[V]` The server covers document CRUD, database and collection management, graph management and
   traversal, AQL validation/explain/execute, indexes, vector and hybrid search, views, analyzers,
-  cluster administration, transactions, backups, users, and permissions (`server.py:18-61`).
+  cluster administration, transactions, backups, users, and permissions (`src/arangodb_mcp/server.py:18-61`).
 - `[V]` Embedding and shared-memory tools add hybrid retrieval, provenance, reuse outcomes, and
-  drift capture (`server.py:63-66`, `PRD.md:263-275`).
+  drift capture (`src/arangodb_mcp/server.py:63-66`, `PRD.md:263-275`).
 - `[V]` Shared-memory consolidation now preserves an explicit `force=true` ruling while retaining
   default implicit and caller-selected explicit replacement behavior
-  (`mcp_tools/pattern_memory_tools.py:142-145`,
-  `mcp_tools/pattern_memory_tools.py:663-687`).
+  (`src/arangodb_mcp/mcp_tools/pattern_memory_tools.py:142-145`,
+  `src/arangodb_mcp/mcp_tools/pattern_memory_tools.py:663-687`).
 - `[V]` Dedicated graph and vector tools reduce the need to synthesize raw AQL
-  (`server.py:29-43`).
+  (`src/arangodb_mcp/server.py:29-43`).
 
 **Why it is not 20**
 
-- `[V]` No MCP resources or prompts are registered; schema and manuals are exposed only as tools.
 - `[V]` The pattern-memory subsystem deliberately keeps substantial business logic in the tool
   layer, a known architecture divergence (`PRD.md:275`).
-- `[V]` Retrieval-quality evaluation is required by the PRD but the cited harness lives outside
-  this repository and is not part of its CI (`PRD.md:341-346`).
+- `[V]` Resources and prompts expose schema/manual/workflow context, but there is no domain-native
+  progressive schema search equivalent to the strongest discovery implementations.
 
-### 2. Agent ergonomics — 10/15 (B-)
+### 2. Agent ergonomics — 14/15 (A)
 
 **Strengths**
 
 - `[V]` Server instructions prescribe a manual → validate → explain → execute AQL workflow
-  (`server.py:11-16`).
+  (`src/arangodb_mcp/server.py:11-16`).
 - `[V]` The server publishes a capability map and database best practices to clients
-  (`server.py:18-79`).
+  (`src/arangodb_mcp/server.py:18-79`).
 - `[V]` Tool naming and registration are mechanically checked
   (`tests/test_mcp_e2e.py:59-67`).
 - `[V]` Query budgets and dedicated traversal/search tools help keep calls bounded
-  (`config.py:101-105`, `server.py:71-79`).
+  (`src/arangodb_mcp/config.py:101-105`, `src/arangodb_mcp/server.py:71-79`).
+- `[V]` The default profile exposes exactly 17 readonly tools, while explicit profiles and
+  graph/search toolsets expand the surface by deployment intent (`src/arangodb_mcp/policy/profiles.py:10-89`,
+  `tests/test_tool_policy.py:115-142`).
+- `[V]` All dispatches use one v3 success/error envelope with machine-readable limit metadata
+  (`src/arangodb_mcp/contracts/v3_result.py:8-100`, `src/arangodb_mcp/policy/tool_manager.py:91-253`).
+- `[V]` Manuals, schema, active profile, and status are MCP resources, with safe AQL, graph, and
+  search workflow prompts (`src/arangodb_mcp/mcp_content.py:22-164`).
 
 **Gaps**
 
-- `[V]` All 81 tools are exposed together; there is no DBHub-style progressive discovery,
-  category loading, or read-only/admin profile.
+- `[V]` The compact default still exposes 17 schemas and 8,293 estimated tokens; it does not offer
+  DBHub-style dynamic two-tool discovery (`tests/test_tool_policy.py:199-207`).
 - `[I]` The mandatory five-step AQL workflow improves correctness but can waste calls and tokens
   for known-safe queries.
-- `[V]` Core agent tools and newer pattern/embedding tools use different response envelope shapes,
-  increasing client parsing ambiguity (`mcp_tools/_support.py:33-59`,
-  `PRD.md:275`).
-- `[V]` Successful AQL responses echo the complete query, which can add unnecessary context
-  (`agents/aql_execution_agent.py:72-74`).
+- `[V]` The pattern-memory subsystem retains a documented business-logic exception in the tool
+  layer (`PRD.md:297`).
 
-### 3. Security and guardrails — 9/15 (C)
+### 3. Security and guardrails — 13/15 (A-)
 
 **Strengths**
 
-- `[V]` Non-loopback HTTP refuses to start without a bearer token (`main.py:228-236`).
-- `[V]` Token comparison is constant-time (`auth_middleware.py:63`).
+- `[V]` Non-loopback HTTP refuses to start without a bearer token (`src/arangodb_mcp/main.py:228-236`).
+- `[V]` Token comparison is constant-time (`src/arangodb_mcp/auth_middleware.py:63`).
 - `[V]` Database and MCP credentials use `SecretStr`; AQL is redacted from logs by default
-  (`config.py:34-40`, `config.py:106-112`).
+  (`src/arangodb_mcp/config.py:34-40`, `src/arangodb_mcp/config.py:106-112`).
 - `[V]` Server-side JavaScript transactions are disabled by default
-  (`config.py:96-100`).
+  (`src/arangodb_mcp/config.py:96-100`).
 - `[V]` `_system` deletion and primary-index deletion have explicit mechanical guards
-  (`mcp_tools/database_tools.py:136-137`,
-  `agents/index_management_agent.py:105-106`).
+  (`src/arangodb_mcp/mcp_tools/database_tools.py:136-137`,
+  `src/arangodb_mcp/agents/index_management_agent.py:105-106`).
+- `[V]` Version 3 defaults to a readonly profile; writes/admin tools require explicit enablement,
+  and tool/category denylists fail closed (`src/arangodb_mcp/config.py:146-161`, `src/arangodb_mcp/policy/profiles.py:31-89`).
+- `[V]` AQL policy uses the authoritative parser AST and rejects mutation or ambiguity in readonly
+  mode (`src/arangodb_mcp/policy/aql_classifier.py:10-84`, `src/arangodb_mcp/agents/aql_execution_agent.py:64-91`).
+- `[V]` Irreversible catalog entries require actor/action/parameter/expiry-bound one-use tokens
+  minted outside MCP (`src/arangodb_mcp/policy/confirmation.py:30-230`, `scripts/mint_confirmation.py:1-57`).
+- `[V]` Runtime, rows, bytes, bulk input, and concurrency have non-disableable server maxima
+  (`src/arangodb_mcp/policy/limits.py:36-160`, `src/arangodb_mcp/policy/tool_manager.py:129-253`).
+- `[V]` Host and Origin validation runs before authentication on HTTP transports
+  (`src/arangodb_mcp/asgi/app_factory.py:20-55`, `src/arangodb_mcp/middleware/transport_security.py:11-30`).
+- `[V]` Production OIDC validates discovery/JWKS, signatures, issuer, audience, time bounds, actor,
+  scopes, and database claims, then intersects them with profiles, catalog policy, and
+  request-scoped server-side credentials (`src/arangodb_mcp/oidc.py:39-365`,
+  `src/arangodb_mcp/policy/credentials.py:21-121`,
+  `src/arangodb_mcp/policy/tool_manager.py:161-170,434-471`).
 
 **Gaps**
 
-- `[V]` A valid MCP bearer token receives the authority of one configured ArangoDB account; there
-  are no per-request identities, MCP scopes, or per-tool authorization (`PRD.md:625-630`).
+- `[V]` The temporary legacy bearer mode remains a shared identity backed by one configured
+  ArangoDB account; production deployments must select OIDC for per-request authority.
 - `[V]` The default database is `_system`, expanding the blast radius of a privileged
-  configuration (`config.py:37`).
-- `[V]` `execute-aql-query` permits arbitrary AQL without read/write classification
-  (`agents/aql_execution_agent.py:69`).
-- `[V]` There is no server-wide read-only mode, tool/category denylist, or deployment profile.
-- `[V]` Most destructive tools lack a mechanical confirmation token; hot-backup restore/delete
-  and collection deletion are one-call operations
-  (`agents/backup_management_agent.py:83-89`,
-  `mcp_tools/collection_tools.py:212-236`).
-- `[V]` The per-call AQL budget can be disabled with `max_runtime=0`
-  (`mcp_tools/aql_tools.py:56-60`).
+  configuration (`src/arangodb_mcp/config.py:37`).
+- `[U]` No independent production identity-provider interoperability or sustained authorization
+  telemetry has been published.
 
-### 4. Reliability and verification — 13/15 (A-)
+### 4. Reliability and verification — 14/15 (A)
 
 **Strengths**
 
-- `[V]` The repository contains 355 test functions across mock, framework-contract, integration,
-  and cluster tiers; 81-tool registration is explicitly enforced
-  (`tests/test_mcp_e2e.py:59-74`, `PRD.md:503-552`).
+- `[V]` The repository contains 431 test functions across mock, framework-contract, integration,
+  and cluster tiers; the latest parametrized suite executes 480 tests and explicitly enforces
+  81-tool registration (`tests/test_mcp_e2e.py:59-74`).
 - `[V]` CI runs Ruff, formatting, mypy, and Docker-backed tests on Python 3.10 and 3.11 with
   ArangoDB 3.12 (`.github/workflows/ci.yml:10-90`).
 - `[V]` The force/supersede regression is tested in both directions, and PR #2's Docker-backed
   Python 3.10 and 3.11 jobs passed (`tests/test_pattern_memory_tools.py:295-325`).
 - `[V]` Blocking driver work is dispatched off the event loop
-  (`agents/agent_base.py:100-105`, `PRD.md:305-312`).
+  (`src/arangodb_mcp/agents/agent_base.py:100-105`, `PRD.md:305-312`).
 - `[V]` Startup uses retry/backoff and a lifespan-managed connection
-  (`config.py:114-123`, `PRD.md:295-303`).
-- `[V]` The full 392-test non-cluster suite passes locally at 79.16% coverage, and CI now enforces
-  a 79% floor (`pyproject.toml:76-78`, `.github/workflows/ci.yml:82-94`).
+  (`src/arangodb_mcp/config.py:114-123`, `PRD.md:295-303`).
+- `[V]` The full local suite passes 480 tests at 82.64% coverage, and CI enforces a 79% floor
+  (`pyproject.toml:94-96`, `.github/workflows/ci.yml:82-97`).
 - `[V]` Repository-wide Ruff check/format and the CI-equivalent Mypy command pass locally.
 - `[V]` The multi-server cluster tier passes against a live three-machine starter deployment and is
   scheduled nightly with pinned container digests (`tests/test_cluster.py:17-63`,
   `.github/workflows/cluster-nightly.yml:1-113`).
+- `[V]` Blocking deterministic gates cover tool selection, destructive refusal, retrieval MRR and
+  recall, and latency percentiles (`evals/run_quality_gates.py:40-170`).
+- `[V]` Strict/auto/legacy Streamable HTTP and SSE/stdio composition have interoperability
+  contracts (`tests/test_protocol_interop.py:64-139`, `tests/test_app_factory.py:59-75`).
 
 **Gaps**
 
-- `[V]` No load, concurrency, MCP interoperability, or in-repository retrieval-quality gate is
-  present.
-- `[V]` Type checking disables several material error classes in CI
-  (`.github/workflows/ci.yml:43-44`).
-- `[V]` Published `main` is still red at the assessed commit; the green worktree baseline has not
-  yet been independently verified by GitHub CI
-  ([CI run](https://github.com/arango-solutions/arango-solutions-mcp/actions/runs/31053199522)).
+- `[V]` First external CI runs for the new security and interoperability matrices remain pending;
+  required branch checks need repository-admin configuration (`PRD.md:442-445`).
+- `[V]` The deterministic latency gate is not a multi-client saturation/load benchmark.
 
-### 5. Operations and observability — 7/15 (C+)
+### 5. Operations and observability — 8/15 (B-)
 
 **Strengths**
 
-- `[V]` HTTP deployments expose a database-backed `/healthz` endpoint
-  (`main.py:74-115`).
+- `[V]` HTTP deployments expose distinct `/livez` and dependency-aware `/readyz` probes; the
+  deprecated `/healthz` alias retains readiness semantics (`src/arangodb_mcp/asgi/health.py:13-93`).
 - `[V]` Logging supports text or field-whitelisted JSON output
-  (`main.py:20-60`, `config.py:75-82`).
+  (`src/arangodb_mcp/main.py:20-60`, `src/arangodb_mcp/config.py:75-82`).
 - `[V]` Startup diagnostics, AQL redaction, standardized errors, and connection retries are
-  implemented (`main.py:210-215`, `config.py:106-123`).
+  implemented (`src/arangodb_mcp/main.py:210-215`, `src/arangodb_mcp/config.py:106-123`).
+- `[V]` HTTP requests receive propagated `X-Request-ID` correlation context
+  (`src/arangodb_mcp/middleware/request_context.py:20-46`, `src/arangodb_mcp/asgi/app_factory.py:47-48`).
+- `[V]` SLO semantics and probe failure behavior are documented and executable
+  (`docs/slo.md:7-62`, `tests/test_health_endpoint.py:89-164`).
+- `[V]` Dispatch enforces global per-tool concurrency ceilings
+  (`src/arangodb_mcp/policy/limits.py:121-160`, `src/arangodb_mcp/policy/tool_manager.py:155-253`).
+- `[V]` Prometheus metrics, OpenTelemetry request/tool/database/embedding spans, one redacted audit
+  event per write/admin attempt, and per-actor/global/class/tool limits are implemented
+  (`src/arangodb_mcp/observability/metrics.py:15-163`,
+  `src/arangodb_mcp/observability/telemetry.py:22-75`,
+  `src/arangodb_mcp/observability/audit.py:14-60`,
+  `src/arangodb_mcp/policy/limits.py:176-350`).
+- `[V]` The containerized Phase 4 harness observed a successful MCP metric and correlated
+  request/tool/database spans (`scripts/run_phase4_integration.py:159-296`).
 
 **Gaps**
 
-- `[V]` Prometheus metrics and OpenTelemetry are explicitly not implemented
-  (`PRD.md:625-630`).
-- `[V]` There are no request IDs, tool latency/error counters, distributed traces, or unified
-  audit records for database mutations.
-- `[V]` Neither the Dockerfile nor MCP Compose service defines a container health check.
-- `[V]` There is no runtime concurrency limit, circuit breaker, or documented SLO.
+- `[U]` No independent production telemetry window, dashboard/alert evidence, or multi-replica
+  saturation benchmark has been published.
+- `[V]` The initial SLO remains an objective; it has not accumulated a 30-day production window
+  required for MAT-003 (`docs/slo.md:42-62`).
 
 MongoDB is the benchmark here: public evidence shows separate health/metrics endpoints, tool
 duration and count metrics, structured logging, telemetry, and agent evaluations.
 
-### 6. Deployment and integration — 8/10 (B+)
+### 6. Deployment and integration — 9/10 (A-)
 
 **Strengths**
 
-- `[V]` stdio, SSE, and Streamable HTTP are implemented (`config.py:83-87`,
-  `main.py:177-180`, `main.py:220-246`).
+- `[V]` stdio, SSE, and Streamable HTTP are implemented (`src/arangodb_mcp/config.py:83-87`,
+  `src/arangodb_mcp/main.py:177-180`, `src/arangodb_mcp/main.py:220-246`).
 - `[V]` Dockerfile and Docker Compose deployment paths are included (`README.md:138-184`).
 - `[V]` The server fails closed if configured auth cannot be wrapped around the FastMCP ASGI app
-  (`main.py:160-169`).
+  (`src/arangodb_mcp/main.py:160-169`).
 - `[V]` Compose requires `MCP_AUTH_TOKEN`, enables ArangoDB vector indexing, supports configurable
   host ports, and waits for an authenticated ArangoDB health probe
   (`docker-compose.yml:4-39`).
 - `[V]` The MCP image has a database-backed health check, and standalone HTTP startup explicitly
-  owns the ArangoDB connector lifecycle (`Dockerfile:25-26`, `main.py:130-144`).
+  owns the ArangoDB connector lifecycle (`Dockerfile:25-26`, `src/arangodb_mcp/main.py:130-144`).
 - `[V]` Static deployment contracts and a clean live Compose smoke test verify the documented
   secret, health, and vector behavior (`tests/test_deployment_contract.py:12-38`).
+- `[V]` The runtime image is a multi-stage Alpine build running as an unprivileged user
+  (`Dockerfile:1-52`, `tests/test_deployment_contract.py:65-82`).
+- `[V]` Streamable HTTP defaults to stateless JSON responses with strict/legacy/auto compatibility,
+  2026-07-28 routing metadata, cache hints, and Host/Origin checks (`src/arangodb_mcp/server.py:88-106`,
+  `src/arangodb_mcp/middleware/protocol.py:24-236`).
+- `[V]` The `src/` package declares the `arangodb-mcp` console entry point and packaged catalog and
+  manuals; an isolated wheel-only install verifies imports, data, tools, prompts/resources, and CLI
+  (`pyproject.toml:10-18`, `scripts/verify_wheel.py:61-121`).
+- `[V]` The runtime image installs the wheel, removes package installers, makes the environment
+  read-only, and runs as a non-root user (`Dockerfile:12-29,46-51`).
+- `[V]` The supported Helm chart documents secrets, probes, resources, hardening, digest pinning,
+  and upgrades; strict lint/kubeconform and live kind install/upgrade/probe/authentication pass
+  locally (`deploy/helm/arangodb-mcp/README.md:1-113`,
+  `scripts/verify_helm.sh:13-54`, `scripts/run_helm_kind_smoke.sh:47-180`).
 
 **Gaps**
 
-- `[V]` The project is not built as a distributable Python package (`pyproject.toml:7`) and has no
-  repository release or container-publishing workflow.
-- `[V]` No Kubernetes, Helm, cloud deployment, or multi-instance guidance is provided.
-- `[I]` The current SDK stack predates the stateless MCP 2026-07-28 architecture; explicit support
-  for required method/name headers, origin validation, stateless operation, and current
-  authorization discovery is not demonstrated.
+- `[U]` No PyPI package or GHCR digest is externally published, so install/start from published
+  immutable artifacts remains unverified.
+- `[V]` The chart deploys only the MCP server; operators still provide ArangoDB, ingress/TLS,
+  external secrets, network policy, and multi-cluster operations.
 
 ### 7. Ecosystem and release maturity — 5/10 (D)
 
@@ -294,21 +364,26 @@ duration and count metrics, structured logging, telemetry, and agent evaluations
 
 - `[V]` Apache-2.0 licensing and a repeatable CI workflow are present (`LICENSE:1`,
   `.github/workflows/ci.yml:1-90`).
-- `[V]` The repository has current implementation activity through August 5, 2026.
+- `[V]` The repository has current implementation activity through August 8, 2026.
 - `[V]` A non-owner collaborator submitted a focused correctness fix that was reviewed and merged
   through PR [#2](https://github.com/arango-solutions/arango-solutions-mcp/pull/2).
 - `[V]` Dependabot covers Python, GitHub Actions, and Docker; CodeQL and pip-audit workflows run on
   pull requests, `main`, and a weekly schedule (`.github/dependabot.yml:1-24`,
   `.github/workflows/security.yml:1-84`).
+- `[V]` The release workflow configures PyPI trusted publishing, GHCR digest publication, Python and
+  container SBOM/provenance attestations, keyless cosign signing, digest scanning, verification,
+  Helm packaging, and GitHub release creation (`.github/workflows/release.yml:113-347`).
+- `[V]` Local governance files define private vulnerability reporting, contribution flow,
+  ownership, support targets, threat boundaries, and deprecation/upgrade policy
+  (`SECURITY.md:1-80`, `CONTRIBUTING.md:1-51`, `.github/CODEOWNERS:1-8`,
+  `SUPPORT.md:1-29`, `docs/threat-model.md:1-104`, `docs/deprecation-policy.md:1-35`).
 
 **Gaps**
 
-- `[V]` There are no git tags, GitHub release workflow, PyPI publication, automated container
-  publication, changelog, or artifact provenance in this repository.
-- `[V]` No SBOM, image scan, secret scan, signed provenance, or artifact verification is configured.
-- `[V]` Six FastMCP 0.2 advisories are temporarily excepted until October 1, 2026; removal requires
-  the planned breaking SDK migration (`.github/workflows/security.yml:62-84`).
-- `[V]` No `SECURITY.md`, `CONTRIBUTING.md`, or public support policy is present.
+- `[U]` No release execution proves trusted publication, SBOMs, signatures, provenance, or
+  verification against externally published artifacts.
+- `[U]` Governance files are committed and pushed on the `phase1/platform-spine` branch but are not
+  yet on `main` or in a release, so they cannot yet be credited as public response/contribution paths.
 - `[V]` Public adoption evidence remains limited to an initial collaborator contribution, while
   the compared peers have measurable stars, downloads, releases, or vendor distribution.
 - `[V]` Tool/test inventories, configuration variables, and immutable release-history references
@@ -333,9 +408,11 @@ static-token HTTP controls, traces, and one-command distribution make it the pri
 
 ### Versus Neo4j MCP
 
-ArangoDB has much greater database and operational breadth. Neo4j's four-tool graph surface,
-schema introspection, read/write Cypher split, query classification, and per-request HTTP
-credentials make it the principal **graph security and simplicity benchmark**.
+ArangoDB now leads 82 to 77 through much greater multi-model/administrative breadth, a compact
+readonly default, parser-backed query policy, irreversible-action confirmation, resources/prompts,
+and deterministic quality gates. Neo4j retains the simpler four-tool graph surface, mature package
+distribution, and per-request remote credentials, so it remains the principal **graph simplicity
+and request-identity benchmark**.
 
 ### Versus Amazon Neptune MCP
 
@@ -354,19 +431,19 @@ Qdrant is the **focused semantic-memory ergonomics benchmark**.
 
 | Priority | Gap | Competitive evidence | Current evidence | Score impact |
 |---:|---|---|---|---:|
-| P0 | Progressive disclosure and tool profiles | DBHub: 2 default tools; Qdrant: 2 tools | 81 always registered (`tests/test_mcp_e2e.py:59-63`) | +4 |
-| P0 | Read-only, denylist, and confirmation framework | MongoDB/DBHub/Neo4j provide mechanical restrictions | No global mode; arbitrary AQL (`agents/aql_execution_agent.py:69`) | +5 |
-| P0 | MCP 2026-07-28 interoperability | DBHub documents current stateless compatibility | Current support not demonstrated | +3 |
-| P1 | OAuth/per-request identity and scopes | Neo4j uses per-request DB identity; Toolbox sets broader SOTA | One static token → one DB identity (`PRD.md:625-630`) | +4 |
-| P1 | Metrics, traces, and audit events | MongoDB exposes Prometheus; DBHub exposes request traces | Logs + health only (`PRD.md:625-630`) | +5 |
-| P1 | Release automation and provenance | MongoDB, Neo4j, DBHub publish packages/images/releases | No tags or publish workflows | +4 |
-| P1 | Verification enforcement | MongoDB has accuracy/evaluation and security pipelines | Published `main` is not yet green; cluster CI excluded | +2 |
-| P2 | Resources/prompts and schema-first discovery | Neptune exposes resources; peers have compact discovery | Tool-only discovery | +2 |
-| P2 | Adoption and governance | Competitors have releases, users, and contribution paths | No support/security/contribution policy | +2 |
+| Closed | Compact discovery and tool profiles | DBHub: 2 default tools; Qdrant: 2 tools | 17-tool readonly default plus explicit profiles/toolsets (`src/arangodb_mcp/policy/profiles.py:10-89`) | Credited |
+| Closed | Read-only, denylist, query policy, and confirmation | MongoDB/DBHub/Neo4j provide mechanical restrictions | Catalog policy, parser classification, hard limits, and one-use confirmation (`src/arangodb_mcp/policy/tool_manager.py:38-253`) | Credited |
+| Closed | MCP 2026-07-28 interoperability | DBHub documents current stateless compatibility | Strict/auto/legacy stateless contracts and live probe (`tests/test_protocol_interop.py:64-139`) | Credited |
+| Closed locally | OAuth/per-request identity and scopes | Neo4j uses per-request DB identity; Toolbox sets broader SOTA | OIDC authority intersection and request credentials implemented; independent production evidence pending (`src/arangodb_mcp/policy/tool_manager.py:434-471`) | Regrade pending |
+| Closed locally | Metrics, traces, and audit events | MongoDB exposes Prometheus; DBHub exposes request traces | Prometheus, OTLP, audit, and limit telemetry implemented and locally exercised (`scripts/run_phase4_integration.py:159-296`) | Regrade pending |
+| P1 | Release automation and provenance | MongoDB, Neo4j, DBHub publish packages/images/releases | Workflow implemented; no published artifacts or attestations (`.github/workflows/release.yml:113-347`) | +4 |
+| P1 | External verification enforcement | MongoDB has published accuracy/evaluation and security pipelines | Local gates pass; first external security/interop runs and branch protection remain open | +1 |
+| Closed | Resources/prompts and schema-first discovery | Neptune exposes resources; peers have compact discovery | Four resource capabilities and three guided prompts (`src/arangodb_mcp/mcp_content.py:22-164`) | Credited |
+| P2 | Adoption and governance | Competitors have releases, users, and contribution paths | Governance exists locally but is not public; 30-day adoption gate remains open | +2 |
 
-Closed in Phase 0: the secure, vector-capable default deployment path added **+2**; quality,
-security-automation, nightly-cluster, and documentation gates added **+3**. Remaining score impacts
-are directional estimates and are not additive without re-audit.
+Phases 1–3 added **+11** after re-audit. Phase 4/5 improvements await the independent post-30-day
+MAT-003 review. Remaining score impacts are directional estimates and are not additive without that
+evidence-backed regrade.
 
 ## Recommended roadmap
 
@@ -382,46 +459,49 @@ are directional estimates and are not additive without re-audit.
 
 ### Phase 1 — Make breadth safe and usable
 
-1. Add deployment profiles such as `readonly`, `developer`, `graph`, `search`, and `admin`.
-2. Add progressive tool discovery or category loading so clients do not ingest 81 schemas by
-   default.
-3. Classify AQL as read/write/admin before execution; enforce row, byte, and runtime ceilings.
-4. Require confirmation tokens for irreversible collection, database, backup, cluster, user, and
-   permission operations.
-5. Standardize every tool on one structured success/error envelope.
+1. **Completed:** readonly/developer/operator/admin profiles and graph/search toolsets.
+2. **Completed:** compact 17-tool readonly default with a bounded schema footprint.
+3. **Completed:** parser-backed AQL classification and hard runtime/row/byte/bulk/concurrency
+   ceilings.
+4. **Completed:** actor/action/parameter/expiry-bound one-use confirmation for irreversible tools.
+5. **Completed:** one structured v3 success/error envelope with dated legacy compatibility.
 
 ### Phase 2 — Meet the production MCP bar
 
-1. Upgrade and test against MCP 2026-07-28, including stateless HTTP behavior, required headers,
-   origin checks, backwards compatibility, and formal authorization discovery.
-2. Replace the shared HTTP secret model with OAuth 2.1/OIDC resource-server support, per-request
-   identity, scopes, and database/tool authorization.
-3. Add OpenTelemetry traces and Prometheus metrics for tool counts, latency, errors, AQL runtime,
-   pool pressure, and dependency calls.
-4. Emit a structured, redacted audit event for every mutation and privileged action.
+1. **Completed locally:** stateless MCP 2026-07-28 routing, cache, Host/Origin, and compatibility.
+2. **Completed locally:** OAuth 2.1/OIDC resource-server validation, protected-resource metadata,
+   per-request identity, scopes, database policy, and request-scoped credentials.
+3. **Completed locally:** OpenTelemetry traces and Prometheus metrics for tool, AQL, dependency,
+   and limiter behavior.
+4. **Completed locally:** one structured, redacted audit event for every mutation/privileged
+   attempt.
 
 ### Phase 3 — Prove and distribute quality
 
-1. Publish versioned Python and container artifacts with signed provenance, SBOMs, changelogs, and
-   automated vulnerability scans.
-2. Add MCP interoperability tests plus agent evaluations for tool-selection accuracy, task
-   completion, token cost, output size, and destructive-action refusal.
-3. Publish reproducible latency/concurrency benchmarks and an explicit support/security policy.
+1. **Workflow implemented; publication pending:** publish versioned Python and container artifacts
+   with signed provenance, SBOMs, changelogs, and automated vulnerability scans.
+2. **Completed for the deterministic baseline:** MCP interoperability, tool selection,
+   destructive refusal, retrieval MRR/recall, latency, and output ceilings are blocking gates.
+3. Publish reproducible latency/concurrency benchmarks and the locally implemented governance
+   policies.
+4. **Completed locally:** supported Helm chart with static validation and live kind
+   install/upgrade/probe/authentication acceptance.
 
 ## What would move this server to A-range
 
-An A-range result requires more than additional tools. The shortest credible path is:
+The current **82/B+** result needs eight additional points for A-range. The shortest credible path
+is to preserve the 19/20 capability and 14/15 ergonomics scores while:
 
-- preserve the 19/20 capability lead;
-- raise ergonomics from 10 to at least 13 through progressive disclosure and consistent schemas;
-- raise security from 9 to at least 13 through profiles, classification, confirmation, and scoped
-  identity;
-- raise operations from 7 to at least 12 through metrics, traces, audit events, and load controls;
-- raise deployment/maturity from 9 combined to at least 17 through current MCP support and
-  automated, provenanced releases.
+- raising security from 13 to 15 with OIDC scopes, authority intersection, and request-scoped
+  least-privilege credentials;
+- raising operations from 8 to at least 12 with metrics, traces, complete audit events, propagated
+  correlation, and per-actor load controls;
+- raising deployment and maturity from 14 combined to at least 16 through published signed
+  artifacts, Helm, governance, and independently observable use.
 
-That moves the product from **66/C+** to approximately **85–90/A-**, assuming the changes are
-verified by live interoperability, security, and agent-quality gates.
+Phase 4/5 implementation may support a future **90–92/A** result, but the score remains **82/B+**
+until external interoperability, security, release, operational, governance, and use evidence
+passes and an independent MAT-003 regrade occurs after at least 30 days.
 
 ## Competitor evidence
 
@@ -485,7 +565,9 @@ verified by live interoperability, security, and agent-quality gates.
 - Public stars/downloads indicate adoption, not production quality.
 - No peer publishes directly comparable production usage, support SLA, independent security
   audit, standardized interoperability result, or latency/token benchmark.
-- `[U]` The local server's live coverage, throughput, failure rate, and production adoption remain
-  unverified; current CI status is verified red.
+- `[V]` Latest completed local coverage is 82.64%; production throughput, failure rate, and adoption remain
+  unverified.
+- `[U]` The first external CI runs for the new security and interoperability implementation had
+  not been captured when this regrade was finalized.
 - Scores should be recalculated after material protocol, security, release, or tool-surface
   changes.

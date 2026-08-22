@@ -11,7 +11,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from arango.exceptions import ArangoServerError
 
-from agents.agent_base import SYSTEM_DB, ArangoAgentBase, handle_arango_errors  # noqa: F401
+from arangodb_mcp.agents.agent_base import (  # noqa: F401
+    SYSTEM_DB,
+    ArangoAgentBase,
+    handle_arango_errors,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -123,7 +127,7 @@ class TestHandleArangoErrors:
 class TestArangoAgentBase:
     """Tests for ``ArangoAgentBase`` helper methods."""
 
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     def test_resolve_db_calls_get_db(self, mock_connector):
         mock_connector.get_db.return_value = _mock_db("mydb")
 
@@ -138,7 +142,7 @@ class TestArangoAgentBase:
         assert name == "mydb"
         assert db.name == "mydb"
 
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     def test_resolve_db_none_uses_db_name(self, mock_connector):
         mock_connector.get_db.return_value = _mock_db("default_db")
 
@@ -172,20 +176,20 @@ class TestArangoAgentBase:
 
 class TestAQLExecutionAgent:
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_empty_query_returns_error(self, mock_connector):
-        from agents.aql_execution_agent import AQLExecutionAgent
+        from arangodb_mcp.agents.aql_execution_agent import AQLExecutionAgent
 
         result = await AQLExecutionAgent().arun({"aql_query": "", "operation": "execute"})
         assert "error" in result
         assert "empty" in result["error"].lower()
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_falls_through_to_execute(self, mock_connector):
         """Non-recognised operations fall through to the default execute path,
         which still requires a non-empty query."""
-        from agents.aql_execution_agent import AQLExecutionAgent
+        from arangodb_mcp.agents.aql_execution_agent import AQLExecutionAgent
 
         result = await AQLExecutionAgent().arun({"operation": "nonexistent", "aql_query": ""})
         assert "error" in result
@@ -196,8 +200,8 @@ class TestAQLLogRedaction:
     logged as plain text or as a structural fingerprint."""
 
     def test_redacted_by_default(self):
-        from agents.aql_execution_agent import _aql_log_fragment
-        from config import settings
+        from arangodb_mcp.agents.aql_execution_agent import _aql_log_fragment
+        from arangodb_mcp.config import settings
 
         # Default ServerSettings has log_aql_queries=False.
         assert settings.server.log_aql_queries is False
@@ -208,7 +212,7 @@ class TestAQLLogRedaction:
         assert "sha1=" in out
 
     def test_redaction_is_deterministic_per_query(self):
-        from agents.aql_execution_agent import _aql_log_fragment
+        from arangodb_mcp.agents.aql_execution_agent import _aql_log_fragment
 
         a = _aql_log_fragment("RETURN 1")
         b = _aql_log_fragment("RETURN 1")
@@ -217,8 +221,8 @@ class TestAQLLogRedaction:
         assert a != c
 
     def test_log_aql_queries_true_emits_truncated_text(self, monkeypatch):
-        from agents.aql_execution_agent import _aql_log_fragment
-        from config import settings
+        from arangodb_mcp.agents.aql_execution_agent import _aql_log_fragment
+        from arangodb_mcp.config import settings
 
         monkeypatch.setattr(settings.server, "log_aql_queries", True)
         short = "FOR d IN c RETURN d"
@@ -230,11 +234,11 @@ class TestAQLLogRedaction:
         assert len(out) <= 103  # 100 chars + "..."
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_executing_log_line_does_not_contain_query_text_by_default(
         self, mock_connector, caplog
     ):
-        from agents.aql_execution_agent import AQLExecutionAgent
+        from arangodb_mcp.agents.aql_execution_agent import AQLExecutionAgent
 
         secret = 'FILTER user.password == "hunter2-leaked-secret"'
         mock_db = _mock_db()
@@ -246,7 +250,7 @@ class TestAQLLogRedaction:
         mock_db.aql.execute.return_value = cursor
         mock_connector.get_db.return_value = mock_db
 
-        with caplog.at_level(logging.INFO, logger="agents.aql_execution_agent"):
+        with caplog.at_level(logging.INFO, logger="arangodb_mcp.agents.aql_execution_agent"):
             await AQLExecutionAgent().arun({"operation": "execute", "aql_query": secret})
 
         all_records = " ".join(r.getMessage() for r in caplog.records)
@@ -256,9 +260,9 @@ class TestAQLLogRedaction:
 
 class TestDocumentCRUDAgent:
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_returns_error(self, mock_connector):
-        from agents.document_crud_agent import DocumentCRUDAgent
+        from arangodb_mcp.agents.document_crud_agent import DocumentCRUDAgent
 
         mock_connector.get_db.return_value = _mock_db()
         mock_connector.get_db.return_value.has_collection.return_value = True
@@ -271,9 +275,9 @@ class TestDocumentCRUDAgent:
         assert "Unknown document operation" in result["error"]
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_missing_collection_name_returns_error(self, mock_connector):
-        from agents.document_crud_agent import DocumentCRUDAgent
+        from arangodb_mcp.agents.document_crud_agent import DocumentCRUDAgent
 
         result = await DocumentCRUDAgent().arun(
             {"operation": "create_document", "document_data": {"x": 1}}
@@ -284,9 +288,9 @@ class TestDocumentCRUDAgent:
 
 class TestCollectionManagementAgent:
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_returns_error(self, mock_connector):
-        from agents.collection_management_agent import CollectionManagementAgent
+        from arangodb_mcp.agents.collection_management_agent import CollectionManagementAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -297,10 +301,10 @@ class TestCollectionManagementAgent:
 
 class TestDatabaseManagementAgent:
     @pytest.mark.asyncio
-    @patch("agents.database_management_agent.arango_connector")
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.database_management_agent.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_system_db_delete_guard(self, mock_base_conn, mock_db_conn):
-        from agents.database_management_agent import DatabaseManagementAgent
+        from arangodb_mcp.agents.database_management_agent import DatabaseManagementAgent
 
         sys_db = _mock_db(SYSTEM_DB)
         sys_db.has_database.return_value = True
@@ -314,10 +318,10 @@ class TestDatabaseManagementAgent:
         assert SYSTEM_DB in result["error"]
 
     @pytest.mark.asyncio
-    @patch("agents.database_management_agent.arango_connector")
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.database_management_agent.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_returns_error(self, mock_base_conn, mock_db_conn):
-        from agents.database_management_agent import DatabaseManagementAgent
+        from arangodb_mcp.agents.database_management_agent import DatabaseManagementAgent
 
         mock_db_conn.get_system_db.return_value = _mock_db()
 
@@ -328,10 +332,10 @@ class TestDatabaseManagementAgent:
 
 class TestUserManagementAgent:
     @pytest.mark.asyncio
-    @patch("agents.user_management_agent.arango_connector")
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.user_management_agent.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_invalid_permission_returns_error(self, mock_base_conn, mock_user_conn):
-        from agents.user_management_agent import UserManagementAgent
+        from arangodb_mcp.agents.user_management_agent import UserManagementAgent
 
         mock_user_conn.get_system_db.return_value = _mock_db()
 
@@ -348,10 +352,10 @@ class TestUserManagementAgent:
         assert "superadmin" in result["error"]
 
     @pytest.mark.asyncio
-    @patch("agents.user_management_agent.arango_connector")
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.user_management_agent.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_returns_error(self, mock_base_conn, mock_user_conn):
-        from agents.user_management_agent import UserManagementAgent
+        from arangodb_mcp.agents.user_management_agent import UserManagementAgent
 
         mock_user_conn.get_system_db.return_value = _mock_db()
 
@@ -362,13 +366,13 @@ class TestUserManagementAgent:
 
 class TestTransactionManagementAgent:
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_js_transaction_disabled_by_default(self, mock_connector):
-        from agents.transaction_management_agent import TransactionManagementAgent
+        from arangodb_mcp.agents.transaction_management_agent import TransactionManagementAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
-        with patch("agents.transaction_management_agent.settings") as mock_settings:
+        with patch("arangodb_mcp.agents.transaction_management_agent.settings") as mock_settings:
             mock_settings.server.enable_js_transactions = False
             result = await TransactionManagementAgent().arun(
                 {"operation": "execute_transaction", "command": "function(){}"}
@@ -378,9 +382,9 @@ class TestTransactionManagementAgent:
         assert "disabled" in result["error"].lower()
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_returns_error(self, mock_connector):
-        from agents.transaction_management_agent import TransactionManagementAgent
+        from arangodb_mcp.agents.transaction_management_agent import TransactionManagementAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -391,9 +395,9 @@ class TestTransactionManagementAgent:
 
 class TestManualManagementAgent:
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_manual_name_returns_error(self, mock_connector):
-        from agents.manual_management_agent import ManualManagementAgent
+        from arangodb_mcp.agents.manual_management_agent import ManualManagementAgent
 
         result = await ManualManagementAgent().arun(
             {"operation": "get_aql_manual", "manual_name": "nonexistent_manual_xyz"}
@@ -402,9 +406,9 @@ class TestManualManagementAgent:
         assert "Unknown manual" in result["error"]
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_returns_error(self, mock_connector):
-        from agents.manual_management_agent import ManualManagementAgent
+        from arangodb_mcp.agents.manual_management_agent import ManualManagementAgent
 
         result = await ManualManagementAgent().arun(
             {"operation": "delete_all_manuals", "manual_name": "aql"}
@@ -415,9 +419,9 @@ class TestManualManagementAgent:
 
 class TestGraphTraversalAgent:
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_missing_start_vertex_returns_error(self, mock_connector):
-        from agents.graph_traversal_agent import GraphTraversalAgent
+        from arangodb_mcp.agents.graph_traversal_agent import GraphTraversalAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -432,9 +436,9 @@ class TestGraphTraversalAgent:
         assert "start_vertex" in result["error"].lower()
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_invalid_direction_returns_error(self, mock_connector):
-        from agents.graph_traversal_agent import GraphTraversalAgent
+        from arangodb_mcp.agents.graph_traversal_agent import GraphTraversalAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -453,9 +457,9 @@ class TestGraphTraversalAgent:
 
 class TestVectorSearchAgent:
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_invalid_metric_returns_error(self, mock_connector):
-        from agents.vector_search_agent import VectorSearchAgent
+        from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -473,9 +477,9 @@ class TestVectorSearchAgent:
         assert "manhattan" in result["error"]
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_missing_collection_returns_error(self, mock_connector):
-        from agents.vector_search_agent import VectorSearchAgent
+        from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -491,9 +495,9 @@ class TestVectorSearchAgent:
         assert "collection_name" in result["error"].lower()
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_unknown_operation_returns_error(self, mock_connector):
-        from agents.vector_search_agent import VectorSearchAgent
+        from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -511,11 +515,11 @@ class TestInputValidation:
     """Tests that agents using ``validate_aql_identifier`` reject unsafe names."""
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_graph_traversal_rejects_injection_in_graph_name(self, mock_connector):
         """A graph_name containing backtick injection should be rejected by
         ``validate_aql_identifier`` and surface as an error via the decorator."""
-        from agents.graph_traversal_agent import GraphTraversalAgent
+        from arangodb_mcp.agents.graph_traversal_agent import GraphTraversalAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -530,9 +534,9 @@ class TestInputValidation:
         assert "error" in result
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_vector_search_rejects_bad_collection_name(self, mock_connector):
-        from agents.vector_search_agent import VectorSearchAgent
+        from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
 
         mock_connector.get_db.return_value = _mock_db()
         db = mock_connector.get_db.return_value
@@ -553,9 +557,9 @@ class TestInputValidation:
         assert "error" in result
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_vector_search_rejects_bad_vector_field(self, mock_connector):
-        from agents.vector_search_agent import VectorSearchAgent
+        from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -571,9 +575,9 @@ class TestInputValidation:
         assert "error" in result
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_graph_traversal_rejects_special_char_edge_collection(self, mock_connector):
-        from agents.graph_traversal_agent import GraphTraversalAgent
+        from arangodb_mcp.agents.graph_traversal_agent import GraphTraversalAgent
 
         mock_connector.get_db.return_value = _mock_db()
 
@@ -588,9 +592,9 @@ class TestInputValidation:
         assert "error" in result
 
     @pytest.mark.asyncio
-    @patch("agents.agent_base.arango_connector")
+    @patch("arangodb_mcp.agents.agent_base.arango_connector")
     async def test_collection_name_with_spaces_rejected(self, mock_connector):
-        from agents.vector_search_agent import VectorSearchAgent
+        from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
 
         mock_connector.get_db.return_value = _mock_db()
 

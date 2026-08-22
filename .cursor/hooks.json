@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python3 .cursor/hooks/shared_memory_session_start.py",
+        "timeout": 15,
+        "failClosed": false
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "python3 .cursor/hooks/shared_memory_drift_queue.py",
+        "failClosed": false
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 .cursor/hooks/shared_memory_apply_tracker.py",
+        "matcher": "MCP:(pattern-search|pattern-applied)",
+        "failClosed": false
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 .cursor/hooks/shared_memory_stop_gate.py",
+        "timeout": 10,
+        "failClosed": false,
+        "loop_limit": 1
+      }
+    ]
+  }
+}

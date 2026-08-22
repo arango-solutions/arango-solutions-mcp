@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "documents": [
+    {"id": "stale-tls-env", "text": "HTTPS calls fail with bare file not found when SSL_CERT_FILE points to a deleted temporary certificate. Remove stale TLS environment overrides and use the default trust store."},
+    {"id": "schema-safe-tools", "text": "FastMCP decorators introspect function signatures. Preserve tool schemas by normalizing errors and results at the tool manager dispatch boundary instead of using args kwargs wrappers."},
+    {"id": "cluster-traversal", "text": "ArangoDB cluster traversals need WITH vertex collections and path-wide version filters. Test against multiple co-resident dataset versions."},
+    {"id": "deterministic-eval", "text": "Run deterministic offline quality evaluation in CI and compare structured metrics to a versioned baseline. Exit nonzero on regression without requiring paid model APIs."},
+    {"id": "docker-security", "text": "Use a multi-stage non-root container image, scan the built runtime image, and document expiring vulnerability exceptions."},
+    {"id": "oidc-validation", "text": "Validate OIDC issuer audience expiry and rotating JWKS. Intersect token scopes with profile and database policy."},
+    {"id": "aql-parser-policy", "text": "Classify AQL using the server parser AST. Reject insert update replace remove upsert and ambiguous dynamic function calls in readonly mode."},
+    {"id": "graph-analytics", "text": "Run global PageRank and weakly connected components in the Graph Analytics Engine rather than AQL."},
+    {"id": "profile-denylists", "text": "Resolve readonly developer operator and admin tool profiles, then subtract exact tool and category denylists before registration."},
+    {"id": "confirmation-token", "text": "Require short-lived HMAC human confirmation bound to actor action parameters and expiry. Consume each token once and reject replay."},
+    {"id": "health-probes", "text": "Separate process liveness from dependency-aware readiness and keep a deprecated health alias with no-store responses."},
+    {"id": "output-limits", "text": "Enforce hard runtime row response byte bulk input and concurrency ceilings at centralized dispatch with machine-readable denial and truncation metadata."}
+  ],
+  "queries": [
+    {"query": "bare file not found from deleted SSL certificate environment", "relevant": ["stale-tls-env"]},
+    {"query": "preserve FastMCP tool signature schema while wrapping results", "relevant": ["schema-safe-tools"]},
+    {"query": "cluster graph traversal WITH collections and version filter", "relevant": ["cluster-traversal"]},
+    {"query": "offline deterministic CI metric regression baseline", "relevant": ["deterministic-eval"]},
+    {"query": "non-root multi-stage runtime image vulnerability scan", "relevant": ["docker-security"]},
+    {"query": "readonly AQL parser AST rejects upsert", "relevant": ["aql-parser-policy"]},
+    {"query": "tool profile category denylist registration", "relevant": ["profile-denylists"]},
+    {"query": "one-use actor action parameter human confirmation replay", "relevant": ["confirmation-token"]},
+    {"query": "liveness readiness dependency health probes", "relevant": ["health-probes"]},
+    {"query": "hard rows bytes bulk concurrency truncation limits", "relevant": ["output-limits"]}
+  ]
+}

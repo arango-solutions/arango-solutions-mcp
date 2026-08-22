@@ -1,0 +1,17 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "arangodb-mcp.fullname" . }}
+  labels:
+    {{- include "arangodb-mcp.labels" . | nindent 4 }}
+spec:
+  {{- if ne .Values.podDisruptionBudget.maxUnavailable nil }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "arangodb-mcp.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,1064 @@
+"""Shared-memory pattern search.
+
+Server-side hybrid retrieval for the shared_patterns collection so agents pass a
+query string and receive only ranked results — the (large) query embedding is
+generated and consumed inside the server, never in the agent's context.
+
+Ranking: Reciprocal Rank Fusion (k=10) of ANN vector similarity and BM25
+full-text, then MULTIPLICATIVE salience boosts:
+
+    score = rel * (1 + 0.15*importance + 0.10*recency + 0.05*usage)
+                * (0.6 + 0.4*success_rate)
+
+Salience modulates relevance; it can never substitute for it. The success_rate
+factor = applied_worked / (applied_worked + applied_failed), recorded by
+pattern-applied's `outcome` param, down-weights patterns that were tried but did
+not work. It is 1.0 for any pattern with no recorded apply outcomes, so it does
+not move the golden-eval MRR until negative signal accrues. The original
+additive form (rel + imp + rec + use) let query-independent terms carry 75% of
+the weight, so a perfectly-matched pattern (vector #1 AND BM25 #1) could be
+out-scored by fresher/more-important near-neighbours — measured on the golden
+eval set (scripts/eval_retrieval.py in arango-shared-memory) as hybrid MRR 0.25
+vs BM25's 0.93. Multiplicative scoring + k=10 (sharper rank discrimination at
+small-corpus scale than the textbook k=60) lifted hybrid to MRR 0.975.
+Falls back to BM25-only if embeddings are unavailable or there is no vector
+index. Keep these AQLs in sync with scripts/eval_retrieval.py.
+"""
+
+import datetime
+import re
+from typing import Any, List, cast
+
+from pydantic import Field
+from pydantic.fields import FieldInfo
+
+from arangodb_mcp.arango_connector import arango_connector
+from arangodb_mcp.config import settings
+from arangodb_mcp.mcp_tools._support import arango_error_result, run_sync
+from arangodb_mcp.mcp_tools.embedding_tools import generate_embeddings
+from arangodb_mcp.server import mcp_app
+
+_MEMORY_TYPES = {"pattern", "feedback", "user", "project", "reference"}
+
+
+def _arg(value, default):
+    """Normalize omitted params on DIRECT (non-MCP) calls.
+
+    Invoked through the MCP layer, pydantic resolves Field defaults; called as a
+    plain function (unit tests, scripts), an omitted param arrives as the
+    truthy FieldInfo object itself. Coerce those back to the declared default
+    so both call paths behave identically.
+    """
+    return default if isinstance(value, FieldInfo) else value
+
+
+def _ekey(a: str, b: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "-", f"{a}__{b}")[:250]
+
+
+def _invalidate(coll, old_key, new_key, reason, now_iso):
+    """Bi-temporal invalidation of a superseded memory.
+
+    Closes the old memory's validity interval instead of deleting it: sets
+    valid_to / invalidated_by / invalidation_reason, plus the legacy
+    superseded flags and the importance demotion that keep it out of default
+    ranking. History is preserved — `pattern-search(as_of=...)` can still see
+    the memory as it was when it was valid.
+    """
+    old = coll.get(old_key)
+    if not old:
+        return
+    coll.update(
+        {
+            "_key": old_key,
+            "superseded": True,
+            "superseded_by": new_key,
+            "valid_to": now_iso,
+            "invalidated_by": new_key,
+            "invalidation_reason": reason,
+            "importance_original": old.get("importance_original", old.get("importance", 5)),
+            "importance": 1,
+        }
+    )
+
+
+def _current_user():
+    """The ArangoDB username this server is connected as.
+
+    Deployments use per-developer scoped users (e.g. 'arthur', 'pj'), so the
+    connection identity IS the person — stamped on writes for attribution
+    (saved_by / applied_by / detected_by). Best-effort: never raises.
+    """
+    try:
+        return settings.arango.root_username or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _run_query(db, aql: str, bind_vars: dict) -> list:
+    """Execute an AQL query and fully drain the cursor.
+
+    Both the execute and the cursor iteration are blocking network calls, so
+    callers run this via ``run_sync`` in a single worker-thread hop.
+    """
+    return list(db.aql.execute(aql, bind_vars=bind_vars))
+
+
+def _ensure_provenance(db, edge_coll, src_id, project_id, relation):
+    """Upsert the project_registry node and insert a provenance edge
+    (src_id -> project_registry/<project_id>).
+
+    Used on the write path so every pattern / drift alert is linked to its
+    project and no project becomes an orphan node. No-op if project_id is empty
+    or the edge collection is absent (keyword-only / graph layer not set up).
+    Idempotent: deterministic edge _key + overwrite=True.
+    """
+    if not project_id or not db.has_collection(edge_coll):
+        return False
+    if db.has_collection("project_registry"):
+        db.aql.execute(
+            "UPSERT { _key: @pid } "
+            "INSERT { _key: @pid, project_id: @pid, project_name: @pid, "
+            "project_type: 'other', open_gaps: 0, patterns_contributed: 0, "
+            "last_sync: null, autocreated: true } UPDATE { } IN project_registry",
+            bind_vars={"pid": project_id},
+        )
+    src_key = src_id.split("/", 1)[-1]
+    db.collection(edge_coll).insert(
+        {
+            "_key": _ekey(src_key, project_id),
+            "_from": src_id,
+            "_to": f"project_registry/{project_id}",
+            "relation": relation,
+        },
+        overwrite=True,
+    )
+    return True
+
+
+# KNN over stored embeddings: APPROX_NEAR_COSINE must be bound via LET + used once in SORT.
+_KNN_AQL = (
+    "FOR q IN @@coll LET s = APPROX_NEAR_COSINE(q.embedding, @vec) "
+    "SORT s DESC LIMIT @lim RETURN {k: q._key, s: s, created: q.created_at}"
+)
+
+
+def _maintain_graph(
+    db,
+    coll,
+    coll_name,
+    key,
+    embedding,
+    created_at,
+    rel_sim,
+    sup_sim,
+    top_k,
+    project_id=None,
+    allow_supersede=True,
+):
+    """Maintain graph edges for one just-saved pattern. Sync.
+
+    ALWAYS records provenance (pattern_from_project: pattern -> project_registry),
+    independent of embeddings, auto-creating the project node if the project never
+    ran /prd-sync -- so every saved pattern is linked to its project and neither
+    the pattern nor the project becomes an orphan in the graph. Then, when an
+    embedding + vector index exist, builds pattern_relates_to (KNN) edges and a
+    supersede check.
+
+    ``allow_supersede=False`` keeps the relates_to edges but skips the IMPLICIT
+    near-duplicate supersede. Callers pass this when the human/agent has already
+    ruled on the duplicate question (save-pattern force=True), so the ruling is not
+    silently reversed here.
+
+    Returns (relates_edges:int, superseded:dict|None).
+    """
+    # --- provenance: pattern -> project (no embedding needed). Historically this
+    # was recorded only by an out-of-band setup step, so patterns saved via the
+    # tool never got a provenance edge and their projects showed up as orphan
+    # nodes; it now happens here on the write path. ---
+    _ensure_provenance(
+        db,
+        "pattern_from_project",
+        f"{coll_name}/{key}",
+        project_id or (coll.get(key) or {}).get("project_id"),
+        "from_project",
+    )
+
+    if not embedding or not _has_vector_index(coll):
+        return 0, None
+    k = max(1, min(int(top_k), 10))
+    nbrs = [
+        n
+        for n in db.aql.execute(
+            _KNN_AQL, bind_vars={"vec": embedding, "lim": k + 1, "@coll": coll_name}
+        )
+        if n["k"] != key
+    ]
+
+    rel_edges = 0
+    if db.has_collection("pattern_relates_to"):
+        rc = db.collection("pattern_relates_to")
+        for n in nbrs:
+            if n["s"] >= rel_sim:
+                rc.insert(
+                    {
+                        "_key": _ekey(key, n["k"]),
+                        "_from": f"{coll_name}/{key}",
+                        "_to": f"{coll_name}/{n['k']}",
+                        "sim": round(n["s"], 4),
+                    },
+                    overwrite=True,
+                )
+                rel_edges += 1
+
+    superseded = None
+    top = nbrs[0] if nbrs else None
+    if allow_supersede and top and top["s"] >= sup_sim and db.has_collection("pattern_supersedes"):
+        new_k, old_k = (
+            (key, top["k"]) if (created_at or "") >= (top["created"] or "") else (top["k"], key)
+        )
+        db.collection("pattern_supersedes").insert(
+            {
+                "_key": _ekey(new_k, old_k),
+                "_from": f"{coll_name}/{new_k}",
+                "_to": f"{coll_name}/{old_k}",
+                "sim": round(top["s"], 4),
+            },
+            overwrite=True,
+        )
+        now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _invalidate(
+            coll,
+            old_k,
+            new_k,
+            f"superseded by near-duplicate (cosine {round(top['s'], 4)})",
+            now_iso,
+        )
+        superseded = {"new": new_k, "old": old_k, "sim": round(top["s"], 4)}
+    return rel_edges, superseded
+
+
+# Hybrid: vector ⊕ BM25 via RRF, then graded scoring.
+_HYBRID_AQL = """
+LET vec = (FOR p IN @@coll
+             SORT APPROX_NEAR_COSINE(p.embedding, @qvec) DESC LIMIT 25 RETURN p._key)
+LET bm  = (FOR p IN @@view
+             SEARCH ANALYZER(
+               p.problem_description IN TOKENS(@q,"text_en")
+               OR p.solution_summary IN TOKENS(@q,"text_en")
+               OR p.tags            IN TOKENS(@q,"text_en"), "text_en")
+             SORT BM25(p) DESC LIMIT 25 RETURN p._key)
+LET fused = (FOR k IN UNIQUE(APPEND(vec, bm))
+  LET vr = POSITION(vec, k, true)
+  LET br = POSITION(bm,  k, true)
+  RETURN { k, rrf: (vr == -1 ? 0 : 1.0/(10+vr+1)) + (br == -1 ? 0 : 1.0/(10+br+1)) })
+LET maxRrf = MAX(fused[*].rrf)
+FOR f IN fused
+  LET p = DOCUMENT(@@coll, f.k)
+  FILTER p.superseded != true
+  LET rel = f.rrf / (maxRrf > 0 ? maxRrf : 1)
+  LET imp = (p.importance == null ? 5 : p.importance) / 10.0
+  LET rec = POW(0.995, DATE_DIFF(p.last_used == null ? p.created_at : p.last_used, DATE_NOW(), "d"))
+  LET use = LOG(1 + (p.usage_count == null ? 0 : p.usage_count)) / LOG(11)
+  LET aw  = p.applied_worked == null ? 0 : p.applied_worked
+  LET af  = p.applied_failed == null ? 0 : p.applied_failed
+  LET succ = (aw + af) == 0 ? 1 : aw / (aw + af)
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use) * (0.6 + 0.4*succ)
+  SORT score DESC LIMIT @lim
+  RETURN { _key: p._key, project_id: p.project_id, project_type: p.project_type,
+           problem_category: p.problem_category, problem_description: p.problem_description,
+           solution_summary: p.solution_summary, tags: p.tags, created_at: p.created_at,
+           source_file: p.source_file, importance: p.importance, usage_count: p.usage_count,
+           score: ROUND(score*1000)/1000, relevance: ROUND(rel*1000)/1000 }
+"""
+
+# Hybrid + graph expansion: adds 1-hop pattern_relates_to neighbors of the top vector
+# seeds into the candidate pool (Phase 2). Graph-only nodes get a small RRF floor so they
+# surface for scoring but rank below direct vector/BM25 hits.
+_HYBRID_GRAPH_AQL = """
+LET vec = (FOR p IN @@coll
+             SORT APPROX_NEAR_COSINE(p.embedding, @qvec) DESC LIMIT 25 RETURN p._key)
+LET bm  = (FOR p IN @@view
+             SEARCH ANALYZER(
+               p.problem_description IN TOKENS(@q,"text_en")
+               OR p.solution_summary IN TOKENS(@q,"text_en")
+               OR p.tags            IN TOKENS(@q,"text_en"), "text_en")
+             SORT BM25(p) DESC LIMIT 25 RETURN p._key)
+LET seeds = SLICE(vec, 0, 5)
+LET nbrs = UNIQUE(FLATTEN(
+  FOR s IN seeds
+    RETURN (FOR n IN 1..1 ANY DOCUMENT(@@coll, s) pattern_relates_to RETURN n._key)))
+LET fused = (FOR k IN UNIQUE(APPEND(APPEND(vec, bm), nbrs))
+  LET vr = POSITION(vec, k, true)
+  LET br = POSITION(bm,  k, true)
+  LET graphOnly = (vr == -1 AND br == -1 AND POSITION(nbrs, k, true) != -1)
+  RETURN { k, rrf: (vr == -1 ? 0 : 1.0/(10+vr+1)) + (br == -1 ? 0 : 1.0/(10+br+1))
+                   + (graphOnly ? 1.0/(10+30) : 0), graphOnly })
+LET maxRrf = MAX(fused[*].rrf)
+FOR f IN fused
+  LET p = DOCUMENT(@@coll, f.k)
+  FILTER p.superseded != true
+  LET rel = f.rrf / (maxRrf > 0 ? maxRrf : 1)
+  LET imp = (p.importance == null ? 5 : p.importance) / 10.0
+  LET rec = POW(0.995, DATE_DIFF(p.last_used == null ? p.created_at : p.last_used, DATE_NOW(), "d"))
+  LET use = LOG(1 + (p.usage_count == null ? 0 : p.usage_count)) / LOG(11)
+  LET aw  = p.applied_worked == null ? 0 : p.applied_worked
+  LET af  = p.applied_failed == null ? 0 : p.applied_failed
+  LET succ = (aw + af) == 0 ? 1 : aw / (aw + af)
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use) * (0.6 + 0.4*succ)
+  SORT score DESC LIMIT @lim
+  RETURN { _key: p._key, project_id: p.project_id, project_type: p.project_type,
+           problem_category: p.problem_category, problem_description: p.problem_description,
+           solution_summary: p.solution_summary, tags: p.tags, created_at: p.created_at,
+           source_file: p.source_file, importance: p.importance, usage_count: p.usage_count,
+           via_graph: f.graphOnly, score: ROUND(score*1000)/1000, relevance: ROUND(rel*1000)/1000 }
+"""
+
+# BM25-only fallback (no query vector).
+_BM25_AQL = """
+LET cand = (FOR p IN @@view
+  SEARCH ANALYZER(
+    p.problem_description IN TOKENS(@q,"text_en")
+    OR p.solution_summary IN TOKENS(@q,"text_en")
+    OR p.tags            IN TOKENS(@q,"text_en"), "text_en")
+  LET rel = BM25(p) SORT rel DESC LIMIT 25 RETURN { p, rel })
+LET maxRel = MAX(cand[*].rel)
+FOR c IN cand
+  FILTER c.p.superseded != true
+  LET rel = c.rel / (maxRel > 0 ? maxRel : 1)
+  LET imp = (c.p.importance == null ? 5 : c.p.importance) / 10.0
+  LET rec = POW(0.995, DATE_DIFF(c.p.last_used == null ? c.p.created_at : c.p.last_used, DATE_NOW(), "d"))
+  LET use = LOG(1 + (c.p.usage_count == null ? 0 : c.p.usage_count)) / LOG(11)
+  LET aw  = c.p.applied_worked == null ? 0 : c.p.applied_worked
+  LET af  = c.p.applied_failed == null ? 0 : c.p.applied_failed
+  LET succ = (aw + af) == 0 ? 1 : aw / (aw + af)
+  LET score = rel * (1 + 0.15*imp + 0.10*rec + 0.05*use) * (0.6 + 0.4*succ)
+  SORT score DESC LIMIT @lim
+  RETURN { _key: c.p._key, project_id: c.p.project_id, project_type: c.p.project_type,
+           problem_category: c.p.problem_category, problem_description: c.p.problem_description,
+           solution_summary: c.p.solution_summary, tags: c.p.tags, created_at: c.p.created_at,
+           source_file: c.p.source_file, importance: c.p.importance, usage_count: c.p.usage_count,
+           score: ROUND(score*1000)/1000, relevance: ROUND(rel*1000)/1000 }
+"""
+
+
+def _has_vector_index(coll) -> bool:
+    return any(ix.get("type") == "vector" for ix in coll.indexes())
+
+
+def _vector_dim(coll, default: int = 1536) -> int:
+    """Dimension of the collection's vector index (for placeholder vectors)."""
+    for ix in coll.indexes():
+        if ix.get("type") == "vector":
+            return int(ix.get("params", {}).get("dimension", default))
+    return default
+
+
+# A search is a "hit" when its top result clears this normalized-relevance bar.
+# (relevance is RRF- or BM25-normalized to ~[0,1] in the search AQL.)
+_HIT_RELEVANCE = 0.5
+
+
+def _log_search(db, query_text, mode, results, project_id, collection_name):
+    """Best-effort read-path instrumentation (never raises into the caller).
+
+    Writes one doc to `search_log` per search and bumps `surfaced_count` /
+    `last_surfaced` on each returned pattern. This makes the READ side of shared
+    memory measurable (search volume, hit rate, surfaced-vs-applied funnel) —
+    usage_count alone only captures the APPLY side.
+    """
+    try:
+        if not db.has_collection("search_log"):
+            db.create_collection("search_log")  # lazy provision
+        top = results[0] if results else None
+        db.collection("search_log").insert(
+            {
+                "query": query_text[:500],
+                "project_id": project_id or None,
+                "by": _current_user(),
+                "mode": mode,
+                "count": len(results),
+                "top_key": top["_key"] if top else None,
+                "top_score": top.get("score") if top else None,
+                "top_relevance": top.get("relevance") if top else None,
+                "hit": bool(top and (top.get("relevance") or 0) >= _HIT_RELEVANCE),
+                "result_keys": [r["_key"] for r in results],
+                "created_at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            }
+        )
+        keys = [r["_key"] for r in results]
+        if keys:
+            db.aql.execute(
+                "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
+                "UPDATE p WITH { surfaced_count: (p.surfaced_count == null ? 0 : p.surfaced_count) + 1, "
+                "last_surfaced: @now } IN @@coll",
+                bind_vars={
+                    "keys": keys,
+                    "@coll": collection_name,
+                    "now": datetime.datetime.now(datetime.timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                },
+            )
+    except Exception:  # noqa: BLE001 — instrumentation must never break search
+        pass
+
+
+@mcp_app.tool(
+    name="pattern-search",
+    description="""Hybrid semantic + keyword search over the shared-memory patterns.
+
+    Pass a plain-text problem description; the server embeds it, fuses ANN vector
+    similarity with BM25 full-text (Reciprocal Rank Fusion, k=10), then applies
+    MULTIPLICATIVE salience — score = relevance * (1 + 0.15*importance +
+    0.10*recency + 0.05*usage) * (0.6 + 0.4*success_rate) — so salience modulates
+    relevance but can never substitute for it. Returns only the top ranked
+    patterns — no raw vectors.
+
+    Falls back to BM25-only when embeddings are unavailable (no OPENAI_API_KEY) or
+    the collection has no vector index yet. Use this instead of composing
+    embed-text + AQL by hand.
+
+    Optionally restrict results to one memory_type
+    (pattern|feedback|user|project|reference); empty returns all types.
+    """,
+)
+async def pattern_search(
+    query_text: str = Field(description="Free-text problem description to search for."),
+    limit: int = Field(default=8, description="Max patterns to return (1-25)."),
+    graph_expand: bool = Field(
+        default=True,
+        description="Also pull 1-hop pattern_relates_to "
+        "neighbors of the top semantic hits into the candidate pool (Phase 2).",
+    ),
+    collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
+    view_name: str = Field(default="patterns_search", description="ArangoSearch view for BM25."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
+    model: str = Field(default="", description="Optional embedding model override."),
+    project_id: str = Field(
+        default="",
+        description="Calling project id (from CLAUDE.md) — logged "
+        "for per-project read-path analytics; optional.",
+    ),
+    memory_type: str = Field(
+        default="",
+        description="Optional filter: return only memories of this "
+        "type (pattern|feedback|user|project|reference). Empty = all types.",
+    ),
+    as_of: str = Field(
+        default="",
+        description="Bi-temporal time-travel: ISO timestamp. Returns "
+        "memories VALID AT that moment (valid_from <= as_of < valid_to), including "
+        "ones since superseded — 'what did we know then?'. Default: current view.",
+    ),
+):
+    lim = max(1, min(int(limit), 25))
+    as_of = _arg(as_of, "")
+    mtype = _arg(memory_type, "")
+    if mtype and mtype not in _MEMORY_TYPES:
+        return arango_error_result(
+            ValueError(
+                f"memory_type must be one of {sorted(_MEMORY_TYPES)} or empty; got {mtype!r}"
+            )
+        )
+    try:
+        db = await run_sync(arango_connector.get_db, database_name or None)
+        coll = db.collection(collection_name)
+
+        def prepare(aql, var):
+            """Rewrite the default validity filter for as_of, and AND-on an optional
+            memory_type filter.
+
+            The default view excludes superseded memories; the as_of view instead
+            includes exactly what was valid at that instant (a memory superseded
+            LATER still shows — that is the point of time travel). The optional
+            memory_type filter applies in either mode.
+            """
+            if as_of:
+                base = (
+                    f"FILTER ({var}.valid_from == null OR {var}.valid_from <= @as_of) "
+                    f"AND ({var}.valid_to == null OR {var}.valid_to > @as_of)"
+                )
+            else:
+                base = f"FILTER {var}.superseded != true"
+            if mtype:
+                base += f" FILTER {var}.memory_type == @mtype"
+            return aql.replace(f"FILTER {var}.superseded != true", base)
+
+        qvec = None
+        mode = "bm25"
+        if await run_sync(_has_vector_index, coll):
+            try:
+                embeddings, _model, _dim = await generate_embeddings([query_text], model)
+                qvec = embeddings[0]
+                mode = "hybrid"
+            except Exception:  # noqa: BLE001 — embeddings optional; degrade to BM25
+                qvec = None
+
+        extra = {}
+        if as_of:
+            extra["as_of"] = as_of
+        if mtype:
+            extra["mtype"] = mtype
+        use_graph = (
+            qvec is not None
+            and graph_expand
+            and await run_sync(db.has_collection, "pattern_relates_to")
+        )
+        if use_graph:
+            mode = "hybrid+graph"
+            results = await run_sync(
+                _run_query,
+                db,
+                prepare(_HYBRID_GRAPH_AQL, "p"),
+                {
+                    "q": query_text,
+                    "qvec": qvec,
+                    "lim": lim,
+                    "@coll": collection_name,
+                    "@view": view_name,
+                    **extra,
+                },
+            )
+        elif qvec is not None:
+            results = await run_sync(
+                _run_query,
+                db,
+                prepare(_HYBRID_AQL, "p"),
+                {
+                    "q": query_text,
+                    "qvec": qvec,
+                    "lim": lim,
+                    "@coll": collection_name,
+                    "@view": view_name,
+                    **extra,
+                },
+            )
+        else:
+            results = await run_sync(
+                _run_query,
+                db,
+                prepare(_BM25_AQL, "c.p"),
+                {"q": query_text, "lim": lim, "@view": view_name, **extra},
+            )
+
+        if not as_of:  # time-travel reads are analytical — keep the funnel organic
+            await run_sync(_log_search, db, query_text, mode, results, project_id, collection_name)
+        return {
+            "result": {
+                "mode": mode + ("+as_of" if as_of else ""),
+                "count": len(results),
+                "patterns": results,
+            }
+        }
+    except Exception as exc:  # noqa: BLE001
+        return arango_error_result(exc)
+
+
+@mcp_app.tool(
+    name="pattern-index",
+    description="""Maintain the shared-memory graph for ONE just-saved pattern.
+
+    Call this right after saving a pattern (pass its _key). Server-side, it:
+      1. embeds the pattern's text into `embedding` if missing;
+      2. links it to its top-K nearest neighbours via `pattern_relates_to`
+         (cosine >= rel_sim);
+      3. supersede check — if a neighbour is a near-duplicate (cosine >= sup_sim),
+         the newer (by created_at) supersedes the older: adds a `pattern_supersedes`
+         edge and demotes the older (superseded=true, importance=1) so it drops out
+         of search.
+
+    This maintains the graph incrementally for a single save, without a bulk
+    re-index pass. Cheap + deterministic (no LLM). LLM-derived edges
+    (pattern_addresses_requirement, requirement_depends_on) are maintained
+    separately by a periodic batch job.
+    Returns a small summary. Requires OPENAI_API_KEY for the embedding step.
+    """,
+)
+async def pattern_index(
+    document_key: str = Field(description="_key of the just-saved shared_patterns doc."),
+    collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
+    rel_sim: float = Field(default=0.30, description="Min cosine to create a relates_to edge."),
+    sup_sim: float = Field(
+        default=0.90, description="Min cosine to treat as a near-duplicate/supersede."
+    ),
+    top_k: int = Field(default=3, description="Neighbours to consider (1-10)."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
+    model: str = Field(default="", description="Optional embedding model override."),
+):
+    try:
+        db = await run_sync(arango_connector.get_db, database_name or None)
+        coll = db.collection(collection_name)
+        doc = cast(dict[str, Any] | None, await run_sync(coll.get, document_key))
+        if not doc:
+            return {"result": {"error": f"document {document_key!r} not found"}}
+
+        # 1. Ensure a REAL embedding. Re-embed if missing OR only a deferred placeholder
+        #    is present (embedding_pending, from a save during an OpenAI outage); clear
+        #    the flag once the real vector lands.
+        embedded = False
+        if not doc.get("embedding") or doc.get("embedding_pending"):
+            text = "\n".join(
+                str(doc[f]) for f in ("problem_description", "solution_summary") if doc.get(f)
+            )
+            if text.strip():
+                vecs, _m, _d = await generate_embeddings([text], model)
+                await run_sync(
+                    coll.update,
+                    {"_key": document_key, "embedding": vecs[0], "embedding_pending": False},
+                )
+                doc["embedding"] = vecs[0]
+                doc["embedding_pending"] = False
+                embedded = True
+
+        if (
+            not doc.get("embedding")
+            or doc.get("embedding_pending")
+            or not await run_sync(_has_vector_index, coll)
+        ):
+            return {
+                "result": {
+                    "embedded": embedded,
+                    "relates_edges": 0,
+                    "superseded": None,
+                    "note": "no real embedding or vector index; skipped graph maintenance",
+                }
+            }
+
+        rel_edges, superseded = await run_sync(
+            _maintain_graph,
+            db,
+            coll,
+            collection_name,
+            document_key,
+            doc["embedding"],
+            doc.get("created_at"),
+            rel_sim,
+            sup_sim,
+            top_k,
+            doc.get("project_id"),
+        )
+        return {
+            "result": {"embedded": embedded, "relates_edges": rel_edges, "superseded": superseded}
+        }
+    except Exception as exc:  # noqa: BLE001
+        return arango_error_result(exc)
+
+
+@mcp_app.tool(
+    name="save-pattern",
+    description="""Save a solved-problem pattern to shared memory — embed-THEN-insert.
+
+    This is the correct save path when shared_patterns has a (non-sparse) vector
+    index: the server embeds the text and inserts the document WITH its embedding
+    in one step, so the insert satisfies the index (a plain insert-then-embed flow
+    fails: the index rejects docs lacking the vector). It then maintains the graph
+    (pattern_relates_to + supersede check), exactly like pattern-index.
+
+    Generates a timestamped _key, sets usage_count=0 and last_used=created_at, and
+    stamps the memory taxonomy SERVER-SIDE (memory_type; why/how_to_apply for
+    feedback) — pass those fields here instead of merging them in a second call
+    after the save (the historical post-save merge step was routinely skipped,
+    leaving memories typeless until the next migration backfill).
+    Requires OPENAI_API_KEY when a vector index is present. Returns a small summary
+    (no raw vectors). LLM-derived edges are maintained separately by a periodic
+    batch job.
+    """,
+)
+async def save_pattern(
+    problem_description: str = Field(description="One-sentence problem description."),
+    solution_summary: str = Field(description="2-5 sentence solution, reusable across projects."),
+    problem_category: str = Field(
+        description="e.g. auth|api-design|data-model|testing|deployment|other."
+    ),
+    project_id: str = Field(description="Originating project id (from CLAUDE.md)."),
+    project_type: str = Field(default="other", description="Project type."),
+    memory_type: str = Field(
+        default="pattern", description="Taxonomy: pattern|feedback|user|project|reference."
+    ),
+    why: str = Field(default="", description="feedback memories: the reason behind the guidance."),
+    how_to_apply: str = Field(
+        default="", description="feedback memories: how to apply it next time."
+    ),
+    tags: List[str] = Field(default=[], description="2-5 keyword tags."),
+    importance: int = Field(default=5, description="LLM-rated salience 1-10 (drives ranking)."),
+    source_file: str = Field(default="", description="Relevant file:line, if any."),
+    worked: bool = Field(default=True, description="Whether the solution was verified to work."),
+    created_at: str = Field(default="", description="ISO timestamp; defaults to now (UTC)."),
+    collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
+    model: str = Field(default="", description="Optional embedding model override."),
+    rel_sim: float = Field(default=0.30, description="Min cosine for a relates_to edge."),
+    sup_sim: float = Field(default=0.90, description="Min cosine to treat as a near-duplicate."),
+    top_k: int = Field(default=3, description="Neighbours to consider for graph edges."),
+    consolidate_sim: float = Field(
+        default=0.80,
+        description="Consolidation gate: if an existing valid memory is at least this "
+        "similar, the save is BLOCKED and the candidates are returned for a "
+        "decision (update the existing one, supersede it, or force).",
+    ),
+    force: bool = Field(
+        default=False,
+        description="Bypass the consolidation gate after reviewing its candidates — "
+        "insert as genuinely new despite the similarity.",
+    ),
+    supersedes_key: str = Field(
+        default="",
+        description="_key of an existing memory this save REPLACES: the old one is "
+        "invalidated bi-temporally (valid_to closed, importance demoted) and "
+        "linked via pattern_supersedes. Implies bypassing the gate for that key.",
+    ),
+):
+    try:
+        memory_type = _arg(memory_type, "pattern")
+        why, how_to_apply = _arg(why, ""), _arg(how_to_apply, "")
+        consolidate_sim = _arg(consolidate_sim, 0.80)
+        force, supersedes_key = _arg(force, False), _arg(supersedes_key, "")
+        if memory_type not in _MEMORY_TYPES:
+            return {
+                "result": {
+                    "error": f"invalid memory_type {memory_type!r} — "
+                    f"must be one of {sorted(_MEMORY_TYPES)}"
+                }
+            }
+        db = await run_sync(arango_connector.get_db, database_name or None)
+        coll = db.collection(collection_name)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        created = created_at or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        key = re.sub(
+            r"[^A-Za-z0-9_-]",
+            "-",
+            f"{project_id}_{problem_category}_{now.strftime('%Y%m%d_%H%M%S')}",
+        )[:250]
+
+        # Embed BEFORE insert so the doc satisfies a non-sparse vector index.
+        embedding, embed_error = None, None
+        try:
+            vecs, _m, _d = await generate_embeddings(
+                [f"{problem_description}\n{solution_summary}"], model
+            )
+            embedding = vecs[0]
+        except Exception as exc:  # noqa: BLE001
+            embed_error = str(exc)
+
+        # --- Consolidation gate (write-time): if a sufficiently-similar VALID memory
+        # already exists, do NOT insert — return the candidates so the caller (an LLM
+        # agent with judgment) decides: update the existing memory, supersede it
+        # (supersedes_key), or force-insert as genuinely new. This makes the duplicate
+        # check non-skippable instead of an optional pre-save query, and keeps the
+        # curation decision where the judgment is. Skipped when: force=true, the gate
+        # target is the memory being explicitly superseded, or no embedding (BM25-only
+        # deployments and outage saves — availability beats consolidation).
+        if embedding is not None and not force and await run_sync(_has_vector_index, coll):
+            nbrs = await run_sync(
+                _run_query, db, _KNN_AQL, {"vec": embedding, "lim": 4, "@coll": collection_name}
+            )
+            cand_keys = [
+                n["k"] for n in nbrs if n["s"] >= consolidate_sim and n["k"] != supersedes_key
+            ]
+            if cand_keys:
+                sims = {n["k"]: round(n["s"], 4) for n in nbrs}
+                cands = await run_sync(
+                    _run_query,
+                    db,
+                    "FOR k IN @keys LET p = DOCUMENT(@@coll, k) "
+                    "FILTER p != null AND p.superseded != true AND p.valid_to == null "
+                    "RETURN { _key: p._key, memory_type: p.memory_type, "
+                    "project_id: p.project_id, usage_count: p.usage_count, "
+                    "problem_description: p.problem_description, "
+                    "solution_summary: LEFT(p.solution_summary, 400) }",
+                    {"keys": cand_keys, "@coll": collection_name},
+                )
+                if cands:
+                    for c in cands:
+                        c["similarity"] = sims.get(c["_key"])
+                    return {
+                        "result": {
+                            "consolidation_required": True,
+                            "saved": False,
+                            "candidates": cands,
+                            "guidance": "A very similar valid memory already exists. Decide: "
+                            "(a) UPDATE the existing memory instead of saving a new one "
+                            "(merge new details via upsert-document; set "
+                            "embedding_pending=true if you change its text); "
+                            "(b) REPLACE it — re-call save-pattern with "
+                            "supersedes_key='<candidate _key>'; or "
+                            "(c) it is genuinely different — re-call save-pattern "
+                            "with force=true.",
+                        }
+                    }
+
+        doc = {
+            "_key": key,
+            "project_id": project_id,
+            "project_type": project_type,
+            "problem_category": problem_category,
+            "problem_description": problem_description,
+            "solution_summary": solution_summary,
+            "tags": tags,
+            "worked": worked,
+            "created_at": created,
+            "importance": importance,
+            "usage_count": 0,
+            "last_used": created,
+            "source_file": source_file,
+            "saved_by": _current_user(),
+            "memory_type": memory_type,
+            "valid_from": created,
+            "valid_to": None,
+        }
+        if why:
+            doc["why"] = why
+        if how_to_apply:
+            doc["how_to_apply"] = how_to_apply
+        pending = False
+        if embedding is not None:
+            doc["embedding"] = embedding
+        elif await run_sync(_has_vector_index, coll):
+            # A non-sparse vector index rejects embedding-less inserts, which would make
+            # the whole save fail whenever OpenAI is unreachable (coupling every write to
+            # an external API). Instead insert with a zero-mean PLACEHOLDER vector +
+            # embedding_pending flag: the pattern is saved and immediately BM25-searchable,
+            # and pattern-index backfills the real embedding (and relates_to edges)
+            # later. The placeholder is ~orthogonal to real query
+            # vectors, so it does not surface via vector search.
+            dim = await run_sync(_vector_dim, coll)
+            doc["embedding"] = [1.0 / dim] * dim
+            doc["embedding_pending"] = True
+            pending = True
+        await run_sync(coll.insert, doc)
+
+        # Provenance always; pass embedding=None when pending so the placeholder is not
+        # used to build bogus KNN relates_to edges (provenance needs no embedding).
+        # force=True is the consolidation gate's option (c): the caller reviewed the
+        # candidates and ruled this memory genuinely new. Honour that ruling -- the implicit
+        # near-duplicate supersede would otherwise invalidate the neighbour anyway, and the
+        # loser is picked by created_at, so it would quietly demote whichever teammate saved
+        # first without telling them. Explicit replacement still works via supersedes_key.
+        rel_edges, superseded = await run_sync(
+            _maintain_graph,
+            db,
+            coll,
+            collection_name,
+            key,
+            (None if pending else embedding),
+            created,
+            rel_sim,
+            sup_sim,
+            top_k,
+            project_id,
+            allow_supersede=not force,
+        )
+
+        # Explicit replacement decided by the caller (consolidation outcome b):
+        # supersede edge + bi-temporal invalidation of the named memory.
+        if supersedes_key and supersedes_key != key:
+
+            def _explicit_supersede():
+                if db.has_collection("pattern_supersedes"):
+                    db.collection("pattern_supersedes").insert(
+                        {
+                            "_key": _ekey(key, supersedes_key),
+                            "_from": f"{collection_name}/{key}",
+                            "_to": f"{collection_name}/{supersedes_key}",
+                            "explicit": True,
+                        },
+                        overwrite=True,
+                    )
+                _invalidate(
+                    coll,
+                    supersedes_key,
+                    key,
+                    "explicitly replaced via save-pattern supersedes_key",
+                    datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                )
+
+            await run_sync(_explicit_supersede)
+            superseded = superseded or {"new": key, "old": supersedes_key, "explicit": True}
+
+        result = {
+            "_key": key,
+            "embedded": embedding is not None,
+            "embedding_pending": pending,
+            "relates_edges": rel_edges,
+            "superseded": superseded,
+        }
+        if pending:
+            result["note"] = (
+                f"embedding deferred ({embed_error}); pattern saved and "
+                f"keyword-searchable now. Backfill with pattern-index on this "
+                f"_key."
+            )
+        return {"result": result}
+    except Exception as exc:  # noqa: BLE001
+        return arango_error_result(exc)
+
+
+@mcp_app.tool(
+    name="save-drift-alert",
+    description="""Upsert a PRD drift alert AND maintain its project provenance edge.
+
+    Use this from /prd-sync instead of a raw upsert-document into drift_alerts: it
+    guarantees the alert is linked to its project node via an alert_from_project
+    edge (drift_alerts -> project_registry), auto-creating the project node if the
+    project has never run /prd-sync -- so drift alerts and their projects never
+    become orphan nodes in the memory graph.
+
+    Idempotent on _key = <project_id>_<req_id>. Identity fields (project_id,
+    req_id) are preserved across syncs; only the non-empty status/evidence fields
+    passed are merged on re-detection. To close a gap, pass status='closed' with
+    closed_at / closed_evidence.
+    """,
+)
+async def save_drift_alert(
+    project_id: str = Field(description="Originating project id (from CLAUDE.md)."),
+    req_id: str = Field(description="Requirement id, e.g. REQ-007."),
+    requirement: str = Field(default="", description="Requirement text."),
+    classification: str = Field(default="", description="IMPLEMENTED|PARTIAL|MISSING|TEST-ONLY."),
+    status: str = Field(default="open", description="open|closed."),
+    evidence: str = Field(default="", description="file:line, or empty."),
+    gap_description: str = Field(default="", description="What is missing/partial."),
+    detected_at: str = Field(default="", description="ISO timestamp; defaults to now (UTC)."),
+    closed_at: str = Field(default="", description="ISO timestamp when the gap was closed."),
+    closed_evidence: str = Field(default="", description="file:line proving implementation."),
+    collection_name: str = Field(default="drift_alerts", description="Alerts collection."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
+):
+    try:
+        db = await run_sync(arango_connector.get_db, database_name or None)
+        if not await run_sync(db.has_collection, collection_name):
+            return {"result": {"error": f"collection {collection_name!r} not found"}}
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        key = re.sub(r"[^A-Za-z0-9_-]", "-", f"{project_id}_{req_id}")[:250]
+
+        full = {
+            "_key": key,
+            "project_id": project_id,
+            "req_id": req_id,
+            "requirement": requirement,
+            "classification": classification,
+            "status": status,
+            "evidence": evidence,
+            "gap_description": gap_description,
+            "detected_at": detected_at or now,
+            "detected_by": _current_user(),
+        }
+        if status == "closed":
+            full["closed_at"] = closed_at or now
+            full["closed_evidence"] = closed_evidence
+            full["closed_by"] = _current_user()
+        # Merge subset: everything but identity, dropping empty strings so a
+        # re-detect never blanks a previously-set field (matches the old
+        # upsert-document search_fields/update_data semantics). detected_by is
+        # insert-only attribution: the original detector is never overwritten
+        # on re-detection (closed_by, by contrast, records whoever closes it).
+        upd = {
+            k: v
+            for k, v in full.items()
+            if k not in ("_key", "project_id", "req_id", "detected_by") and v not in ("", None)
+        }
+
+        await run_sync(
+            db.aql.execute,
+            "UPSERT { _key: @key } INSERT @full UPDATE @upd IN @@coll",
+            bind_vars={"key": key, "full": full, "upd": upd, "@coll": collection_name},
+        )
+
+        prov = await run_sync(
+            _ensure_provenance,
+            db,
+            "alert_from_project",
+            f"{collection_name}/{key}",
+            project_id,
+            "alert_from_project",
+        )
+        return {"result": {"_key": key, "status": status, "provenance_edge": prov}}
+    except Exception as exc:  # noqa: BLE001
+        return arango_error_result(exc)
+
+
+@mcp_app.tool(
+    name="pattern-applied",
+    description="""Record that one or more shared-memory patterns were APPLIED to solve a
+    problem (not merely surfaced by a search). Bumps usage_count and refreshes last_used,
+    which feed the /pattern-search graded ranking so genuinely-reused patterns rank higher
+    over time.
+
+    Call this right after you USE a pattern returned by /pattern-search -- pass the _key(s)
+    you actually applied, NOT every result that was shown. This is the APPLY side of the
+    read-path funnel: /pattern-search records what was surfaced; this records what was
+    reused. One call, no AQL needed.
+    """,
+)
+async def pattern_applied(
+    keys: List[str] = Field(description="_key(s) of the pattern(s) actually applied."),
+    outcome: str = Field(
+        default="worked",
+        description="Apply outcome: 'worked' (default) or "
+        "'failed'. 'failed' records negative signal (bumps applied_failed) "
+        "WITHOUT boosting usage_count / last_used, so a pattern that was tried "
+        "but did not help is down-weighted in /pattern-search ranking rather "
+        "than rewarded.",
+    ),
+    collection_name: str = Field(default="shared_patterns", description="Patterns collection."),
+    database_name: str = Field(
+        default="", description="Target database (default: server default)."
+    ),
+):
+    try:
+        if not keys:
+            return {"result": {"error": "no keys provided"}}
+        worked = str(outcome).strip().lower() != "failed"
+        db = await run_sync(arango_connector.get_db, database_name or None)
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        updated = await run_sync(
+            _run_query,
+            db,
+            # Positive signals (usage_count, last_used) bump ONLY on a 'worked' apply so a
+            # failed application can never reward the pattern; a 'failed' apply bumps
+            # applied_failed, feeding the success-rate penalty in the search ranking.
+            # apply_log: capped rolling trail (who applied it, when, outcome), bounded to 20.
+            "FOR k IN @keys FOR p IN @@coll FILTER p._key == k "
+            "LET uc = p.usage_count == null ? 0 : p.usage_count "
+            "LET aw = p.applied_worked == null ? 0 : p.applied_worked "
+            "LET af = p.applied_failed == null ? 0 : p.applied_failed "
+            "UPDATE p WITH { "
+            "usage_count: @worked ? uc + 1 : uc, "
+            "applied_worked: @worked ? aw + 1 : aw, "
+            "applied_failed: @worked ? af : af + 1, "
+            "last_used: @worked ? @now : p.last_used, "
+            "last_applied_by: @by, "
+            "apply_log: APPEND(SLICE(p.apply_log == null ? [] : p.apply_log, -19), "
+            "[{ by: @by, at: @now, outcome: @outcome }]) } IN @@coll "
+            "RETURN { _key: NEW._key, usage_count: NEW.usage_count, "
+            "applied_worked: NEW.applied_worked, applied_failed: NEW.applied_failed }",
+            {
+                "keys": keys,
+                "@coll": collection_name,
+                "now": now,
+                "by": _current_user(),
+                "worked": worked,
+                "outcome": "worked" if worked else "failed",
+            },
+        )
+        missing = [k for k in keys if k not in [u["_key"] for u in updated]]
+        return {
+            "result": {
+                "applied": updated,
+                "count": len(updated),
+                "outcome": "worked" if worked else "failed",
+                "not_found": missing,
+            }
+        }
+    except Exception as exc:  # noqa: BLE001
+        return arango_error_result(exc)

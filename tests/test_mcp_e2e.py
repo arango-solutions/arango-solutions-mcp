@@ -20,8 +20,8 @@ from unittest.mock import patch  # noqa: E402
 import pytest  # noqa: E402
 
 # Patch ArangoClient before server.py (transitively) tries to instantiate it
-with patch("arango_connector.ArangoClient"):
-    from server import mcp_app  # noqa: E402
+with patch("arangodb_mcp.arango_connector.ArangoClient"):
+    from arangodb_mcp.server import mcp_app  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,11 +39,11 @@ CRITICAL_TOOLS = [
 
 
 def _get_tools():
-    return mcp_app._tool_manager.list_tools()
+    return mcp_app._tool_manager.all_registered_tools()
 
 
 def _get_tool(name: str):
-    tool = mcp_app._tool_manager.get_tool(name)
+    tool = next((tool for tool in _get_tools() if tool.name == name), None)
     assert tool is not None, f"Tool '{name}' not found in registry"
     return tool
 
@@ -142,7 +142,7 @@ class TestServerConfiguration:
     """Verify MCP server-level settings."""
 
     def test_server_name_from_config(self):
-        from config import settings
+        from arangodb_mcp.config import settings
 
         expected = settings.server.server_name
         actual = mcp_app._mcp_server.name
@@ -151,4 +151,16 @@ class TestServerConfiguration:
     def test_server_instructions_contain_tool_count(self):
         instructions = mcp_app._mcp_server.instructions
         assert instructions is not None, "Server instructions are None"
-        assert "81 tools" in instructions, "'81 tools' not found in server instructions"
+        assert "81 cataloged tools" in instructions
+        assert "Active profile: `readonly`" in instructions
+
+    def test_default_http_mode_is_stateless(self):
+        assert mcp_app.settings.stateless_http is True
+        assert mcp_app.settings.json_response is True
+
+    def test_transport_security_defaults_fail_closed(self):
+        transport_security = mcp_app.settings.transport_security
+        assert transport_security is not None
+        assert transport_security.enable_dns_rebinding_protection is True
+        assert "localhost:*" in transport_security.allowed_hosts
+        assert "http://localhost:*" in transport_security.allowed_origins

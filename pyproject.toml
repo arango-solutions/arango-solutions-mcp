@@ -1,19 +1,38 @@
-[tool.poetry]
+[project]
 name = "arangodb-mcp-server"
 version = "2.0.0"
 description = "ArangoDB MCP Server - Document, Graph, Search, Sharding & Cluster Operations"
-authors = ["ArangoDB GmbH <info@arangodb.com>"]
+authors = [{ name = "ArangoDB GmbH", email = "info@arangodb.com" }]
 readme = "README.md"
-package-mode = false
+requires-python = ">=3.10,<4.0"
+dynamic = ["dependencies"]
+
+[project.scripts]
+arangodb-mcp = "arangodb_mcp.cli:main"
+
+[tool.poetry]
+packages = [{ include = "arangodb_mcp", from = "src" }]
+include = [
+    { path = "src/arangodb_mcp/catalog/tools.yaml", format = ["sdist", "wheel"] },
+    { path = "src/arangodb_mcp/manuals/*.md", format = ["sdist", "wheel"] },
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 python-arango = "^8.1.0"
 mcp = "^1.0.0"
-fastmcp = "^0.2.0"
 pydantic = "^2.0.0"
 pydantic-settings = "^2.0.0"
 anyio = "^4.5.0"
+pyyaml = "^6.0.3"
+pyjwt = {extras = ["crypto"], version = "^2.13.0"}
+httpx = "^0.28.1"
+prometheus-client = "^0.26.0"
+opentelemetry-api = "^1.44.0"
+opentelemetry-sdk = "^1.44.0"
+opentelemetry-exporter-otlp-proto-http = "^1.44.0"
+starlette = ">=0.47.0"
+uvicorn = ">=0.35.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.1.1"
@@ -25,9 +44,7 @@ mypy = "^1.0.0"
 ruff = "^0.8.0"
 pytest-cov = "^7.1.0"
 pip-audit = "^2.10.1"
-
-[tool.poetry.scripts]
-arangodb-mcp = "main:run_server_cli"
+types-pyyaml = "^6.0.12.20260724"
 
 [build-system]
 requires = ["poetry-core"]
@@ -66,6 +83,7 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "-m 'not cluster'"
+pythonpath = ["src"]
 markers = [
     "cluster: tests requiring a cluster deployment (run with '-m cluster')",
     "slow: tests that take a long time to run",

@@ -1,0 +1,106 @@
+version: 1
+limit_policies:
+  standard: {max_runtime_ms: 30000, max_rows: 1000, max_response_bytes: 1048576, max_bulk_items: 1000, max_concurrency: 16}
+  query: {max_runtime_ms: 30000, max_rows: 1000, max_response_bytes: 2097152, max_bulk_items: 1000, max_concurrency: 8}
+  bulk: {max_runtime_ms: 60000, max_rows: 1000, max_response_bytes: 2097152, max_bulk_items: 1000, max_concurrency: 4}
+  control: {max_runtime_ms: 120000, max_rows: 100, max_response_bytes: 524288, max_bulk_items: 100, max_concurrency: 2}
+  external: {max_runtime_ms: 30000, max_rows: 100, max_response_bytes: 1048576, max_bulk_items: 100, max_concurrency: 4}
+
+tools:
+  - {name: list-analyzers, category: search, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+  - {name: create-analyzer, category: search, risk: medium, operation: write, scope: database, limits: standard, confirmation: none}
+  - {name: delete-analyzer, category: search, risk: high, operation: write, scope: database, limits: standard, confirmation: human}
+  - {name: get-analyzer-properties, category: search, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+
+  - {name: execute-aql-query, category: aql, risk: high, operation: write, scope: database, limits: query, confirmation: conditional}
+  - {name: explain-aql-query, category: aql, risk: low, operation: read, scope: database, limits: query, confirmation: none}
+  - {name: validate-aql-query, category: aql, risk: low, operation: read, scope: server, limits: standard, confirmation: none}
+
+  - {name: create-backup, category: backup, risk: high, operation: admin, scope: cluster, limits: control, confirmation: none}
+  - {name: list-backups, category: backup, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}
+  - {name: restore-backup, category: backup, risk: critical, operation: admin, scope: cluster, limits: control, confirmation: human}
+  - {name: delete-backup, category: backup, risk: high, operation: admin, scope: cluster, limits: control, confirmation: human}
+
+  - {name: cluster-health, category: cluster, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}
+  - {name: cluster-server-role, category: cluster, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}
+  - {name: cluster-server-count, category: cluster, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}
+  - {name: cluster-endpoints, category: cluster, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}
+  - {name: cluster-server-statistics, category: cluster, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}
+  - {name: cluster-calculate-imbalance, category: cluster, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}
+  - {name: cluster-rebalance, category: cluster, risk: high, operation: admin, scope: cluster, limits: control, confirmation: human}
+  - {name: cluster-toggle-maintenance, category: cluster, risk: critical, operation: admin, scope: cluster, limits: control, confirmation: human}
+  - {name: collection-shard-distribution, category: cluster, risk: low, operation: read, scope: collection, limits: standard, confirmation: none}
+
+  - {name: list-collections, category: collection, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+  - {name: create-collection, category: collection, risk: medium, operation: write, scope: database, limits: standard, confirmation: none}
+  - {name: delete-collection, category: collection, risk: critical, operation: admin, scope: database, limits: control, confirmation: human}
+  - {name: get-collection-properties, category: collection, risk: low, operation: read, scope: collection, limits: standard, confirmation: none}
+
+  - {name: list-databases, category: database, risk: low, operation: read, scope: server, limits: standard, confirmation: none}
+  - {name: create-database, category: database, risk: high, operation: admin, scope: server, limits: control, confirmation: none}
+  - {name: delete-database, category: database, risk: critical, operation: admin, scope: server, limits: control, confirmation: human}
+  - {name: get-database-info, category: database, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+
+  - {name: create-document, category: document, risk: medium, operation: write, scope: collection, limits: standard, confirmation: none}
+  - {name: create-documents-bulk, category: document, risk: high, operation: write, scope: collection, limits: bulk, confirmation: none}
+  - {name: read-document, category: document, risk: low, operation: read, scope: collection, limits: standard, confirmation: none}
+  - {name: read-documents-with-filter, category: document, risk: low, operation: read, scope: collection, limits: query, confirmation: none}
+  - {name: update-document, category: document, risk: medium, operation: write, scope: collection, limits: standard, confirmation: none}
+  - {name: delete-document, category: document, risk: high, operation: write, scope: collection, limits: standard, confirmation: human}
+  - {name: replace-document, category: document, risk: high, operation: write, scope: collection, limits: standard, confirmation: none}
+  - {name: upsert-document, category: document, risk: medium, operation: write, scope: collection, limits: standard, confirmation: none}
+  - {name: update-documents-bulk, category: document, risk: high, operation: write, scope: collection, limits: bulk, confirmation: none}
+  - {name: delete-documents-bulk, category: document, risk: critical, operation: write, scope: collection, limits: bulk, confirmation: human}
+
+  - {name: embed-text, category: search, risk: low, operation: read, scope: external, limits: external, confirmation: none}
+  - {name: embed-document, category: search, risk: low, operation: read, scope: external, limits: external, confirmation: none}
+
+  - {name: list-graphs, category: graph, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+  - {name: create-graph, category: graph, risk: high, operation: write, scope: database, limits: control, confirmation: none}
+  - {name: delete-graph, category: graph, risk: critical, operation: admin, scope: database, limits: control, confirmation: human}
+  - {name: create-edge, category: graph, risk: medium, operation: write, scope: graph, limits: standard, confirmation: none}
+  - {name: get-graph-properties, category: graph, risk: low, operation: read, scope: graph, limits: standard, confirmation: none}
+
+  - {name: list-indexes, category: index, risk: low, operation: read, scope: collection, limits: standard, confirmation: none}
+  - {name: create-index, category: index, risk: medium, operation: write, scope: collection, limits: control, confirmation: none}
+  - {name: delete-index, category: index, risk: high, operation: write, scope: collection, limits: control, confirmation: human}
+
+  - {name: get-aql-manual, category: manual, risk: low, operation: read, scope: server, limits: standard, confirmation: none}
+
+  - {name: pattern-search, category: memory, risk: low, operation: read, scope: shared-memory, limits: external, confirmation: none}
+  - {name: pattern-index, category: memory, risk: medium, operation: write, scope: shared-memory, limits: control, confirmation: none}
+  - {name: save-pattern, category: memory, risk: medium, operation: write, scope: shared-memory, limits: external, confirmation: none}
+  - {name: save-drift-alert, category: memory, risk: high, operation: write, scope: shared-memory, limits: standard, confirmation: conditional}
+  - {name: pattern-applied, category: memory, risk: medium, operation: write, scope: shared-memory, limits: standard, confirmation: none}
+
+  - {name: begin-transaction, category: transaction, risk: medium, operation: write, scope: database, limits: standard, confirmation: none}
+  - {name: transaction-status, category: transaction, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+  - {name: commit-transaction, category: transaction, risk: high, operation: write, scope: database, limits: control, confirmation: human}
+  - {name: abort-transaction, category: transaction, risk: medium, operation: write, scope: database, limits: control, confirmation: none}
+  - {name: list-transactions, category: transaction, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+  - {name: execute-transaction, category: transaction, risk: critical, operation: admin, scope: database, limits: control, confirmation: human}
+
+  - {name: graph-traverse, category: graph, risk: low, operation: read, scope: graph, limits: query, confirmation: none}
+  - {name: graph-shortest-path, category: graph, risk: low, operation: read, scope: graph, limits: query, confirmation: none}
+  - {name: graph-k-shortest-paths, category: graph, risk: low, operation: read, scope: graph, limits: query, confirmation: none}
+  - {name: graph-neighbors, category: graph, risk: low, operation: read, scope: graph, limits: query, confirmation: none}
+
+  - {name: list-users, category: identity, risk: medium, operation: admin, scope: server, limits: standard, confirmation: none}
+  - {name: get-user, category: identity, risk: medium, operation: admin, scope: server, limits: standard, confirmation: none}
+  - {name: create-user, category: identity, risk: high, operation: admin, scope: server, limits: control, confirmation: none}
+  - {name: update-user, category: identity, risk: high, operation: admin, scope: user, limits: control, confirmation: none}
+  - {name: delete-user, category: identity, risk: critical, operation: admin, scope: user, limits: control, confirmation: human}
+  - {name: list-permissions, category: identity, risk: medium, operation: admin, scope: user, limits: standard, confirmation: none}
+  - {name: get-permission, category: identity, risk: medium, operation: admin, scope: user, limits: standard, confirmation: none}
+  - {name: grant-permission, category: identity, risk: high, operation: admin, scope: user, limits: control, confirmation: none}
+  - {name: revoke-permission, category: identity, risk: high, operation: admin, scope: user, limits: control, confirmation: human}
+
+  - {name: vector-search, category: search, risk: low, operation: read, scope: database, limits: query, confirmation: none}
+  - {name: hybrid-search, category: search, risk: low, operation: read, scope: database, limits: query, confirmation: none}
+
+  - {name: list-views, category: search, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+  - {name: create-view, category: search, risk: medium, operation: write, scope: database, limits: control, confirmation: none}
+  - {name: get-view-properties, category: search, risk: low, operation: read, scope: database, limits: standard, confirmation: none}
+  - {name: update-view-properties, category: search, risk: medium, operation: write, scope: database, limits: control, confirmation: none}
+  - {name: replace-view-properties, category: search, risk: high, operation: write, scope: database, limits: control, confirmation: none}
+  - {name: delete-view, category: search, risk: high, operation: write, scope: database, limits: control, confirmation: human}
