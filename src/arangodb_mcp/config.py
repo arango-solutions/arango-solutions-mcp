@@ -122,6 +122,16 @@ class ServerSettings(BaseSettings):
         description="Initial backoff (seconds) between connection retries; "
         "doubled each attempt up to 30s.",
     )
+    startup_connect_budget: float = Field(
+        default=8.0,
+        description="Max seconds spent establishing the initial ArangoDB connection "
+        "before serving anyway. Must stay well under the MCP client handshake ceiling "
+        "(Claude Code: 30s): a startup connect that outlives it never answers "
+        "`initialize`, so the client drops the ENTIRE toolset instead of surfacing a "
+        "database problem. Note the retry policy above can far exceed this on an "
+        "unreachable host (5 retries with 1+2+4+8+16s of backoff, each attempt also "
+        "waiting out a TCP timeout), which is precisely why this ceiling exists.",
+    )
     mcp_auth_token: Optional[SecretStr] = Field(
         default=None,
         description="Optional bearer token required for sse / streamable-http transports. "

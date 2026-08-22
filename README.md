@@ -165,6 +165,7 @@ For remote/Docker deployments, Antigravity can connect via HTTP:
 | `LOG_AQL_QUERIES` | No | `false` | Whether to log the first 100 chars of user-supplied AQL. Default `false` because inline literals (`FILTER doc.token == "abc"`) can contain secrets. When `false`, the agent logs `<redacted len=N sha1=…>` instead. |
 | `CONNECT_MAX_RETRIES` | No | `5` | Maximum transient connection retries at startup (`0` disables retries) |
 | `CONNECT_INITIAL_BACKOFF` | No | `1.0` | Initial retry backoff in seconds, doubled up to 30 seconds |
+| `STARTUP_CONNECT_BUDGET` | No | `8.0` | Seconds to spend on the initial ArangoDB connection before serving anyway. Keep well under the MCP client handshake ceiling (Claude Code: 30s) — a startup connect that outlives it never answers `initialize`, so the client drops every tool instead of reporting a database problem |
 | `OPENAI_API_KEY` | No | — | OpenAI API key for the embedding tools (`embed-*`, `pattern-search` vector mode, `save-pattern`). When unset, the pattern tools degrade to keyword-only (BM25). Stored as `SecretStr`. |
 | `EMBEDDING_MODEL` | No | `text-embedding-3-small` | OpenAI embedding model (1536 dimensions for the default). |
 

@@ -158,7 +158,11 @@ class ArangoDBConnector:
         All agents should use this instead of manually calling client.db().
         """
         if not self.client:
-            raise RuntimeError("ArangoDB client not initialized. Call connect() first.")
+            raise RuntimeError(
+                "ArangoDB client not initialized — the startup connection to "
+                f"{settings.arango.hosts} did not complete. Check the endpoint is "
+                "reachable and ARANGO_ROOT_PASSWORD is set."
+            )
 
         database_name = db_name or settings.arango.default_db_name
         identity = get_request_identity()
@@ -207,16 +211,30 @@ async def arango_db_lifespan(mcp_server_instance) -> AsyncIterator[ArangoDBConne
     logger.info("Starting ArangoDB MCP Server...")
 
     try:
-        # Connect to ArangoDB
-        await arango_connector.connect()
-        logger.info("ArangoDB connection established successfully")
+        # Connect to ArangoDB, but NEVER let it gate the protocol. A startup connect
+        # that outlives the client's handshake ceiling never answers `initialize`, so
+        # the client reports a bare timeout and drops every tool — including the many
+        # that would have been listable. Bounded here, and non-fatal: it is strictly
+        # better to serve and fail individual database calls with a real cause.
+        try:
+            await asyncio.wait_for(
+                arango_connector.connect(),
+                timeout=settings.server.startup_connect_budget,
+            )
+            logger.info("ArangoDB connection established successfully")
+        except Exception as e:
+            logger.error(
+                "Serving WITHOUT a verified ArangoDB connection "
+                "(%s: %s). Configured hosts: %s. Tools remain listed; database-backed "
+                "calls will fail until it is reachable, and recover without a restart.",
+                type(e).__name__,
+                e or "timed out",
+                settings.arango.hosts,
+            )
 
         # Yield the connector for use during server lifetime
         yield arango_connector
 
-    except Exception as e:
-        logger.error(f"Failed to initialize ArangoDB connection: {e}")
-        raise
     finally:
         # Cleanup on shutdown
         logger.info("Shutting down ArangoDB MCP Server...")
