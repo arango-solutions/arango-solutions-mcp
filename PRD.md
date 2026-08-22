@@ -564,6 +564,7 @@ implementation.
 | `LOG_AQL_QUERIES` | No | `false` | — | Log the first 100 characters of user AQL; disabled by default to redact literals |
 | `CONNECT_MAX_RETRIES` | No | `5` | — | Maximum transient connection retries at startup (`0` disables retries) |
 | `CONNECT_INITIAL_BACKOFF` | No | `1.0` | — | Initial retry backoff in seconds, doubled up to 30 seconds |
+| `STARTUP_CONNECT_BUDGET` | No | `8.0` | — | Seconds spent on the initial ArangoDB connection before serving anyway; readiness must never gate the transport (see retry policy above, which can far exceed it on an unreachable host) |
 | `OPENAI_API_KEY` | No | — | — | OpenAI API key for the embeddings endpoint (§2.16–2.17). Required for vector/hybrid `pattern-search` and for embedding new patterns; when unset those tools degrade to keyword-only (BM25) behaviour. Stored in-process as `pydantic.SecretStr`. |
 | `EMBEDDING_MODEL` | No | `text-embedding-3-small` | — | OpenAI embedding model (1536 dimensions for the default). |
 

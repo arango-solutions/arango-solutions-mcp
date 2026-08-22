@@ -105,8 +105,20 @@ async def _serve_http_with_database(server) -> None:
     invoke this service's database lifespan. This boundary keeps readiness
     false until the connector is initialized and guarantees clean shutdown.
     """
-    await arango_connector.connect()
-    logger.info("ArangoDB connection established successfully")
+    try:
+        await asyncio.wait_for(
+            arango_connector.connect(),
+            timeout=settings.server.startup_connect_budget,
+        )
+        logger.info("ArangoDB connection established successfully")
+    except Exception as e:
+        # See arango_db_lifespan: readiness must not gate the transport.
+        logger.error(
+            "Serving WITHOUT a verified ArangoDB connection (%s: %s). Hosts: %s.",
+            type(e).__name__,
+            e or "timed out",
+            settings.arango.hosts,
+        )
     try:
         await server.serve()
     finally:
