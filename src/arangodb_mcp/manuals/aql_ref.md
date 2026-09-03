@@ -1389,6 +1389,43 @@ statement at the beginning of the query. This is needed for the ArangoDB
 cluster to be able to get access to the correct collections and the
 query will otherwise fail!
 
+#### Filter a subset of the path (inline `FILTER`)
+
+Introduced in ArangoDB v3.12.11. An array expansion in a path filter can contain
+an inline `FILTER` to restrict which path vertices or edges an array comparison
+operator (`ALL`, `NONE`, `ANY`, `AT LEAST`) is applied to. This helps when a
+condition is only meaningful for some path elements, e.g. an optional attribute:
+
+```aql
+FOR v, e, p IN 1..5 OUTBOUND startNode GRAPH "myGraph"
+  FILTER p.edges[* FILTER CURRENT.validUntil != null].validUntil ALL > DATE_NOW()
+  RETURN p.edges[*]._key
+```
+
+Only edges that have a `validUntil` attribute are compared. Without the inline
+`FILTER`, an edge lacking the attribute would evaluate `null > DATE_NOW()` to
+`false` and reject the whole path. Refer to each element inside the inline
+`FILTER` as `CURRENT`.
+
+The optimizer can evaluate such a condition *during* the traversal (pruning paths
+early and using edge-index lookups) instead of post-filtering emitted paths, but
+only when ALL of the following hold — otherwise it stays a post-filter:
+
+- The array comparison operator is `ALL` or `NONE` (not `ANY` / `AT LEAST`, which
+  must count matches across the whole path).
+- The expansion uses `FILTER` only — no inline `LIMIT` and no `RETURN` projection.
+- The inline `FILTER` does not use the path variable (`p`); it may use `CURRENT`
+  and variables defined before the traversal.
+- The inline `FILTER` does not use the question mark (`?`) operator.
+
+Function calls, outside variables, and nested array expansions are allowed in the
+inline `FILTER`, for example:
+
+```aql
+FILTER p.edges[* FILTER HAS(CURRENT, "weight")].weight NONE > 10
+FILTER p.edges[* FILTER CURRENT.weight > threshold].weight ALL <= 10
+```
+
 You can optionally specify the following options to modify the execution of a
 graph traversal. If you specify unknown options, query warnings are raised.
 
@@ -2567,6 +2604,48 @@ Analyzer  /  Capability                   | Tokenization | Stemming | Normalizat
 [`text`](#text)                           |     Yes      |   Yes    |     Yes       | (Yes)
 [`segmentation`](#segmentation)           |     Yes      |    No    |     Yes       |   No
 
+
+### Recent AQL syntax additions (ArangoDB 3.12.x)
+
+Newer AQL syntax available when the connected server supports it. (See also
+"Filter a subset of the path (inline `FILTER`)" under Graph traversals,
+introduced in v3.12.11.)
+
+**`UPSERT` filter-matching syntax.** In addition to exact-value matching with an
+object literal, `UPSERT` accepts a `FILTER` condition for the lookup, using the
+`CURRENT` pseudo-variable with full expressions (`AND`/`OR`, functions, etc.):
+
+```aql
+UPSERT FILTER CURRENT.age < 30 AND STARTS_WITH(CURRENT.name, "Jo")
+INSERT { name: 'Jordan', age: 29, logins: 1 }
+UPDATE { logins: OLD.logins + 1 } IN users
+```
+
+**`UPSERT` `readOwnWrites` option.** Defaults to `true` (inputs processed one by
+one so the operation observes its own writes). Set to `false` for batched, faster
+execution *only* when inputs are guaranteed to target disjoint documents:
+`UPSERT ... OPTIONS { readOwnWrites: false }`.
+
+**Array and object destructuring** (v3.12.2). Assign array elements by position
+and object attributes by name in a single `LET` (or in a `FOR`), skipping or
+renaming as needed:
+
+```aql
+LET [x, , z] = [1, 2, 3]                       // x = 1, z = 3
+LET { name, age } = { name: "Luna", age: 39 }  // by attribute name
+LET { vip: status } = doc                      // rename attribute to variable
+FOR { firstName } IN people RETURN firstName   // destructure inside a FOR
+```
+
+**New functions.** `PARSE_COLLECTION(id)` / `PARSE_KEY(id)` (extract the collection
+name / document key from a document id), `REPEAT(value, count [, separator])`,
+`TO_CHAR(codepoint)`, `RANDOM()` (alias for `RAND()`), and `ENTRIES(object)`
+(v3.12.1; returns top-level attribute key/value pairs).
+
+**Timezone-aware date functions.** Most `DATE_*` functions now accept an optional
+trailing `timezone` argument, e.g. `DATE_YEAR(date, timezone)`,
+`DATE_TRUNC(date, unit, timezone)`, `DATE_ADD(date, amount, unit, timezone)`.
+`DATE_DIFF` and `DATE_COMPARE` accept two timezone arguments (one per input date).
 
 ## General instructions for all queries
 
