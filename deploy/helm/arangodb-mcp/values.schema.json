@@ -270,7 +270,8 @@
       "required": ["liveness", "readiness"],
       "properties": {
         "liveness": {"$ref": "#/definitions/probe"},
-        "readiness": {"$ref": "#/definitions/probe"}
+        "readiness": {"$ref": "#/definitions/probe"},
+        "startup": {"$ref": "#/definitions/probe"}
       }
     },
     "resources": {"type": "object"},

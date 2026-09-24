@@ -160,6 +160,14 @@ probes:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
+  # Startup probe holds off liveness/readiness until the app first becomes ready,
+  # protecting slow cold starts (e.g. ArangoDB connect backoff) from liveness kills.
+  # failureThreshold * periodSeconds = maximum startup budget (30 * 3s = 90s).
+  startup:
+    initialDelaySeconds: 0
+    periodSeconds: 3
+    timeoutSeconds: 3
+    failureThreshold: 30
 
 resources:
   requests:
