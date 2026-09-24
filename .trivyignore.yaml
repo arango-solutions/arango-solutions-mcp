@@ -1,14 +1,17 @@
 vulnerabilities:
-  - id: GHSA-6v7p-g79w-8964
-    expired_at: 2026-08-20
-    statement: >-
-      Temporary false-positive exception tracked by GitHub issue #5. The upstream
-      python:3.11-alpine3.22 SBOM reports msgpack 1.1.2, but msgpack is absent from
-      the final runtime filesystem. Owner: repository security maintainers.
   - id: CVE-2025-47273
-    expired_at: 2026-08-20
+    expired_at: 2026-12-24
     statement: >-
-      Temporary false-positive exception tracked by GitHub issue #5. The upstream
+      False-positive exception tracked by GitHub issue #5. The upstream
       python:3.11-alpine3.22 SBOM reports setuptools 70.3.0, but setuptools is
-      removed from the final runtime filesystem. Owner: repository security
-      maintainers.
+      uninstalled from the final runtime image — both the builder and runtime
+      stages run `pip uninstall --yes pip setuptools wheel` (Dockerfile) — so the
+      vulnerable package is absent at runtime. Re-verified 2026-09-24 against the
+      current Dockerfile; the expiry forces periodic re-review. Owner: repository
+      security maintainers.
+  # NOTE: the previous GHSA-6v7p-g79w-8964 (msgpack) suppression was REMOVED on
+  # 2026-09-24. Its statement referenced msgpack 1.1.2, but poetry.lock now ships
+  # 1.2.1 and msgpack is a real shipped dependency, so the old false-positive
+  # premise no longer holds. Trivy is left to re-evaluate 1.2.1 on its own: if the
+  # advisory does not apply to 1.2.1 no suppression is needed, and if it does the
+  # finding is real and should be surfaced rather than hidden.
