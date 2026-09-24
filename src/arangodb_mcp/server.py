@@ -27,7 +27,7 @@ ArangoDB MCP Server — comprehensive multi-model database operations.
 4. Use 'explain-aql-query' to verify index usage
 5. Execute with 'execute-aql-query'
 
-**CAPABILITIES ({len(_profile_selection.active_tools)} active of 81 cataloged tools):**
+**CAPABILITIES ({len(_profile_selection.active_tools)} active of 83 cataloged tools):**
 Active profile: `{_profile_selection.profile}`.
 Additive toolsets: `{", ".join(sorted(_profile_selection.toolsets)) or "none"}`.
 

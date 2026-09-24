@@ -1,6 +1,6 @@
 # ArangoDB MCP Server
 
-A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for ArangoDB, with a canonical catalog of **81 tools** covering document CRUD, graph traversals, AQL queries, vector/semantic search, cluster administration, stream transactions, hot backup, user/permission management, and more. Version 3 exposes a compact 17-tool readonly profile by default; broader access is explicit. The catalog also includes a **shared-memory pattern layer** (`pattern-search` hybrid retrieval, `save-pattern`, `pattern-index`, `pattern-applied` with outcome tracking, `save-drift-alert`, and `embed-text`/`embed-document` via OpenAI embeddings; these degrade gracefully to keyword-only when `OPENAI_API_KEY` is unset). Writes are attributed to the connected ArangoDB user. See `PRD.md` for the full tool contract.
+A comprehensive [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for ArangoDB, with a canonical catalog of **83 tools** covering document CRUD, graph traversals, AQL queries, vector/semantic search, cluster administration, stream transactions, hot backup, user/permission management, and more. Version 3 exposes a compact 17-tool readonly profile by default; broader access is explicit. The catalog also includes a **shared-memory pattern layer** (`pattern-search` hybrid retrieval, `save-pattern`, `pattern-index`, `pattern-applied` with outcome tracking, `save-drift-alert`, and `embed-text`/`embed-document` via OpenAI embeddings; these degrade gracefully to keyword-only when `OPENAI_API_KEY` is unset). Writes are attributed to the connected ArangoDB user. See `PRD.md` for the full tool contract.
 
 Built for AI assistants (Cursor, Claude Desktop, etc.) that need full-spectrum access to ArangoDB's multi-model capabilities.
 
@@ -457,7 +457,7 @@ MCP_PROBE_BASE_URL=http://localhost:8000 \
 
 ---
 
-## Tools (81)
+## Tools (83)
 
 ### Document Operations (10)
 
@@ -511,13 +511,15 @@ MCP_PROBE_BASE_URL=http://localhost:8000 \
 | `graph-k-shortest-paths` | K alternative shortest paths |
 | `graph-neighbors` | Deduplicated neighbor discovery at a given depth |
 
-### AQL Query Engine (3)
+### AQL Query Engine (5)
 
 | Tool | Description |
 |------|-------------|
 | `execute-aql-query` | Execute AQL with bind variables, stats |
 | `explain-aql-query` | Execution plan analysis (indexes, costs, optimizer rules) |
 | `validate-aql-query` | Syntax check without execution |
+| `profile-aql-query` | Execute a read-only query with server-side profiling; returns measured time/memory, per-stage timings, plan, indexes used, and scan stats |
+| `compare-aql-queries` | Profile two or more read-only queries, prove they return the same rows (order-independent), and rank the equivalent ones by speed |
 
 ### Index Management (3)
 
@@ -723,7 +725,7 @@ arango-solutions-mcp/
 │   ├── metrics.py
 │   └── telemetry.py
 │
-├── tests/                   # Pytest suite (431 test functions)
+├── tests/                   # Pytest suite (438 test functions)
 │   ├── conftest.py          # Auto-provisions Docker containers
 │   ├── test_app_factory.py
 │   ├── test_connectivity.py
@@ -893,7 +895,7 @@ pre-commit install
 - **Hybrid search** — combine vector similarity with BM25 text relevance
 - **AQL-first** — built-in manuals, explain plans, and syntax validation
 - **Security by default** — AQL injection prevention, JS transaction gating, SSL verification, log redaction
-- **Self-testing** — 431 test functions across unit, framework, integration, and cluster tiers
+- **Self-testing** — 438 test functions across unit, framework, integration, and cluster tiers
 - **Cross-platform** — runs on macOS, Linux, Windows (via Docker)
 
 ## License

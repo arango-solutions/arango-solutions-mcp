@@ -169,7 +169,7 @@ def verify() -> list[str]:
         "gh release create",
     ):
         _require(errors, release, marker, ".github/workflows/release.yml")
-    for marker in ('"-I", str(probe)', "len(manager.all_registered_tools()) == 81"):
+    for marker in ('"-I", str(probe)', "len(manager.all_registered_tools()) == 83"):
         _require(errors, wheel_smoke, marker, "scripts/verify_wheel.py")
     _require(
         errors,

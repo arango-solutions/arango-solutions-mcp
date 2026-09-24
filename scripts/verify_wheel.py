@@ -36,13 +36,13 @@ assert {item.name for item in manuals.iterdir() if item.name.endswith(".md")} ==
 }
 
 from arangodb_mcp.catalog.loader import load_tool_catalog
-assert len(load_tool_catalog().tools) == 81
+assert len(load_tool_catalog().tools) == 83
 
 with patch("arangodb_mcp.arango_connector.ArangoClient"):
     from arangodb_mcp.server import mcp_app
 
 manager = mcp_app._tool_manager
-assert len(manager.all_registered_tools()) == 81
+assert len(manager.all_registered_tools()) == 83
 assert mcp_app._resource_manager._resources
 assert mcp_app._prompt_manager._prompts
 print(json.dumps({
