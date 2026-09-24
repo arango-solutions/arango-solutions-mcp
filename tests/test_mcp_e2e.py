@@ -56,11 +56,11 @@ def _get_tool(name: str):
 class TestToolRegistration:
     """Verify the MCP server registers the expected set of tools."""
 
-    def test_all_81_tools_registered(self):
+    def test_all_83_tools_registered(self):
         tools = _get_tools()
         assert (
-            len(tools) == 81
-        ), f"Expected 81 tools, found {len(tools)}. Tool names: {sorted(t.name for t in tools)}"
+            len(tools) == 83
+        ), f"Expected 83 tools, found {len(tools)}. Tool names: {sorted(t.name for t in tools)}"
 
     def test_tool_names_are_kebab_case(self):
         violations = [t.name for t in _get_tools() if not _KEBAB_RE.match(t.name)]
@@ -151,7 +151,7 @@ class TestServerConfiguration:
     def test_server_instructions_contain_tool_count(self):
         instructions = mcp_app._mcp_server.instructions
         assert instructions is not None, "Server instructions are None"
-        assert "81 cataloged tools" in instructions
+        assert "83 cataloged tools" in instructions
         assert "Active profile: `readonly`" in instructions
 
     def test_default_http_mode_is_stateless(self):

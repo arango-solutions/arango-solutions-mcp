@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from pydantic import Field
 
@@ -157,5 +157,91 @@ async def validate_aql_query(
             "operation": "validate",
             "aql_query": aql_query,
             "database_name": database_name,
+        }
+    )
+
+
+@mcp_app.tool(
+    name="profile-aql-query",
+    description="""Executes ONE read-only AQL query with server-side profiling and returns
+    its results plus MEASURED execution data: elapsed time and peak memory (from the cursor
+    stats), a per-stage timing breakdown, the execution plan, the indexes the optimizer
+    actually used, the optimizer rules applied, and scan statistics (full-collection vs
+    index scans, documents filtered).
+
+    Strictly read-only: the query is parsed and classified first, and any mutating or
+    ambiguous query is rejected without execution — analyze those with 'explain-aql-query'.
+
+    Use this to see how a query REALLY behaves at runtime, not just its estimated plan.
+    """,
+)
+async def profile_aql_query(
+    aql_query: str = Field(description="The read-only AQL query to execute and profile."),
+    bind_vars: Dict[str, Any] | None = Field(
+        default=None,
+        description="Bind variables (needed if the query uses @params).",
+    ),
+    profile_level: int = Field(
+        default=2,
+        description="Profiling detail: 1 = basic stage timings and stats; "
+        "2 = full plan with per-node runtime, indexes used, and optimizer rules.",
+    ),
+    database_name: str | None = Field(
+        default=None,
+        description="Target database. Uses default if not specified.",
+    ),
+    max_runtime: float | None = Field(
+        default=None,
+        description="Maximum execution time in seconds. Clamped to the 30-second ceiling.",
+    ),
+) -> Dict[str, Any]:
+    return await aql_agent.arun(
+        {
+            "operation": "profile",
+            "aql_query": aql_query,
+            "bind_vars": bind_vars or {},
+            "profile_level": profile_level,
+            "database_name": database_name,
+            "max_runtime": max_runtime,
+        }
+    )
+
+
+@mcp_app.tool(
+    name="compare-aql-queries",
+    description="""Profiles TWO OR MORE read-only AQL queries and compares them. For each
+    query it reports the label, measured elapsed time, result count, indexes used, and scan
+    statistics.
+
+    Crucially, it PROVES whether the queries are functionally equivalent — i.e. every query
+    returns the same multiset of rows regardless of row order — before ranking speed, so a
+    faster-but-different rewrite is never mistaken for a valid optimization. It reports the
+    fastest query among the equivalent ones and sets a clear warning when they diverge.
+
+    Strictly read-only: each query is classified first; a mutating/ambiguous entry is
+    rejected on its own while the remaining read queries are still processed.
+    """,
+)
+async def compare_aql_queries(
+    queries: List[Dict[str, Any]] = Field(
+        description="List of at least two queries to compare. Each item is an object with "
+        "'label' (str), 'aql_query' (str), and optional 'bind_vars' (object).",
+    ),
+    database_name: str | None = Field(
+        default=None,
+        description="Target database. Uses default if not specified.",
+    ),
+    max_runtime: float | None = Field(
+        default=None,
+        description="Maximum execution time in seconds per query. Clamped to the 30-second "
+        "ceiling.",
+    ),
+) -> Dict[str, Any]:
+    return await aql_agent.arun(
+        {
+            "operation": "compare",
+            "queries": queries,
+            "database_name": database_name,
+            "max_runtime": max_runtime,
         }
     )

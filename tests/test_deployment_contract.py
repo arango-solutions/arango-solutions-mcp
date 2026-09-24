@@ -54,7 +54,7 @@ def test_mcp_image_has_dependency_aware_readiness_healthcheck():
     assert "src/arangodb_mcp/manuals/*.md" in project
     assert '"-I", str(probe)' in wheel_smoke
     assert "root not in package_path.parents" in wheel_smoke
-    assert "len(manager.all_registered_tools()) == 81" in wheel_smoke
+    assert "len(manager.all_registered_tools()) == 83" in wheel_smoke
 
 
 def test_compose_quick_start_documents_secrets_probes_and_slos():

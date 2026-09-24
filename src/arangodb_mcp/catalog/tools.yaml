@@ -15,6 +15,8 @@ tools:
   - {name: execute-aql-query, category: aql, risk: high, operation: write, scope: database, limits: query, confirmation: conditional}
   - {name: explain-aql-query, category: aql, risk: low, operation: read, scope: database, limits: query, confirmation: none}
   - {name: validate-aql-query, category: aql, risk: low, operation: read, scope: server, limits: standard, confirmation: none}
+  - {name: profile-aql-query, category: aql, risk: medium, operation: write, scope: database, limits: query, confirmation: none}
+  - {name: compare-aql-queries, category: aql, risk: medium, operation: write, scope: database, limits: query, confirmation: none}
 
   - {name: create-backup, category: backup, risk: high, operation: admin, scope: cluster, limits: control, confirmation: none}
   - {name: list-backups, category: backup, risk: low, operation: read, scope: cluster, limits: standard, confirmation: none}

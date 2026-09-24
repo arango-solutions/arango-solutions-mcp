@@ -12,7 +12,7 @@
 
 ### 1.1 Product Summary
 
-The ArangoDB MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that catalogs **81 tools** giving AI assistants (Cursor, Claude Desktop, and any MCP-compatible client) comprehensive, programmatic access to ArangoDB's multi-model database capabilities. Version 3 exposes a compact 17-tool readonly profile by default; broader write, operator, admin, graph, and search surfaces require explicit startup policy. It bridges the gap between natural-language AI interactions and ArangoDB's document, graph, search, and cluster features — enabling AI agents to build, query, manage, and administer ArangoDB deployments without hand-written driver code.
+The ArangoDB MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that catalogs **83 tools** giving AI assistants (Cursor, Claude Desktop, and any MCP-compatible client) comprehensive, programmatic access to ArangoDB's multi-model database capabilities. Version 3 exposes a compact 17-tool readonly profile by default; broader write, operator, admin, graph, and search surfaces require explicit startup policy. It bridges the gap between natural-language AI interactions and ArangoDB's document, graph, search, and cluster features — enabling AI agents to build, query, manage, and administer ArangoDB deployments without hand-written driver code.
 
 ### 1.2 Problem Statement
 
@@ -132,15 +132,17 @@ AQL-backed traversal queries with automatic query generation.
 
 **Implementation:** `src/arangodb_mcp/agents/graph_traversal_agent.py` → `src/arangodb_mcp/mcp_tools/traversal_tools.py`
 
-### 2.6 AQL Query Engine (3 tools)
+### 2.6 AQL Query Engine (5 tools)
 
-Direct AQL execution with plan analysis and syntax validation.
+Direct AQL execution with plan analysis, syntax validation, runtime profiling, and equivalence-checked comparison.
 
 | ID | Tool | Description | Key Parameters |
 |----|------|-------------|----------------|
 | Q-1 | `execute-aql-query` | Execute AQL with bind variables; returns results, stats, and counts | `aql_query`, `bind_vars`, `database_name` |
 | Q-2 | `explain-aql-query` | Execution plan analysis (indexes, costs, optimizer rules) | `aql_query`, `bind_vars`, `all_plans`, `max_plans`, `opt_rules` |
 | Q-3 | `validate-aql-query` | Syntax check without execution | `aql_query` |
+| Q-4 | `profile-aql-query` | Execute a proven read-only query with server-side profiling; returns measured elapsed time and peak memory, per-stage timings, execution plan, indexes used, optimizer rules, and scan statistics | `aql_query`, `bind_vars`, `profile_level`, `database_name`, `max_runtime` |
+| Q-5 | `compare-aql-queries` | Profile two or more proven read-only queries, prove they return the same result multiset regardless of row order, and report the fastest among the equivalent ones with a divergence warning otherwise | `queries`, `database_name`, `max_runtime` |
 
 **Implementation:** `src/arangodb_mcp/agents/aql_execution_agent.py` → `src/arangodb_mcp/mcp_tools/aql_tools.py`
 
@@ -384,7 +386,7 @@ implementation.
 
 | ID | State | Owner | Requirement and acceptance gate | Required evidence |
 |----|-------|-------|---------------------------------|-------------------|
-| DOC-001 | CURRENT | Product | Tool-count claims MUST equal the registered MCP inventory; the current count is 81. | STATIC: `src/arangodb_mcp/server.py:18-66`; TEST: `tests/test_mcp_e2e.py:59-63` |
+| DOC-001 | CURRENT | Product | Tool-count claims MUST equal the registered MCP inventory; the current count is 83. | STATIC: `src/arangodb_mcp/server.py:18-66`; TEST: `tests/test_mcp_e2e.py:59-63` |
 | DOC-002 | CURRENT | Quality | Test-count and test-tier claims MUST be generated or mechanically verified against the repository. | TEST: `scripts/verify_docs.py:33-42`, `tests/test_doc_consistency.py:21-37` |
 | DOC-003 | CURRENT | Product | The PRD MUST use requirement-level states rather than a blanket implementation claim. | STATIC: `PRD.md:38-55`, `PRD.md:370-457` |
 | DOC-004 | CURRENT | Architecture | Tool-layer business-logic exceptions MUST be explicit and retain async/error/test parity. | STATIC: `src/arangodb_mcp/mcp_tools/_support.py:33-59`; TEST: `tests/test_embedding_tools.py:44-60`, `tests/test_pattern_memory_tools.py:94-112` |

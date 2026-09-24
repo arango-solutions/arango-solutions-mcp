@@ -41,11 +41,11 @@ EXPECTED_INVENTORIES = {
         cluster-health cluster-server-count cluster-server-role cluster-server-statistics
         collection-shard-distribution commit-transaction create-collection create-document
         create-documents-bulk create-index delete-document delete-documents-bulk delete-index
-        execute-aql-query explain-aql-query get-aql-manual get-collection-properties
-        get-database-info list-collections list-databases list-indexes list-transactions
-        pattern-applied pattern-index pattern-search read-document read-documents-with-filter
-        replace-document save-drift-alert save-pattern transaction-status update-document
-        update-documents-bulk upsert-document validate-aql-query
+        compare-aql-queries execute-aql-query explain-aql-query get-aql-manual
+        get-collection-properties get-database-info list-collections list-databases list-indexes
+        list-transactions pattern-applied pattern-index pattern-search profile-aql-query
+        read-document read-documents-with-filter replace-document save-drift-alert save-pattern
+        transaction-status update-document update-documents-bulk upsert-document validate-aql-query
         """
     ),
     "operator": _names(
@@ -53,14 +53,14 @@ EXPECTED_INVENTORIES = {
         abort-transaction begin-transaction cluster-calculate-imbalance cluster-endpoints
         cluster-health cluster-rebalance cluster-server-count cluster-server-role
         cluster-server-statistics cluster-toggle-maintenance collection-shard-distribution
-        commit-transaction create-backup create-collection create-database create-document
-        create-documents-bulk create-index delete-backup delete-collection delete-database
-        delete-document delete-documents-bulk delete-index execute-aql-query
+        commit-transaction compare-aql-queries create-backup create-collection create-database
+        create-document create-documents-bulk create-index delete-backup delete-collection
+        delete-database delete-document delete-documents-bulk delete-index execute-aql-query
         execute-transaction explain-aql-query get-aql-manual get-collection-properties
         get-database-info list-backups list-collections list-databases list-indexes
-        list-transactions pattern-applied pattern-index pattern-search read-document
-        read-documents-with-filter replace-document restore-backup save-drift-alert save-pattern
-        transaction-status update-document update-documents-bulk upsert-document
+        list-transactions pattern-applied pattern-index pattern-search profile-aql-query
+        read-document read-documents-with-filter replace-document restore-backup save-drift-alert
+        save-pattern transaction-status update-document update-documents-bulk upsert-document
         validate-aql-query
         """
     ),
@@ -69,17 +69,18 @@ EXPECTED_INVENTORIES = {
         abort-transaction begin-transaction cluster-calculate-imbalance cluster-endpoints
         cluster-health cluster-rebalance cluster-server-count cluster-server-role
         cluster-server-statistics cluster-toggle-maintenance collection-shard-distribution
-        commit-transaction create-analyzer create-backup create-collection create-database
-        create-document create-documents-bulk create-edge create-graph create-index create-user
-        create-view delete-analyzer delete-backup delete-collection delete-database
-        delete-document delete-documents-bulk delete-graph delete-index delete-user delete-view
-        embed-document embed-text execute-aql-query execute-transaction explain-aql-query
+        commit-transaction compare-aql-queries create-analyzer create-backup create-collection
+        create-database create-document create-documents-bulk create-edge create-graph
+        create-index create-user create-view delete-analyzer delete-backup delete-collection
+        delete-database delete-document delete-documents-bulk delete-graph delete-index
+        delete-user delete-view embed-document embed-text execute-aql-query execute-transaction
+        explain-aql-query
         get-analyzer-properties get-aql-manual get-collection-properties get-database-info
         get-graph-properties get-permission get-user get-view-properties grant-permission
         graph-k-shortest-paths graph-neighbors graph-shortest-path graph-traverse hybrid-search
         list-analyzers list-backups list-collections list-databases list-graphs list-indexes
         list-permissions list-transactions list-users list-views pattern-applied pattern-index
-        pattern-search read-document read-documents-with-filter replace-document
+        pattern-search profile-aql-query read-document read-documents-with-filter replace-document
         replace-view-properties restore-backup revoke-permission save-drift-alert save-pattern
         transaction-status update-document update-documents-bulk update-user
         update-view-properties upsert-document validate-aql-query vector-search
@@ -107,8 +108,8 @@ def _context(
 def test_catalog_covers_every_registered_tool_exactly_once():
     catalog = load_tool_catalog()
     manager = mcp_app._tool_manager
-    assert len(catalog.tools) == 81
-    assert len(manager.all_registered_tools()) == 81
+    assert len(catalog.tools) == 83
+    assert len(manager.all_registered_tools()) == 83
     catalog.validate_registered(tool.name for tool in manager.all_registered_tools())
     assert all(tool.limits.max_runtime_ms > 0 for tool in catalog.tools.values())
 
