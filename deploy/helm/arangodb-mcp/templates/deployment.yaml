@@ -184,6 +184,13 @@ spec:
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- with .Values.probes.startup }}
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /livez
