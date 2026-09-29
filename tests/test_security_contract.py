@@ -1,6 +1,9 @@
 """Static contracts for the repository security controls."""
 
+import datetime
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,11 +62,16 @@ def test_security_workflow_builds_then_scans_the_application_image():
     assert "ignore-unfixed: false" in workflow
     assert 'exit-code: "1"' in workflow
     assert "trivyignores: .trivyignore.yaml" in workflow
-    for advisory in ("GHSA-6v7p-g79w-8964", "CVE-2025-47273"):
-        assert f"id: {advisory}" in ignore
-    assert ignore.count("expired_at: 2026-08-20") == 2
-    assert "GitHub issue #5" in ignore
-    assert ignore.count("final runtime filesystem") == 2
+    # Every suppression must be a tracked, expiring, justified false positive.
+    entries = yaml.safe_load(ignore)["vulnerabilities"]
+    assert {entry["id"] for entry in entries} == {"CVE-2025-47273"}
+    for entry in entries:
+        assert isinstance(entry["expired_at"], datetime.date)
+        assert "GitHub issue #5" in entry["statement"]
+        assert "absent at runtime" in entry["statement"]
+    # The msgpack suppression was retired once its false-positive premise went stale;
+    # it must not silently return (Trivy re-evaluates the shipped version instead).
+    assert "id: GHSA-6v7p-g79w-8964" not in ignore
 
 
 def test_security_policy_defines_remediation_and_exception_contract():
