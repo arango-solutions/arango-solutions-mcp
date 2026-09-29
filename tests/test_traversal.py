@@ -7,8 +7,8 @@ and test traversal, shortest path, k-shortest paths, and neighbor queries.
 import pytest
 from arango.database import StandardDatabase
 
-from agents.aql_execution_agent import AQLExecutionAgent
-from agents.graph_traversal_agent import GraphTraversalAgent
+from arangodb_mcp.agents.aql_execution_agent import AQLExecutionAgent
+from arangodb_mcp.agents.graph_traversal_agent import GraphTraversalAgent
 
 # ── Graph Traversal Agent ─────────────────────────────────────────────
 

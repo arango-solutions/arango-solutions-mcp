@@ -1,0 +1,4 @@
+title = "arango-solutions-mcp-server secret scanning"
+
+[extend]
+useDefault = true

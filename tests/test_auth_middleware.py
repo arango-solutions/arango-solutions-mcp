@@ -7,6 +7,7 @@ ArangoDB, FastMCP, or even Starlette. They cover:
 * requests with the wrong token → 401
 * requests with the correct ``Authorization: Bearer <token>`` → pass through
 * lifespan / non-HTTP scopes pass through without auth checks
+* only the configured liveness/readiness probe paths bypass auth
 * "longer wrong prefix" tokens are still rejected (constant-time compare)
 * constructing the middleware with an empty token raises ``ValueError``
 """
@@ -14,18 +15,32 @@ ArangoDB, FastMCP, or even Starlette. They cover:
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
+import httpx
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 
-# Ensure the repo root is importable when pytest is invoked from a subdirectory.
+# Ensure the src package is importable when pytest is invoked from a subdirectory.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+_SRC = _REPO_ROOT / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
-from auth_middleware import BearerTokenAuthMiddleware  # noqa: E402
+from arangodb_mcp.auth_middleware import BearerTokenAuthMiddleware  # noqa: E402
+from arangodb_mcp.oidc import (  # noqa: E402
+    OIDCAuthMiddleware,
+    OIDCConfig,
+    OIDCConfigurationError,
+    OIDCValidator,
+)
+from arangodb_mcp.policy.actor_context import get_request_identity  # noqa: E402
+from arangodb_mcp.policy.credentials import StaticCredentialProvider  # noqa: E402
 
 TOKEN = "supersecret-token-1234567890"
 
@@ -261,46 +276,55 @@ class _RecordingHealthApp:
         await send({"type": "http.response.body", "body": b'{"status":"ok"}'})
 
 
-def test_healthz_with_no_auth_header_dispatches_to_health_app():
-    """When ``health_app`` is set, ``GET /healthz`` skips the bearer check
-    and is dispatched to the health app even with no Authorization header.
-    """
+@pytest.mark.parametrize("path", ["/livez", "/readyz", "/healthz"])
+def test_probes_with_no_auth_header_dispatch_to_health_app(path):
+    """Configured probe paths skip bearer auth."""
     inner = _RecordingApp()
     health = _RecordingHealthApp()
-    mw = BearerTokenAuthMiddleware(inner, TOKEN, health_app=health)
+    mw = BearerTokenAuthMiddleware(
+        inner,
+        TOKEN,
+        health_app=health,
+        health_paths={"/livez", "/readyz", "/healthz"},
+    )
 
-    response = asyncio.run(_send_http_request(mw, path="/healthz", method="GET"))
+    response = asyncio.run(_send_http_request(mw, path=path, method="GET"))
 
     assert response["status"] == 200
     assert response["body"] == b'{"status":"ok"}'
     assert len(health.calls) == 1
-    assert health.calls[0]["path"] == "/healthz"
+    assert health.calls[0]["path"] == path
     assert health.calls[0]["method"] == "GET"
-    assert inner.http_calls == [], "wrapped MCP app must NOT see /healthz"
+    assert inner.http_calls == [], "wrapped MCP app must NOT see probe requests"
 
 
-def test_healthz_without_health_app_still_requires_auth():
-    """When no ``health_app`` is configured, ``/healthz`` is just another
+def test_probe_without_health_app_still_requires_auth():
+    """When no ``health_app`` is configured, ``/readyz`` is just another
     path and must satisfy the bearer-auth check like everything else.
     """
     inner = _RecordingApp()
     mw = BearerTokenAuthMiddleware(inner, TOKEN)
 
-    response = asyncio.run(_send_http_request(mw, path="/healthz", method="GET"))
+    response = asyncio.run(_send_http_request(mw, path="/readyz", method="GET"))
 
     assert response["status"] == 401
     assert inner.http_calls == []
 
 
-def test_healthz_post_still_dispatched_to_health_app():
+def test_probe_post_still_dispatched_to_health_app():
     """The middleware dispatches solely on path; the health app itself
     decides what to do with the wrong method (typically a 405).
     """
     inner = _RecordingApp()
     health = _RecordingHealthApp()
-    mw = BearerTokenAuthMiddleware(inner, TOKEN, health_app=health)
+    mw = BearerTokenAuthMiddleware(
+        inner,
+        TOKEN,
+        health_app=health,
+        health_paths={"/livez", "/readyz", "/healthz"},
+    )
 
-    response = asyncio.run(_send_http_request(mw, path="/healthz", method="POST"))
+    response = asyncio.run(_send_http_request(mw, path="/readyz", method="POST"))
 
     # Our recording health app always returns 200; what matters is that the
     # request reached the health app rather than being rejected by auth.
@@ -310,17 +334,215 @@ def test_healthz_post_still_dispatched_to_health_app():
     assert inner.http_calls == []
 
 
-def test_custom_health_path():
-    """The ``health_path`` is configurable; other paths still hit auth."""
+def test_custom_health_paths_are_exact():
+    """Configured paths are exact; similar or default paths still hit auth."""
     inner = _RecordingApp()
     health = _RecordingHealthApp()
-    mw = BearerTokenAuthMiddleware(inner, TOKEN, health_app=health, health_path="/_/ready")
+    mw = BearerTokenAuthMiddleware(
+        inner,
+        TOKEN,
+        health_app=health,
+        health_paths={"/_/live", "/_/ready"},
+    )
 
     ok = asyncio.run(_send_http_request(mw, path="/_/ready", method="GET"))
     assert ok["status"] == 200
     assert len(health.calls) == 1
 
-    blocked = asyncio.run(_send_http_request(mw, path="/healthz", method="GET"))
-    assert (
-        blocked["status"] == 401
-    ), "default /healthz should not bypass auth when health_path was overridden"
+    for path in ("/healthz", "/_/ready/"):
+        blocked = asyncio.run(_send_http_request(mw, path=path, method="GET"))
+        assert blocked["status"] == 401
+
+
+def _oidc_key(kid: str):
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
+    jwk.update({"kid": kid, "alg": "RS256", "use": "sig"})
+    return private, jwk
+
+
+def test_oidc_http_escape_hatch_is_explicit_and_constrained():
+    kwargs = {
+        "issuer": "http://reference-idp:8080",
+        "audience": "arangodb-mcp",
+        "resource": "http://arangodb-mcp:8000/mcp",
+    }
+    with pytest.raises(OIDCConfigurationError, match="must use HTTPS"):
+        OIDCConfig(**kwargs)
+
+    allowed = OIDCConfig(**kwargs, allow_insecure_http=True)
+    assert allowed.allow_insecure_http is True
+
+    with pytest.raises(OIDCConfigurationError, match="must use HTTPS"):
+        OIDCConfig(
+            issuer="http://issuer.example.com",
+            audience="arangodb-mcp",
+            resource="http://mcp.example.com/mcp",
+            allow_insecure_http=True,
+        )
+
+
+def _access_token(
+    private,
+    kid: str,
+    *,
+    issuer: str = "https://issuer.example",
+    audience: str = "arangodb-mcp",
+    expires_in: int = 300,
+    not_before: int | None = None,
+    actor: str = "alice",
+    scope: str = "mcp:read",
+    databases: list[str] | None = None,
+    extra_claims: dict[str, Any] | None = None,
+) -> str:
+    now = int(time.time())
+    claims = {
+        "iss": issuer,
+        "aud": audience,
+        "sub": actor,
+        "exp": now + expires_in,
+        "iat": now,
+        "scope": scope,
+        "arangodb_databases": databases or ["tenant_a"],
+    }
+    if not_before is not None:
+        claims["nbf"] = now + not_before
+    claims.update(extra_claims or {})
+    return jwt.encode(claims, private, algorithm="RS256", headers={"kid": kid})
+
+
+def _validator(private, jwk, *, handler=None):
+    issuer = "https://issuer.example"
+
+    def default_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(
+                200,
+                json={"issuer": issuer, "jwks_uri": f"{issuer}/jwks"},
+            )
+        return httpx.Response(200, json={"keys": [jwk]}, headers={"cache-control": "max-age=60"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler or default_handler))
+    provider = StaticCredentialProvider.from_json(
+        json.dumps(
+            {
+                "alice": {
+                    "username": "alice-db",
+                    "password": "server-secret",
+                    "databases": ["tenant_a", "tenant_b"],
+                }
+            }
+        )
+    )
+    return OIDCValidator(
+        OIDCConfig(
+            issuer=issuer,
+            audience="arangodb-mcp",
+            resource="https://mcp.example/mcp",
+            clock_skew_seconds=0,
+        ),
+        provider,
+        client=client,
+    )
+
+
+@pytest.mark.asyncio
+async def test_oidc_validates_signature_issuer_audience_expiry_nbf_and_claims():
+    private, jwk = _oidc_key("key-1")
+    validator = _validator(private, jwk)
+
+    identity = await validator.validate(
+        _access_token(
+            private,
+            "key-1",
+            scope="mcp:read catalog:database",
+            databases=["tenant_a", "token-only"],
+            extra_claims={"username": "attacker", "password": "token-secret"},
+        )
+    )
+
+    assert identity.actor_id == "alice"
+    assert identity.oauth_scopes == {"mcp:read", "catalog:database"}
+    assert identity.databases == {"tenant_a"}
+    assert identity.credentials.username == "alice-db"
+    assert identity.credentials.password == "server-secret"
+
+    invalid_tokens = [
+        _access_token(private, "key-1", issuer="https://wrong.example"),
+        _access_token(private, "key-1", audience="wrong-audience"),
+        _access_token(private, "key-1", expires_in=-1),
+        _access_token(private, "key-1", not_before=120),
+    ]
+    for token in invalid_tokens:
+        with pytest.raises(PermissionError):
+            await validator.validate(token)
+
+
+@pytest.mark.asyncio
+async def test_oidc_refreshes_jwks_once_for_rotated_unknown_kid():
+    first_private, first_jwk = _oidc_key("key-1")
+    second_private, second_jwk = _oidc_key("key-2")
+    jwks_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal jwks_requests
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": "https://issuer.example",
+                    "jwks_uri": "https://issuer.example/jwks",
+                },
+            )
+        jwks_requests += 1
+        keys = [first_jwk] if jwks_requests == 1 else [first_jwk, second_jwk]
+        return httpx.Response(200, json={"keys": keys}, headers={"cache-control": "max-age=60"})
+
+    validator = _validator(first_private, first_jwk, handler=handler)
+    await validator.validate(_access_token(first_private, "key-1"))
+    rotated = await validator.validate(_access_token(second_private, "key-2"))
+
+    assert rotated.actor_id == "alice"
+    assert jwks_requests == 2
+
+
+@pytest.mark.asyncio
+async def test_oidc_discovery_failure_is_structured_and_fails_closed():
+    private, jwk = _oidc_key("key-1")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503)
+
+    validator = _validator(private, jwk, handler=handler)
+    inner = _RecordingApp()
+    middleware = OIDCAuthMiddleware(inner, validator)
+    response = await _send_http_request(
+        middleware,
+        headers=[(b"authorization", f"Bearer {_access_token(private, 'key-1')}".encode())],
+    )
+
+    assert response["status"] == 503
+    assert json.loads(response["body"])["error_code"] == "temporarily_unavailable"
+    assert inner.http_calls == []
+
+
+@pytest.mark.asyncio
+async def test_oidc_request_identity_is_reset_after_request():
+    private, jwk = _oidc_key("key-1")
+    validator = _validator(private, jwk)
+    seen = []
+
+    async def inner(scope, receive, send):
+        seen.append(get_request_identity())
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    middleware = OIDCAuthMiddleware(inner, validator)
+    response = await _send_http_request(
+        middleware,
+        headers=[(b"authorization", f"Bearer {_access_token(private, 'key-1')}".encode())],
+    )
+
+    assert response["status"] == 200
+    assert seen[0].actor_id == "alice"
+    assert get_request_identity() is None

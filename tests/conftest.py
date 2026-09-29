@@ -231,7 +231,7 @@ def patch_connector(
     After this fixture is active, any agent calling ``arango_connector.get_db()``
     (with no argument or with the test DB name) will get the test database handle.
     """
-    from arango_connector import arango_connector
+    from arangodb_mcp.arango_connector import arango_connector
 
     monkeypatch.setattr(arango_connector, "client", arango_client)
 

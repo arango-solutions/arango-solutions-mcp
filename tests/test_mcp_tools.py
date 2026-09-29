@@ -21,9 +21,9 @@ import pytest
 
 class TestDatabaseTools:
     @pytest.mark.asyncio
-    @patch("mcp_tools.database_tools.db_agent")
+    @patch("arangodb_mcp.mcp_tools.database_tools.db_agent")
     async def test_list_databases(self, mock_agent):
-        from mcp_tools.database_tools import list_databases
+        from arangodb_mcp.mcp_tools.database_tools import list_databases
 
         mock_agent.arun = AsyncMock(return_value={"databases": []})
         result = await list_databases()
@@ -32,9 +32,9 @@ class TestDatabaseTools:
         assert result == {"databases": []}
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.database_tools.db_agent")
+    @patch("arangodb_mcp.mcp_tools.database_tools.db_agent")
     async def test_create_database(self, mock_agent):
-        from mcp_tools.database_tools import create_database
+        from arangodb_mcp.mcp_tools.database_tools import create_database
 
         mock_agent.arun = AsyncMock(return_value={"success": True})
         result = await create_database(database_name="test_db")
@@ -45,9 +45,9 @@ class TestDatabaseTools:
         assert result == {"success": True}
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.database_tools.db_agent")
+    @patch("arangodb_mcp.mcp_tools.database_tools.db_agent")
     async def test_delete_database_system_guard(self, mock_agent):
-        from mcp_tools.database_tools import delete_database
+        from arangodb_mcp.mcp_tools.database_tools import delete_database
 
         mock_agent.arun = AsyncMock()
         result = await delete_database(database_name="_system")
@@ -57,9 +57,9 @@ class TestDatabaseTools:
         assert "_system" in result["error"]
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.database_tools.db_agent")
+    @patch("arangodb_mcp.mcp_tools.database_tools.db_agent")
     async def test_delete_database_valid(self, mock_agent):
-        from mcp_tools.database_tools import delete_database
+        from arangodb_mcp.mcp_tools.database_tools import delete_database
 
         mock_agent.arun = AsyncMock(return_value={"success": True})
         result = await delete_database(database_name="old_db")
@@ -77,9 +77,9 @@ class TestDatabaseTools:
 
 class TestAqlTools:
     @pytest.mark.asyncio
-    @patch("mcp_tools.aql_tools.aql_agent")
+    @patch("arangodb_mcp.mcp_tools.aql_tools.aql_agent")
     async def test_execute_aql_query(self, mock_agent):
-        from mcp_tools.aql_tools import execute_aql
+        from arangodb_mcp.mcp_tools.aql_tools import execute_aql
 
         mock_agent.arun = AsyncMock(return_value={"results": [1, 2, 3]})
         result = await execute_aql(
@@ -101,9 +101,9 @@ class TestAqlTools:
         assert result == {"results": [1, 2, 3]}
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.aql_tools.aql_agent")
+    @patch("arangodb_mcp.mcp_tools.aql_tools.aql_agent")
     async def test_execute_aql_query_defaults_bind_vars(self, mock_agent):
-        from mcp_tools.aql_tools import execute_aql
+        from arangodb_mcp.mcp_tools.aql_tools import execute_aql
 
         mock_agent.arun = AsyncMock(return_value={"results": []})
         await execute_aql(aql_query="RETURN 1", bind_vars=None, database_name=None)
@@ -112,9 +112,9 @@ class TestAqlTools:
         assert call_args["bind_vars"] == {}
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.aql_tools.aql_agent")
+    @patch("arangodb_mcp.mcp_tools.aql_tools.aql_agent")
     async def test_execute_aql_query_passes_max_runtime(self, mock_agent):
-        from mcp_tools.aql_tools import execute_aql
+        from arangodb_mcp.mcp_tools.aql_tools import execute_aql
 
         mock_agent.arun = AsyncMock(return_value={"results": []})
         await execute_aql(
@@ -128,9 +128,9 @@ class TestAqlTools:
         assert call_args["max_runtime"] == 5.0
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.aql_tools.aql_agent")
+    @patch("arangodb_mcp.mcp_tools.aql_tools.aql_agent")
     async def test_explain_aql_query(self, mock_agent):
-        from mcp_tools.aql_tools import explain_aql_query
+        from arangodb_mcp.mcp_tools.aql_tools import explain_aql_query
 
         mock_agent.arun = AsyncMock(return_value={"plan": {}})
         result = await explain_aql_query(
@@ -161,9 +161,9 @@ class TestAqlTools:
 
 class TestDocumentTools:
     @pytest.mark.asyncio
-    @patch("mcp_tools.document_tools.doc_agent")
+    @patch("arangodb_mcp.mcp_tools.document_tools.doc_agent")
     async def test_create_document(self, mock_agent):
-        from mcp_tools.document_tools import create_document
+        from arangodb_mcp.mcp_tools.document_tools import create_document
 
         mock_agent.arun = AsyncMock(return_value={"_key": "123"})
         result = await create_document(
@@ -183,9 +183,9 @@ class TestDocumentTools:
         assert result == {"_key": "123"}
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.document_tools.doc_agent")
+    @patch("arangodb_mcp.mcp_tools.document_tools.doc_agent")
     async def test_read_documents_with_filter_defaults(self, mock_agent):
-        from mcp_tools.document_tools import read_documents_with_filter
+        from arangodb_mcp.mcp_tools.document_tools import read_documents_with_filter
 
         mock_agent.arun = AsyncMock(return_value={"results": []})
         await read_documents_with_filter(
@@ -208,9 +208,9 @@ class TestDocumentTools:
         )
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.document_tools.doc_agent")
+    @patch("arangodb_mcp.mcp_tools.document_tools.doc_agent")
     async def test_delete_document(self, mock_agent):
-        from mcp_tools.document_tools import delete_document
+        from arangodb_mcp.mcp_tools.document_tools import delete_document
 
         mock_agent.arun = AsyncMock(return_value={"deleted": True})
         result = await delete_document(
@@ -237,9 +237,9 @@ class TestDocumentTools:
 
 class TestCollectionTools:
     @pytest.mark.asyncio
-    @patch("mcp_tools.collection_tools.collection_agent")
+    @patch("arangodb_mcp.mcp_tools.collection_tools.collection_agent")
     async def test_list_collections(self, mock_agent):
-        from mcp_tools.collection_tools import list_collections
+        from arangodb_mcp.mcp_tools.collection_tools import list_collections
 
         mock_agent.arun = AsyncMock(return_value={"collections": []})
         result = await list_collections(database_name="mydb")
@@ -250,9 +250,9 @@ class TestCollectionTools:
         assert result == {"collections": []}
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.collection_tools.collection_agent")
+    @patch("arangodb_mcp.mcp_tools.collection_tools.collection_agent")
     async def test_create_collection_optional_sharding(self, mock_agent):
-        from mcp_tools.collection_tools import create_collection
+        from arangodb_mcp.mcp_tools.collection_tools import create_collection
 
         mock_agent.arun = AsyncMock(return_value={"success": True})
 
@@ -286,9 +286,9 @@ class TestCollectionTools:
 
 class TestUserTools:
     @pytest.mark.asyncio
-    @patch("mcp_tools.user_tools.user_agent")
+    @patch("arangodb_mcp.mcp_tools.user_tools.user_agent")
     async def test_create_user(self, mock_agent):
-        from mcp_tools.user_tools import create_user
+        from arangodb_mcp.mcp_tools.user_tools import create_user
 
         mock_agent.arun = AsyncMock(return_value={"user": "alice"})
         result = await create_user(
@@ -310,9 +310,9 @@ class TestUserTools:
         assert result == {"user": "alice"}
 
     @pytest.mark.asyncio
-    @patch("mcp_tools.user_tools.user_agent")
+    @patch("arangodb_mcp.mcp_tools.user_tools.user_agent")
     async def test_grant_permission(self, mock_agent):
-        from mcp_tools.user_tools import grant_permission
+        from arangodb_mcp.mcp_tools.user_tools import grant_permission
 
         mock_agent.arun = AsyncMock(return_value={"granted": True})
         result = await grant_permission(

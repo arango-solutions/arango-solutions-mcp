@@ -9,10 +9,10 @@ import time
 
 import pytest
 
-from agents.document_crud_agent import DocumentCRUDAgent
-from agents.index_management_agent import IndexManagementAgent
-from agents.vector_search_agent import VectorSearchAgent
-from agents.view_management_agent import ViewManagementAgent
+from arangodb_mcp.agents.document_crud_agent import DocumentCRUDAgent
+from arangodb_mcp.agents.index_management_agent import IndexManagementAgent
+from arangodb_mcp.agents.vector_search_agent import VectorSearchAgent
+from arangodb_mcp.agents.view_management_agent import ViewManagementAgent
 
 
 def _requires_vector(vector_index_supported):
