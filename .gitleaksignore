@@ -1,0 +1,8 @@
+# gitleaks finding fingerprints that are reviewed and accepted.
+# Format: <commit>:<file>:<rule-id>:<line>
+# Every entry needs a reason. Never add a real, unrevoked credential here.
+
+# FALSE POSITIVE (reviewed 2026-09-29): a made-up password literal inside a test that
+# proves user-supplied AQL is redacted from logs
+# (test_executing_log_line_does_not_contain_query_text_by_default). Not a credential.
+8b5b5e543337569481702c0d2823a5db122612cc:tests/test_agent_unit.py:generic-api-key:239
