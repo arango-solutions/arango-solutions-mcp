@@ -2,12 +2,12 @@
 
 **Product:** ArangoDB MCP Server<br>
 **Assessment date:** August 6, 2026<br>
-**Repository baseline:** Phases 1–5 committed on the `phase1/platform-spine` branch (`fca17f4`) and pushed to origin — not yet merged to `main` or released; mechanically verified before publication<br>
+**Repository baseline:** Phases 1–5 committed on the `phase1/platform-spine` branch (`3256f93`) and pushed to origin — not yet merged to `main` or released; mechanically verified before publication<br>
 **Product version:** 2.0.0 (`pyproject.toml:3`, `src/arangodb_mcp/config.py:76`)
 
 **Revision — August 14, 2026:** The Phases 1–5 worktree this scorecard assessed was **committed**
-(`fca17f4`, Aug 7) and pushed to `origin/phase1/platform-spine`, with a breaking-changes changelog
-(`47aee61`, Aug 8); latest activity is Aug 8, 2026. Version remains `2.0.0`, but `CHANGELOG.md`
+(`3256f93`, Aug 7) and pushed to `origin/phase1/platform-spine`, with a breaking-changes changelog
+(`5bd06b1`, Aug 8); latest activity is Aug 8, 2026. Version remains `2.0.0`, but `CHANGELOG.md`
 records **two breaking client-facing changes** (the `main.py` → `arangodb-mcp` launch entrypoint,
 and the `readonly` default profile that gates the `memory` toolset), so the next release is a major
 **v3.0.0**. The **82/B+** score is unchanged: the external gates it depends on — merge to `main`,
@@ -55,7 +55,7 @@ The defensible market position is:
   ordinary near-duplicates still do (`tests/test_pattern_memory_tools.py:295-325`).
 - `[V]` PRD item P-2 now distinguishes implicit superseding from explicit replacement
   (`PRD.md:270`).
-- `[V]` At the prior `a49d9b7` baseline, the two Docker-backed CI test jobs passed on Python 3.10
+- `[V]` At the prior `99a53c2` baseline, the two Docker-backed CI test jobs passed on Python 3.10
   and 3.11, but the lint job failed on a pre-existing Ruff import-order violation
   ([CI run](https://github.com/arango-solutions/arango-solutions-mcp/actions/runs/31053199522)).
 - `[V]` Phase 0 established 44 stable, owned, evidence-gated v3 requirements in the PRD and

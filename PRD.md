@@ -765,22 +765,22 @@ but DEP-003 and MAT-001 remain PARTIAL until those artifacts exist externally.
 
 | Phase | Commit Range | Features Added |
 |-------|-------------|----------------|
-| Initial | `c4cc373` | Core MCP server, document CRUD, AQL execution, collection management |
-| Manuals | `d4fe0bf` | AQL reference manuals, `get-aql-manual` tool |
-| Optimization | `2af8c5f` | AQL optimization guide |
-| Refactor | `e440d48` | Architecture refactor for cursor connection handling |
-| Phase 1 | `4cce34e` | Docker test infra, bug fixes, expanded CRUD, python-arango 8.x |
-| Phase 2 | `81d189a` | Sharding params on `create-collection`, complete document CRUD |
-| Phase 3 | `a9e84a0` | Cluster management agent/tools, SmartGraph support |
-| Phase 4 | `c9157b5` | Vector search (ANN), hybrid search, search-alias views |
-| Phase 5 | `5cc5e87` | Graph traversals, AQL explain/validate, server instructions |
-| Phase 6 | `a4e0bc1` | Stream transactions and hot backup tools |
-| Phase 8 | `03e2fae` | Comprehensive README, lint cleanup |
-| CI | `fcd3a0e`–`66b603e` | GitHub Actions CI workflow |
-| Users | `f311408` | User and permission management (9 tools, 74 total) |
-| Hardening | `5e941b2` | Security fixes, code quality, test expansion, tooling |
-| Async-safety & auth | `09a2eb1`–`e942878` | Async-safety pass: `run_sync` wrapping across all 15 agents; `@handle_arango_errors` adopted by remaining 2 agents (Cluster, Backup) with the new `on_arango_error` callback for Enterprise / cluster-mode rewrites; HTTP bearer-token auth (`auth_middleware.BearerTokenAuthMiddleware`) plus non-loopback startup guard; `MCP_AUTH_TOKEN` and `DEFAULT_AQL_MAX_RUNTIME` settings added; `SecretStr` extended to user-create / user-update passwords; orphan config fields (`max_connections`, `timeout`, `enable_metrics`) removed; broken docker-test cluster mode removed. |
-| Shared-memory tooling | `01583ae`–`fbb2b1b` | Embedding tools (`embed-text`, `embed-document`) and shared-memory pattern/drift tools (`pattern-search`, `save-pattern`, `pattern-index`, `pattern-applied`, `save-drift-alert`) — **7 tools, 81 total** (PRD §2.16–2.17); auto-create target database; graph provenance on the write path. Async-safety + standardized-error retrofit via `src/arangodb_mcp/mcp_tools/_support.py`; embedding config (`OPENAI_API_KEY`, `EMBEDDING_MODEL`); unit tests `test_embedding_tools.py` + `test_pattern_memory_tools.py`. |
+| Initial | `6ea21f4` | Core MCP server, document CRUD, AQL execution, collection management |
+| Manuals | `d8be61e` | AQL reference manuals, `get-aql-manual` tool |
+| Optimization | `58ed222` | AQL optimization guide |
+| Refactor | `ec97470` | Architecture refactor for cursor connection handling |
+| Phase 1 | `d303bab` | Docker test infra, bug fixes, expanded CRUD, python-arango 8.x |
+| Phase 2 | `025b24e` | Sharding params on `create-collection`, complete document CRUD |
+| Phase 3 | `91c21c2` | Cluster management agent/tools, SmartGraph support |
+| Phase 4 | `cdad2fe` | Vector search (ANN), hybrid search, search-alias views |
+| Phase 5 | `03aac3a` | Graph traversals, AQL explain/validate, server instructions |
+| Phase 6 | `9ba698b` | Stream transactions and hot backup tools |
+| Phase 8 | `55df762` | Comprehensive README, lint cleanup |
+| CI | `740852e`–`220fb43` | GitHub Actions CI workflow |
+| Users | `c23feb9` | User and permission management (9 tools, 74 total) |
+| Hardening | `6b2d4b9` | Security fixes, code quality, test expansion, tooling |
+| Async-safety & auth | `0ed3531`–`1768f6b` | Async-safety pass: `run_sync` wrapping across all 15 agents; `@handle_arango_errors` adopted by remaining 2 agents (Cluster, Backup) with the new `on_arango_error` callback for Enterprise / cluster-mode rewrites; HTTP bearer-token auth (`auth_middleware.BearerTokenAuthMiddleware`) plus non-loopback startup guard; `MCP_AUTH_TOKEN` and `DEFAULT_AQL_MAX_RUNTIME` settings added; `SecretStr` extended to user-create / user-update passwords; orphan config fields (`max_connections`, `timeout`, `enable_metrics`) removed; broken docker-test cluster mode removed. |
+| Shared-memory tooling | `b1eeed1`–`647349e` | Embedding tools (`embed-text`, `embed-document`) and shared-memory pattern/drift tools (`pattern-search`, `save-pattern`, `pattern-index`, `pattern-applied`, `save-drift-alert`) — **7 tools, 81 total** (PRD §2.16–2.17); auto-create target database; graph provenance on the write path. Async-safety + standardized-error retrofit via `src/arangodb_mcp/mcp_tools/_support.py`; embedding config (`OPENAI_API_KEY`, `EMBEDDING_MODEL`); unit tests `test_embedding_tools.py` + `test_pattern_memory_tools.py`. |
 
 ### 8.2 Adding New Tools
 
