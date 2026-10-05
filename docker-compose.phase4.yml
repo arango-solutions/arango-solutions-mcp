@@ -1,0 +1,115 @@
+services:
+  reference-idp:
+    build:
+      context: tests/integration/phase4
+      dockerfile: Dockerfile.idp
+    environment:
+      OIDC_ISSUER: http://reference-idp:8080
+      OIDC_AUDIENCE: arangodb-mcp
+      OIDC_ACTOR: phase4-actor
+      OIDC_DATABASE: _system
+    ports:
+      - "127.0.0.1:${PHASE4_IDP_PORT:-18081}:8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=1)",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  arangodb:
+    image: arangodb/arangodb:3.12.4
+    command: ["--experimental-vector-index"]
+    environment:
+      ARANGO_ROOT_PASSWORD: ${PHASE4_ARANGO_PASSWORD:?phase4 runner sets an ephemeral password}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "arangosh --server.endpoint http+tcp://127.0.0.1:8529 --server.username root --server.password \"$$ARANGO_ROOT_PASSWORD\" --javascript.execute-string 'db._version()' >/dev/null 2>&1",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./tests/integration/phase4/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:${PHASE4_OTEL_HEALTH_PORT:-18133}:13133"
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "components"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  arangodb-mcp:
+    build: .
+    environment:
+      ARANGO_HOSTS: http://arangodb:8529
+      ARANGO_ROOT_USERNAME: root
+      ARANGO_ROOT_PASSWORD: ${PHASE4_ARANGO_PASSWORD:?phase4 runner sets an ephemeral password}
+      ARANGO_DEFAULT_DB_NAME: _system
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8000
+      MCP_PROTOCOL_MODE: strict
+      MCP_ALLOWED_HOSTS: 127.0.0.1:*,localhost:*,arangodb-mcp:*
+      MCP_ALLOWED_ORIGINS: http://127.0.0.1:*,http://localhost:*
+      MCP_PROFILE: readonly
+      MCP_OIDC_ISSUER: http://reference-idp:8080
+      MCP_OIDC_AUDIENCE: arangodb-mcp
+      MCP_RESOURCE_URL: http://arangodb-mcp:8000/mcp
+      MCP_OIDC_ALLOW_INSECURE_HTTP: "true"
+      MCP_ARANGO_CREDENTIALS_JSON: '{"phase4-actor":{"username":"root","password":"${PHASE4_ARANGO_PASSWORD}","databases":["_system"]}}'
+      METRICS_ENABLED: "true"
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: arangodb-mcp-phase4
+      LOG_FORMAT: json
+    ports:
+      - "127.0.0.1:${PHASE4_MCP_PORT:-18080}:8000"
+    depends_on:
+      arangodb:
+        condition: service_healthy
+      reference-idp:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=2)",
+        ]
+      interval: 2s
+      timeout: 3s
+      start_period: 10s
+      retries: 40
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    volumes:
+      - ./tests/integration/phase4/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:${PHASE4_PROMETHEUS_PORT:-19090}:9090"
+    depends_on:
+      arangodb-mcp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

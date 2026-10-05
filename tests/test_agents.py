@@ -6,12 +6,12 @@ that agents produce correct results against an ephemeral test database.
 
 import pytest
 
-from agents.aql_execution_agent import AQLExecutionAgent
-from agents.cluster_management_agent import ClusterManagementAgent
-from agents.collection_management_agent import CollectionManagementAgent
-from agents.document_crud_agent import DocumentCRUDAgent
-from agents.graph_management_agent import GraphManagementAgent
-from agents.index_management_agent import IndexManagementAgent
+from arangodb_mcp.agents.aql_execution_agent import AQLExecutionAgent
+from arangodb_mcp.agents.cluster_management_agent import ClusterManagementAgent
+from arangodb_mcp.agents.collection_management_agent import CollectionManagementAgent
+from arangodb_mcp.agents.document_crud_agent import DocumentCRUDAgent
+from arangodb_mcp.agents.graph_management_agent import GraphManagementAgent
+from arangodb_mcp.agents.index_management_agent import IndexManagementAgent
 
 # ── Collection Agent ──────────────────────────────────────────────────
 
@@ -517,6 +517,160 @@ class TestAQLAgent:
         result = await self.agent.arun({"aql_query": ""})
         assert "error" in result
 
+    # ── Profiling ─────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_profile_returns_measurements_and_plan(self, test_db, test_collection):
+        col = test_db.collection(test_collection)
+        col.insert_many([{"v": i} for i in range(10)])
+        result = await self.agent.arun(
+            {
+                "operation": "profile",
+                "aql_query": f"FOR d IN {test_collection} FILTER d.v > 3 RETURN d.v",
+                "profile_level": 2,
+            }
+        )
+        assert "error" not in result
+        assert result["classification"] == "read"
+        assert result["profile_level"] == 2
+        assert result["result_count"] == 6
+        assert sorted(result["results"]) == [4, 5, 6, 7, 8, 9]
+        # Measured execution data from the cursor stats.
+        assert result["server_elapsed_seconds"] is not None
+        assert result["peak_memory_bytes"] is not None
+        # Per-stage timing breakdown and plan/optimizer data.
+        assert isinstance(result["stage_timings"], dict) and result["stage_timings"]
+        assert result["execution_plan"] is not None
+        assert isinstance(result["optimizer_rules_applied"], list)
+        assert "scan_statistics" in result
+
+    @pytest.mark.asyncio
+    async def test_profile_levels_differ(self, test_collection):
+        common = {
+            "operation": "profile",
+            "aql_query": f"FOR d IN {test_collection} RETURN d",
+        }
+        basic = await self.agent.arun({**common, "profile_level": 1})
+        full = await self.agent.arun({**common, "profile_level": 2})
+        assert basic["profile_level"] == 1
+        assert full["profile_level"] == 2
+        # Basic level carries no execution plan; full level does.
+        assert basic["execution_plan"] is None
+        assert full["execution_plan"] is not None
+        assert full["optimizer_rules_applied"] and not basic["optimizer_rules_applied"]
+
+    @pytest.mark.asyncio
+    async def test_profile_rejects_mutation_without_executing(self, test_db, test_collection):
+        col = test_db.collection(test_collection)
+        before = col.count()
+        result = await self.agent.arun(
+            {
+                "operation": "profile",
+                "aql_query": f'INSERT {{"v": 999}} INTO {test_collection}',
+            }
+        )
+        assert result["error_code"] == "aql_policy_denied"
+        assert result["classification"] == "mutation"
+        assert "insert" in result["mutation_nodes"]
+        # The mutation must NOT have been executed.
+        assert col.count() == before
+
+    # ── Comparison ────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_compare_same_rows_different_order_is_equivalent(self, test_db, test_collection):
+        col = test_db.collection(test_collection)
+        col.insert_many([{"v": i} for i in range(6)])
+        result = await self.agent.arun(
+            {
+                "operation": "compare",
+                "queries": [
+                    {
+                        "label": "ascending",
+                        "aql_query": f"FOR d IN {test_collection} SORT d.v ASC RETURN d.v",
+                    },
+                    {
+                        "label": "descending",
+                        "aql_query": f"FOR d IN {test_collection} SORT d.v DESC RETURN d.v",
+                    },
+                ],
+            }
+        )
+        assert result["functionally_equivalent"] is True
+        assert result["not_equivalent_warning"] is None
+        assert len(result["equivalence_groups"]) == 1
+        assert result["fastest_equivalent"]["label"] in {"ascending", "descending"}
+
+    @pytest.mark.asyncio
+    async def test_compare_different_rows_not_equivalent(self, test_db, test_collection):
+        col = test_db.collection(test_collection)
+        col.insert_many([{"v": i} for i in range(6)])
+        result = await self.agent.arun(
+            {
+                "operation": "compare",
+                "queries": [
+                    {
+                        "label": "low",
+                        "aql_query": f"FOR d IN {test_collection} FILTER d.v < 2 RETURN d.v",
+                    },
+                    {
+                        "label": "high",
+                        "aql_query": f"FOR d IN {test_collection} FILTER d.v > 3 RETURN d.v",
+                    },
+                ],
+            }
+        )
+        assert result["functionally_equivalent"] is False
+        assert result["not_equivalent_warning"] is not None
+        assert "NOT functionally equivalent" in result["not_equivalent_warning"]
+        assert len(result["equivalence_groups"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_compare_requires_at_least_two_queries(self):
+        result = await self.agent.arun(
+            {
+                "operation": "compare",
+                "queries": [{"label": "solo", "aql_query": "RETURN 1"}],
+            }
+        )
+        assert result["error_code"] == "invalid_input"
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_compare_rejects_mutation_entry_but_processes_reads(
+        self, test_db, test_collection
+    ):
+        col = test_db.collection(test_collection)
+        col.insert_many([{"v": i} for i in range(5)])
+        result = await self.agent.arun(
+            {
+                "operation": "compare",
+                "queries": [
+                    {
+                        "label": "read_a",
+                        "aql_query": f"FOR d IN {test_collection} RETURN d.v",
+                    },
+                    {
+                        "label": "read_b",
+                        "aql_query": f"FOR d IN {test_collection} SORT d.v DESC RETURN d.v",
+                    },
+                    {
+                        "label": "mutation",
+                        "aql_query": f'INSERT {{"v": 42}} INTO {test_collection}',
+                    },
+                ],
+            }
+        )
+        by_label = {r["label"]: r for r in result["per_query"]}
+        assert by_label["read_a"]["profiled"] is True
+        assert by_label["read_b"]["profiled"] is True
+        assert by_label["mutation"]["profiled"] is False
+        assert by_label["mutation"]["error_code"] == "aql_policy_denied"
+        # The two read queries were still compared and found equivalent.
+        assert result["functionally_equivalent"] is True
+        # The rejected mutation must not have inserted anything.
+        assert col.count() == 5
+
 
 # ── Cluster Agent (single-server safe) ────────────────────────────────
 
@@ -754,7 +908,7 @@ class TestGraphAgent:
             }
         )
         # Insert vertices via the graph
-        from arango_connector import arango_connector
+        from arangodb_mcp.arango_connector import arango_connector
 
         db = arango_connector.get_db()
         db.collection("et_from").insert({"_key": "v1", "name": "vertex1"})

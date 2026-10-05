@@ -1,0 +1,32 @@
+ArangoDB MCP has been rendered in namespace {{ .Release.Namespace }}.
+
+{{- if not .Values.secrets.create.enabled }}
+
+The chart does not create credentials by default. Ensure Secret
+{{ include "arangodb-mcp.secretName" . | quote }} already exists with:
+  - {{ .Values.secrets.keys.arangoPassword }}
+  {{- if eq .Values.auth.mode "legacy" }}
+  - {{ .Values.secrets.keys.authToken }}
+  {{- else }}
+  - {{ .Values.secrets.keys.oidcCredentials }}
+  {{- end }}
+
+See README.md for External Secrets and kubectl examples. Do not pass production
+secret values through --set or committed values files.
+{{- else }}
+
+WARNING: Helm-created Secret mode is enabled. Secret values are retained in Helm
+release history. This mode is intended only for disposable development environments.
+{{- end }}
+
+Wait for dependency-aware readiness:
+  kubectl rollout status deployment/{{ include "arangodb-mcp.fullname" . }} \
+    --namespace {{ .Release.Namespace }} --timeout=180s
+
+Forward the service locally:
+  kubectl port-forward --namespace {{ .Release.Namespace }} \
+    service/{{ include "arangodb-mcp.fullname" . }} 8000:{{ .Values.service.port }}
+
+Then check:
+  curl --fail http://127.0.0.1:8000/livez
+  curl --fail http://127.0.0.1:8000/readyz

@@ -1,0 +1,8 @@
+# Default ownership and required review route.
+* @arthurkeen
+
+# Security, release, deployment, and governance controls.
+/.github/ @arthurkeen
+/deploy/ @arthurkeen
+/SECURITY.md @arthurkeen
+/docs/threat-model.md @arthurkeen

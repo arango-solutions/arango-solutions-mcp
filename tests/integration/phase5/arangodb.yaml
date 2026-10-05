@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arangodb
+  labels:
+    app.kubernetes.io/name: arangodb
+    app.kubernetes.io/part-of: phase5-smoke
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: arangodb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: arangodb
+    spec:
+      containers:
+        - name: arangodb
+          image: arangodb/arangodb:3.12.4
+          args:
+            - --experimental-vector-index
+          env:
+            - name: ARANGO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: phase5-secrets
+                  key: arango-root-password
+          ports:
+            - name: http
+              containerPort: 8529
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arangodb
+  labels:
+    app.kubernetes.io/name: arangodb
+    app.kubernetes.io/part-of: phase5-smoke
+spec:
+  selector:
+    app.kubernetes.io/name: arangodb
+  ports:
+    - name: http
+      port: 8529
+      targetPort: http

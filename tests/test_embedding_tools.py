@@ -18,14 +18,28 @@ os.environ.setdefault("ARANGO_DEFAULT_DB_NAME", "_system")
 
 from unittest.mock import MagicMock, patch  # noqa: E402
 
+import httpx  # noqa: E402
 import pytest  # noqa: E402
 from arango.exceptions import ArangoServerError  # noqa: E402
+from opentelemetry.propagate import extract  # noqa: E402
+from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E402
+    InMemorySpanExporter,
+)
 
-with patch("arango_connector.ArangoClient"):
-    from server import mcp_app  # noqa: F401,E402 — import first so tool modules register in order
+with patch("arangodb_mcp.arango_connector.ArangoClient"):
+    from arangodb_mcp.server import (
+        mcp_app,  # noqa: F401,E402 — import first so tool modules register in order
+    )
 
-import mcp_tools.embedding_tools as em  # noqa: E402
-from mcp_tools import _support  # noqa: E402
+import arangodb_mcp.mcp_tools.embedding_tools as em  # noqa: E402
+from arangodb_mcp.mcp_tools import _support  # noqa: E402
+from arangodb_mcp.observability.context import correlation_scope  # noqa: E402
+from arangodb_mcp.observability.telemetry import (  # noqa: E402
+    get_tracer,
+    set_tracer_provider_for_testing,
+)
 
 
 def _arango_server_error(message: str, code: int) -> ArangoServerError:
@@ -99,6 +113,50 @@ class TestGenerateEmbeddingsGuards:
         monkeypatch.setattr(em.settings.embedding, "openai_api_key", None)
         with pytest.raises(RuntimeError, match="No texts provided"):
             asyncio.run(em.generate_embeddings([]))
+
+    def test_provider_call_propagates_correlation_and_emits_span(self):
+        exporter = InMemorySpanExporter()
+        provider = TracerProvider()
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        set_tracer_provider_for_testing(provider)
+        captured = {}
+
+        class Client:
+            async def post(self, url, *, headers, json):
+                captured.update(url=url, headers=headers, json=json)
+                return httpx.Response(200, json={"data": []})
+
+        async def exercise():
+            incoming = "00-0123456789abcdef0123456789abcdef-" "0123456789abcdef-01"
+            with (
+                correlation_scope(
+                    request_id="embedding-request",
+                    traceparent=incoming,
+                ),
+                get_tracer().start_as_current_span(
+                    "test.parent",
+                    context=extract({"traceparent": incoming}),
+                ),
+            ):
+                return await em._post_embedding(
+                    Client(),
+                    api_key="provider-secret",
+                    model="model",
+                    texts=["sensitive input"],
+                )
+
+        try:
+            response = asyncio.run(exercise())
+        finally:
+            set_tracer_provider_for_testing(None)
+        assert response.status_code == 200
+        assert captured["headers"]["X-Request-ID"] == "embedding-request"
+        assert captured["headers"]["traceparent"].startswith("00-0123456789abcdef0123456789abcdef-")
+        spans = exporter.get_finished_spans()
+        assert [span.name for span in spans] == ["dependency.embedding", "test.parent"]
+        embedding_span = spans[0]
+        assert "provider-secret" not in str(embedding_span.attributes)
+        assert "sensitive input" not in str(embedding_span.attributes)
 
 
 # ---------------------------------------------------------------------------

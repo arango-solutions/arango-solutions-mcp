@@ -1,0 +1,347 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.11"
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  validate:
+    name: Validate release artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: snok/install-poetry@v1
+        with:
+          version: 2.1.3
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Validate tag and project version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          project_version="$(poetry version --short)"
+          test "$RELEASE_TAG" = "v$project_version"
+
+      - name: Install locked dependencies
+        run: poetry install --with dev --no-interaction --sync
+
+      - name: Validate project and lock file
+        run: poetry check --lock
+
+      - name: Ruff check
+        run: poetry run ruff check .
+
+      - name: Ruff format check
+        run: poetry run ruff format --check .
+
+      - name: Mypy type check
+        run: >-
+          poetry run python -m mypy
+          --ignore-missing-imports
+          --no-error-summary
+          --disable-error-code=union-attr
+          --disable-error-code=no-any-return
+          --disable-error-code=no-untyped-def
+          --disable-error-code=call-arg
+          --disable-error-code=arg-type
+          --disable-error-code=operator
+          --disable-error-code=assignment
+          src/arangodb_mcp evals
+
+      - name: Documentation consistency
+        run: poetry run python scripts/verify_docs.py
+
+      - name: Deterministic quality gates
+        run: poetry run python evals/run_quality_gates.py --check
+
+      - name: Non-cluster test suite and coverage
+        run: >-
+          poetry run pytest tests/ -v
+          --ignore=tests/test_cluster.py
+          --cov=arangodb_mcp
+          --cov-report=term-missing
+          --cov-fail-under=79
+
+      - name: Clean wheel installation smoke test
+        run: poetry run python scripts/verify_wheel.py
+
+      - name: Validate pinned Helm chart
+        run: |
+          scripts/install_helm_tools.sh
+          scripts/verify_helm.sh
+          mkdir -p chart-dist
+          .tools/bin/helm package deploy/helm/arangodb-mcp --destination chart-dist
+
+      - name: Build release distributions
+        run: poetry build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: chart-dist/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish Python distribution
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/project/arangodb-mcp-server/
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist
+
+      - name: Install wheel for Python SBOM
+        run: |
+          python -m venv .release-venv
+          .release-venv/bin/pip install --disable-pip-version-check dist/*.whl
+
+      - name: Generate Python SBOM
+        uses: anchore/sbom-action@v0.18.0
+        with:
+          path: .release-venv
+          format: spdx-json
+          output-file: python-sbom.spdx.json
+          upload-artifact: false
+
+      - name: Attest Python build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+
+      - name: Attest Python SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: dist/*.whl
+          sbom-path: python-sbom.spdx.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-sbom
+          path: python-sbom.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish to PyPI with trusted publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-image:
+    name: Publish signed container image
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - id: build
+        name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          provenance: mode=max
+          sbom: false
+
+      - name: Generate container SBOM from published digest
+        uses: anchore/sbom-action@v0.18.0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: container-sbom.spdx.json
+          upload-artifact: false
+
+      - name: Attest image build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest container SBOM
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: container-sbom.spdx.json
+          push-to-registry: true
+
+      - uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Keyless-sign published digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+
+      - name: Scan published digest
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: table
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: container-sbom
+          path: container-sbom.spdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-and-release:
+    name: Verify publications and create release
+    needs: [publish-pypi, publish-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-sbom
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: container-sbom
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: chart-dist
+
+      - uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Verify PyPI wheel and installed package
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          for attempt in $(seq 1 12); do
+            if python -m pip download \
+              --disable-pip-version-check \
+              --no-deps \
+              --only-binary=:all: \
+              --dest pypi-dist \
+              "arangodb-mcp-server==$VERSION"; then
+              break
+            fi
+            test "$attempt" -lt 12
+            sleep 10
+          done
+          test "$(sha256sum dist/*.whl | cut -d' ' -f1)" = \
+            "$(sha256sum pypi-dist/*.whl | cut -d' ' -f1)"
+          python -m venv verify-venv
+          verify-venv/bin/pip install \
+            --disable-pip-version-check \
+            --no-cache-dir \
+            "arangodb-mcp-server==$VERSION"
+          verify-venv/bin/arangodb-mcp --version
+          verify-venv/bin/python -I -c \
+            "import importlib.resources as r; from arangodb_mcp.catalog.loader import load_tool_catalog; assert len(load_tool_catalog().tools) == 81; assert r.files('arangodb_mcp.manuals').joinpath('aql_ref.md').is_file()"
+
+      - name: Verify image, signature, and attestations
+        env:
+          DIGEST: ${{ needs.publish-image.outputs.digest }}
+        run: |
+          docker pull "$IMAGE@$DIGEST"
+          docker run --rm "$IMAGE@$DIGEST" arangodb-mcp --version
+          cosign verify \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/" \
+            "$IMAGE@$DIGEST"
+          gh attestation verify dist/*.whl --repo "$GITHUB_REPOSITORY"
+          gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$GITHUB_REPOSITORY"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          dist/*
+          chart-dist/*.tgz
+          python-sbom.spdx.json
+          container-sbom.spdx.json
+          --verify-tag
+          --generate-notes
